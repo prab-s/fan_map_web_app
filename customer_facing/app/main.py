@@ -1,10 +1,11 @@
 import httpx
 import logging
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.background import BackgroundTask
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.background import BackgroundTask
 
+from app.api_client import api
 from app.catalogue_cache import catalogue_cache
 from app.config import settings
 from app.routes import pages, finder
