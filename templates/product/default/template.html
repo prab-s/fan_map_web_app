@@ -72,16 +72,31 @@
 
     <footer class="footer-area">
       <div class="footer-brand-row">
-        <div class="footer-brand footer-brand--left">{{product.product_type_label}}</div>
-        <div class="footer-site">{{product.series_name}}</div>
-        <div class="footer-brand footer-brand--right">{{product.model}}</div>
+        <div class="footer-brand footer-brand--left">
+          <img
+            src="{{product.company_logo_url}}"
+            alt="Vent-Tech"
+            class="footer-logo"
+          />
+        </div>
+        <div class="footer-site">www.venttech.co.nz</div>
       </div>
 
       <div class="footer-contact-row">
         <div class="footer-contact">
-          {{product.product_type_label}} · {{product.series_name}}
+          <span class="footer-contact__item footer-contact__item--phone">
+            <span class="footer-contact__icon" aria-hidden="true">&#9742;</span>
+            <span class="footer-contact__label">Ph:</span>
+            <span class="footer-contact__value">04 595 1404</span>
+          </span>
+          <span class="footer-contact__divider" aria-hidden="true">|</span>
+          <span class="footer-contact__item footer-contact__item--email">
+            <span class="footer-contact__icon" aria-hidden="true">&#9993;</span>
+            <span class="footer-contact__label">Email:</span>
+            <span class="footer-contact__value footer-contact__value--accent">admin@venttech.co.nz</span>
+          </span>
         </div>
-        <div class="footer-badge">{{product.model}}</div>
+        <div class="footer-badge">{{product.series_name}}-{{product.model}}</div>
       </div>
     </footer>
   </main>

@@ -64,7 +64,7 @@ fail_if_placeholder "CMS_API_TOKEN" "${CMS_API_TOKEN:-}"
 seed_app_data_volume_if_needed() {
   local source_has_data=0
   local data_dir
-  for data_dir in data/product_images data/product_graphs data/product_pdfs data/product_type_pdfs data/series_graphs data/series_pdfs data/backups; do
+  for data_dir in data/product_images data/series_images data/product_graphs data/product_pdfs data/product_type_pdfs data/series_graphs data/series_pdfs data/backups; do
     if [[ -d "$data_dir" ]]; then
       source_has_data=1
       break

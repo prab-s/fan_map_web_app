@@ -1,5 +1,11 @@
 import { f as fallback, h as head, i as ensure_array_like, e as escape_html, a as attr, d as bind_props } from "./index2.js";
 import { o as onDestroy } from "./index-server.js";
+import "@sveltejs/kit/internal";
+import "./exports.js";
+import "./utils.js";
+import "@sveltejs/kit/internal/server";
+import "./root.js";
+import "./state.svelte.js";
 import { J as JobProgressPanel } from "./JobProgressPanel.js";
 import { S as SeriesNamesBadgeList } from "./SeriesNamesBadgeList.js";
 function ProductTypeWorkspace($$renderer, $$props) {
@@ -15,6 +21,10 @@ function ProductTypeWorkspace($$renderer, $$props) {
     let saving = false;
     let refreshingPdfJob = null;
     let mode = initialMode;
+    function productTypeViewerUrl(productTypeId = selectedProductType?.id) {
+      const nextProductTypeId = productTypeId == null || productTypeId === "" ? "" : String(productTypeId);
+      return nextProductTypeId ? `/viewer/product-type/${encodeURIComponent(nextProductTypeId)}` : "/viewer/product-type";
+    }
     function resetDraft(productType = null) {
       return {
         id: productType?.id ?? null,
@@ -130,7 +140,7 @@ function ProductTypeWorkspace($$renderer, $$props) {
       } else {
         $$renderer2.push("<!--[-1-->");
       }
-      $$renderer2.push(`<!--]--></div>`);
+      $$renderer2.push(`<!--]--> <a class="btn btn-outline-primary btn-sm"${attr("href", productTypeViewerUrl(selectedProductType.id))}>View in Viewer</a></div>`);
     } else {
       $$renderer2.push("<!--[-1-->");
     }

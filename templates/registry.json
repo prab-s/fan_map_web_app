@@ -43,6 +43,13 @@
       "type": "series",
       "path": "templates/series/default/template.html",
       "stylesheet": "templates/series/default/template.css"
+    },
+    {
+      "id": "series-series_type_2",
+      "label": "Series Series Type 2",
+      "type": "series",
+      "path": "templates/series/series_type_2/template.html",
+      "stylesheet": "templates/series/series_type_2/template.css"
     }
   ],
   "product_type_templates": [

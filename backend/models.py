@@ -377,6 +377,12 @@ class Series(Base):
 
     product_type = relationship("ProductType", back_populates="series")
     products = relationship("Product", back_populates="series")
+    series_images = relationship(
+        "SeriesImage",
+        back_populates="series",
+        cascade="all, delete-orphan",
+        order_by="SeriesImage.sort_order",
+    )
 
     @property
     def product_type_key(self):
@@ -388,7 +394,24 @@ class Series(Base):
 
     @property
     def product_count(self):
+        cached_count = getattr(self, "_product_count", None)
+        if cached_count is not None:
+            return int(cached_count)
         return len(self.products or [])
+
+    @property
+    def primary_series_image_url(self):
+        if not self.series_images:
+            return None
+        first_image = sorted(self.series_images, key=lambda img: (img.sort_order, img.id))[0]
+        return first_image.url
+
+    @property
+    def secondary_series_image_url(self):
+        if len(self.series_images or []) < 2:
+            return None
+        second_image = sorted(self.series_images, key=lambda img: (img.sort_order, img.id))[1]
+        return second_image.url
 
     @property
     def series_graph_image_url(self):
@@ -708,4 +731,29 @@ class ProductImage(Base):
             f"/api/cms/media/product_images/{self.file_name}?v={version}"
             if version is not None
             else f"/api/cms/media/product_images/{self.file_name}"
+        )
+
+
+class SeriesImage(Base):
+    __tablename__ = "series_images"
+
+    id = Column(Integer, primary_key=True, index=True)
+    series_id = Column(Integer, ForeignKey("series.id"), nullable=False)
+    file_name = Column(String(512), nullable=False)
+    sort_order = Column(Integer, nullable=False, default=0)
+
+    series = relationship("Series", back_populates="series_images")
+
+    @property
+    def url(self):
+        file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "series_images", self.file_name)
+        version = None
+        try:
+            version = int(os.path.getmtime(file_path))
+        except OSError:
+            version = None
+        return (
+            f"/api/cms/media/series_images/{self.file_name}?v={version}"
+            if version is not None
+            else f"/api/cms/media/series_images/{self.file_name}"
         )

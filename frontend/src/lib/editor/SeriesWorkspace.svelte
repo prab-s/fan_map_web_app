@@ -1,6 +1,18 @@
 <script>
   import { onMount } from 'svelte';
-  import { createSeries, deleteSeries, getProductTypes, getSeries, getTemplates, updateSeries } from '$lib/api.js';
+  import { goto } from '$app/navigation';
+  import {
+    createSeries,
+    deleteSeries,
+    deleteSeriesImage,
+    getProductTypes,
+    getSeries,
+    getTemplates,
+    reorderSeriesImages,
+    updateSeries,
+    uploadSeriesImages
+  } from '$lib/api.js';
+  import SeriesMediaPanel from '$lib/editor/SeriesMediaPanel.svelte';
 
   export let initialMode = 'create';
   export let initialSeriesId = '';
@@ -13,6 +25,10 @@
   let error = '';
   let success = '';
   let mode = initialMode;
+  let seriesImages = [];
+  let pendingImageFiles = [];
+  let appliedInitialSeriesId = null;
+  let appliedSeriesEditorUrlId = '';
 
   function resetDraft(series = null) {
     return {
@@ -32,20 +48,45 @@
 
   function syncSeriesEditorUrl(seriesId) {
     if (typeof window === 'undefined') return;
-    const params = new URLSearchParams(window.location.search);
-    params.delete('series');
-    if (seriesId != null && seriesId !== '') {
-      params.set('series', String(seriesId));
-    }
-    const nextSearch = params.toString();
-    const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}${window.location.hash}`;
-    window.history.replaceState(window.history.state, '', nextUrl);
+    const nextSeriesId = seriesId == null || seriesId === '' ? '' : String(seriesId);
+    const nextUrl = nextSeriesId ? `/editor/series/edit/${encodeURIComponent(nextSeriesId)}` : '/editor/series/edit';
+    if (`${window.location.pathname}${window.location.search}${window.location.hash}` === nextUrl) return;
+    void goto(nextUrl, { replaceState: true, noScroll: true, keepFocus: true });
   }
 
-  $: if (initialSeriesId !== '' && String(selectedSeriesId) !== String(initialSeriesId)) {
-    selectedSeriesId = String(initialSeriesId);
-    if (mode !== 'create') {
-      mode = 'edit';
+  $: if (mode === 'edit' && String(selectedSeriesId) !== String(appliedSeriesEditorUrlId)) {
+    appliedSeriesEditorUrlId = String(selectedSeriesId || '');
+    syncSeriesEditorUrl(selectedSeriesId);
+  }
+
+  function seriesViewerUrl(seriesId = seriesDraft.id) {
+    const nextSeriesId = seriesId == null || seriesId === '' ? '' : String(seriesId);
+    return nextSeriesId ? `/viewer/series/${encodeURIComponent(nextSeriesId)}` : '/viewer/series';
+  }
+
+  $: {
+    const nextInitialSeriesId = initialSeriesId !== '' && initialSeriesId != null ? String(initialSeriesId) : '';
+    if (nextInitialSeriesId !== appliedInitialSeriesId) {
+      appliedInitialSeriesId = nextInitialSeriesId;
+      selectedSeriesId = nextInitialSeriesId;
+      pendingImageFiles = [];
+
+      if (nextInitialSeriesId) {
+        if (mode !== 'create') {
+          mode = 'edit';
+        }
+        const selected = seriesRecords.find((item) => String(item.id) === nextInitialSeriesId);
+        if (selected) {
+          seriesDraft = resetDraft(selected);
+          seriesImages = selected.series_images || [];
+        } else {
+          seriesDraft = resetDraft();
+          seriesImages = [];
+        }
+      } else if (mode !== 'create' || seriesDraft.id) {
+        seriesDraft = resetDraft();
+        seriesImages = [];
+      }
     }
   }
 
@@ -53,6 +94,8 @@
     mode = 'create';
     selectedSeriesId = '';
     seriesDraft = resetDraft();
+    seriesImages = [];
+    pendingImageFiles = [];
     error = '';
     success = '';
   }
@@ -61,6 +104,8 @@
     mode = 'edit';
     selectedSeriesId = '';
     seriesDraft = resetDraft();
+    seriesImages = [];
+    pendingImageFiles = [];
     error = '';
     success = '';
   }
@@ -69,6 +114,8 @@
     mode = initialMode;
     selectedSeriesId = '';
     seriesDraft = resetDraft();
+    seriesImages = [];
+    pendingImageFiles = [];
     syncSeriesEditorUrl('');
     error = '';
     success = '';
@@ -81,6 +128,11 @@
         const selected = seriesRecords.find((item) => String(item.id) === String(selectedSeriesId));
         if (selected) {
           seriesDraft = resetDraft(selected);
+          seriesImages = selected.series_images || [];
+        } else if (!initialSeriesId) {
+          selectedSeriesId = '';
+          seriesDraft = resetDraft();
+          seriesImages = [];
         }
       }
     } catch (e) {
@@ -140,6 +192,8 @@
       mode = initialMode;
       selectedSeriesId = '';
       seriesDraft = resetDraft();
+      seriesImages = [];
+      pendingImageFiles = [];
       syncSeriesEditorUrl('');
       success = 'Series deleted.';
     } catch (e) {
@@ -156,9 +210,48 @@
       if (selected) {
         mode = 'edit';
         seriesDraft = resetDraft(selected);
+        seriesImages = selected.series_images || [];
       }
     }
   });
+
+  async function uploadImages() {
+    if (!seriesDraft.id) {
+      error = 'Save the series before uploading series images.';
+      return;
+    }
+    if (!pendingImageFiles.length) {
+      return;
+    }
+    error = '';
+    success = '';
+    saving = true;
+    try {
+      seriesImages = await uploadSeriesImages(seriesDraft.id, pendingImageFiles);
+      pendingImageFiles = [];
+      success = 'Series images uploaded.';
+    } catch (e) {
+      error = e.message;
+    } finally {
+      saving = false;
+    }
+  }
+
+  async function moveSeriesImage(index, direction) {
+    if (!seriesDraft.id) return;
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= seriesImages.length) return;
+    const reordered = [...seriesImages];
+    const [moved] = reordered.splice(index, 1);
+    reordered.splice(targetIndex, 0, moved);
+    seriesImages = await reorderSeriesImages(seriesDraft.id, reordered.map((image) => image.id));
+  }
+
+  async function removeSeriesImage(image) {
+    if (!seriesDraft.id) return;
+    if (!window.confirm('Delete this series image?')) return;
+    seriesImages = await deleteSeriesImage(seriesDraft.id, image.id);
+  }
 </script>
 
 <svelte:head>
@@ -187,7 +280,15 @@
                 on:change={(event) => {
                   const selected = seriesRecords.find((item) => String(item.id) === event.currentTarget.value);
                   seriesDraft = resetDraft(selected);
+                  seriesImages = selected?.series_images || [];
+                  performanceColumnGroups = [];
+                  pendingImageFiles = [];
                   syncSeriesEditorUrl(event.currentTarget.value);
+                  if (event.currentTarget.value) {
+                    void loadPerformanceColumns(event.currentTarget.value).catch((e) => {
+                      error = e.message;
+                    });
+                  }
                 }}
               >
                 <option value="">-- Choose option --</option>
@@ -251,11 +352,29 @@
 
         <div class="d-flex flex-wrap gap-2 mt-3">
           <button class="btn btn-primary" on:click={saveSeries} disabled={saving}>{saving ? 'Saving...' : 'Save Series'}</button>
+          {#if seriesDraft.id}
+            <a class="btn btn-outline-primary" href={seriesViewerUrl(seriesDraft.id)}>
+              View in Viewer
+            </a>
+          {/if}
           {#if mode === 'edit' && seriesDraft.id}
             <button class="btn btn-outline-danger" on:click={deleteCurrentSeries} disabled={saving}>Delete Series</button>
           {/if}
           <button class="btn btn-outline-secondary" on:click={cancelEditing}>Cancel</button>
         </div>
+
+        {#if mode === 'edit' && seriesDraft.id}
+          <div class="mt-3">
+            <SeriesMediaPanel
+              seriesForm={seriesDraft}
+              bind:pendingImageFiles
+              {seriesImages}
+              {uploadImages}
+              {moveSeriesImage}
+              {removeSeriesImage}
+            />
+          </div>
+        {/if}
       </div>
     </div>
   </div>

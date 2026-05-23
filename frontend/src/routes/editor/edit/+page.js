@@ -1,16 +1,17 @@
-import { error } from '@sveltejs/kit';
+import { error, redirect } from '@sveltejs/kit';
+
+function productEditPath(product = '') {
+  return product ? `/editor/edit/${encodeURIComponent(String(product))}` : '/editor/edit';
+}
 
 export async function load({ fetch, url }) {
   const product = url.searchParams.get('product') || '';
 
   if (product) {
-    const response = await fetch(`/api/products/${encodeURIComponent(product)}`);
-    if (!response.ok) {
-      throw error(response.status === 404 ? 404 : response.status, 'Product not found.');
-    }
+    throw redirect(307, productEditPath(product));
   }
 
   return {
-    product
+    product: ''
   };
 }

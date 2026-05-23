@@ -19,7 +19,7 @@ TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 ARCHIVE_NAME="${ARCHIVE_NAME:-fan_graphs_data_backup_${TIMESTAMP}.zip}"
 PODMAN_BIN="${PODMAN_BIN:-podman}"
 APP_CONTAINER_NAME="${APP_CONTAINER_NAME:-fan-graphs-app}"
-MEDIA_DIRS=(product_images product_graphs product_pdfs product_type_pdfs series_graphs series_pdfs)
+MEDIA_DIRS=(product_images series_images product_graphs product_pdfs product_type_pdfs series_graphs series_pdfs)
 TEMPLATE_DIRS=(product series product_type registry.json)
 
 while [[ $# -gt 0 ]]; do
@@ -115,6 +115,7 @@ Env file: ${ENV_FILE}
 
 Contents:
 - data/product_images : uploaded product images (if present)
+- data/series_images : uploaded series images (if present)
 - data/product_graphs : generated graph images (if present)
 - data/product_pdfs : generated product PDF assets (if present)
 - data/product_type_pdfs : generated product type PDF assets (if present)

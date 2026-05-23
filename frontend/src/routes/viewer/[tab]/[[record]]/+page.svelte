@@ -1,0 +1,1517 @@
+<script>
+  import { onDestroy, onMount } from 'svelte';
+  import { browser } from '$app/environment';
+  import {
+    getProductChartData,
+    getProduct,
+    getProducts,
+    getTemplates,
+    getProductTypePdfContext,
+    getProductTypes,
+    getSeries,
+    refreshGraphImage,
+    startRefreshProductPdfJob,
+    startRefreshProductTypePdfJob,
+    refreshSeriesGraphImage,
+    startRefreshSeriesPdfJob
+  } from '$lib/api.js';
+  import ECharts from '$lib/ECharts.svelte';
+  import { getChartTheme, theme } from '$lib/config.js';
+  import { buildFullChartOption } from '$lib/fullChart.js';
+  import JobProgressPanel from '$lib/JobProgressPanel.svelte';
+  import SeriesNamesBadgeList from '$lib/editor/SeriesNamesBadgeList.svelte';
+  import { runMaintenanceJob } from '$lib/maintenanceJobs.js';
+
+  export let data = {};
+
+  let products = [];
+  let productTypes = [];
+  let templateRegistry = { product_templates: [], series_templates: [], product_type_templates: [] };
+  let seriesRecords = [];
+  let selectedProductId = normalizeViewerId(data?.product);
+  let rpmLines = [];
+  let rpmPoints = [];
+  let efficiencyPoints = [];
+  let chartOption = {};
+  let loadingList = true;
+  let loadingChart = false;
+  let error = '';
+  let success = '';
+
+  let search = '';
+  let productTypeFilter = '';
+  let seriesFilter = '';
+  let filteredProducts = [];
+  let seriesOptions = [];
+  let selectedProduct = null;
+  function normalizeViewerTab(value) {
+    return value === 'series' || value === 'product-type' ? value : 'product';
+  }
+
+  function normalizeViewerId(value) {
+    if (value == null || value === '') return null;
+    const numeric = Number(value);
+    return Number.isNaN(numeric) ? null : numeric;
+  }
+
+  function normalizeViewerStringId(value) {
+    if (value == null) return '';
+    const stringValue = String(value);
+    return stringValue === 'null' || stringValue === 'undefined' ? '' : stringValue;
+  }
+
+  let activeViewerTab = normalizeViewerTab(data?.tab);
+  let selectedProductTypeId = normalizeViewerStringId(data?.product_type_id || data?.product_type);
+  let selectedProductTypeContext = data?.product_type_context || null;
+  let productPdfPreviewRevision = 0;
+  let productTypePdfPreviewRevision = 0;
+  let seriesPdfPreviewRevision = 0;
+  let seriesTabProductTypeFilter = normalizeViewerStringId(data?.series_product_type_key);
+  let seriesTabSeriesId = normalizeViewerStringId(data?.series);
+  let seriesTabOptions = [];
+  let selectedSeriesRecord = null;
+  let viewerUrlStateReady = false;
+  let viewerStateHydrating = true;
+  let seriesTabOptionsReady = false;
+  let productTypeContextRequestToken = 0;
+
+  let refreshingProductGraphId = null;
+  let refreshingProductPdfJob = null;
+  let refreshingProductTypePdfJob = null;
+  let refreshingSeriesGraphId = null;
+  let refreshingSeriesPdfJob = null;
+  let destroyed = false;
+
+  function viewerPath(tab = activeViewerTab) {
+    const normalizedTab = normalizeViewerTab(tab);
+
+    if (normalizedTab === 'series') {
+      return seriesTabSeriesId ? `/viewer/series/${encodeURIComponent(String(seriesTabSeriesId))}` : '/viewer/series';
+    }
+
+    if (normalizedTab === 'product-type') {
+      return selectedProductTypeId
+        ? `/viewer/product-type/${encodeURIComponent(String(selectedProductTypeId))}`
+        : '/viewer/product-type';
+    }
+
+    return selectedProductId != null && selectedProductId !== ''
+      ? `/viewer/product/${encodeURIComponent(String(selectedProductId))}`
+      : '/viewer/product';
+  }
+
+  function syncViewerUrl() {
+    if (!browser || !viewerUrlStateReady) return;
+
+    const nextPath = viewerPath();
+    const nextUrl = `${nextPath}${window.location.hash}`;
+    if (`${window.location.pathname}${window.location.hash}` === nextUrl) return;
+    window.history.replaceState(window.history.state, '', nextUrl);
+  }
+
+  function productEditorUrl(productId) {
+    const params = new URLSearchParams();
+    if (productId != null && productId !== '') {
+      params.set('product', String(productId));
+    }
+    const search = params.toString();
+    return `/editor/edit${search ? `?${search}` : ''}`;
+  }
+
+  function seriesEditorUrl(seriesId) {
+    const params = new URLSearchParams();
+    if (seriesId != null && seriesId !== '') {
+      params.set('series', String(seriesId));
+    }
+    const search = params.toString();
+    return `/editor/series/edit${search ? `?${search}` : ''}`;
+  }
+
+  function productTypeEditorUrl(productTypeId) {
+    const params = new URLSearchParams();
+    if (productTypeId != null && productTypeId !== '') {
+      params.set('product_type', String(productTypeId));
+    }
+    const search = params.toString();
+    return `/editor/product-types/edit${search ? `?${search}` : ''}`;
+  }
+
+  function getCurrentProductType() {
+    return productTypes.find((item) => item.key === selectedProduct?.product_type_key) || null;
+  }
+
+  function templateCollection(templateType) {
+    if (templateType === 'series') return templateRegistry.series_templates ?? [];
+    if (templateType === 'product_type') return templateRegistry.product_type_templates ?? [];
+    return templateRegistry.product_templates ?? [];
+  }
+
+  function templateLabel(templateType, templateId, fallbackId) {
+    const selectedId = templateId || fallbackId;
+    const match = templateCollection(templateType).find((item) => item.id === selectedId);
+    if (match?.label) return match.label;
+    if (selectedId) return selectedId;
+    return 'Default';
+  }
+
+  function productPdfTemplateLabels(product) {
+    return {
+      printed: templateLabel('product', product?.printed_template_id, product?.template_id || 'product-default'),
+      online: templateLabel('product', product?.online_template_id, product?.template_id || 'product-default')
+    };
+  }
+
+  function seriesPdfTemplateLabels(series) {
+    return {
+      printed: templateLabel('series', series?.printed_template_id, series?.template_id || 'series-default'),
+      online: templateLabel('series', series?.online_template_id, series?.template_id || 'series-default')
+    };
+  }
+
+  function productTypePdfTemplateLabel(productType) {
+    return templateLabel('product_type', productType?.product_type_template_id, 'product_type-default');
+  }
+
+  function productTypePdfPreviewUrl(productType) {
+    if (!productType?.product_type_pdf_url) return '';
+    const separator = productType.product_type_pdf_url.includes('?') ? '&' : '?';
+    return `${productType.product_type_pdf_url}${separator}v=${productTypePdfPreviewRevision}`;
+  }
+
+  function versionedPdfPreviewUrl(baseUrl, revision) {
+    if (!baseUrl) return '';
+    const separator = baseUrl.includes('?') ? '&' : '?';
+    return `${baseUrl}${separator}v=${revision}`;
+  }
+
+  function productPdfPreviewUrl(product, variant) {
+    const baseUrl = variant === 'printed' ? product?.product_printed_pdf_url : product?.product_online_pdf_url;
+    return versionedPdfPreviewUrl(baseUrl, productPdfPreviewRevision);
+  }
+
+  function seriesPdfPreviewUrl(series, variant) {
+    const baseUrl = variant === 'printed' ? series?.series_printed_pdf_url : series?.series_online_pdf_url;
+    return versionedPdfPreviewUrl(baseUrl, seriesPdfPreviewRevision);
+  }
+
+  function getCurrentGraphConfig() {
+    const productType = getCurrentProductType();
+    return productType
+      ? {
+          graph_kind: productType.graph_kind,
+          supports_graph_overlays: productType.supports_graph_overlays,
+          supports_band_graph_style: productType.supports_band_graph_style,
+          graph_line_value_label: productType.graph_line_value_label,
+          graph_line_value_unit: productType.graph_line_value_unit,
+          graph_x_axis_label: productType.graph_x_axis_label,
+          graph_x_axis_unit: productType.graph_x_axis_unit,
+          graph_y_axis_label: productType.graph_y_axis_label,
+          graph_y_axis_unit: productType.graph_y_axis_unit
+        }
+      : null;
+  }
+
+  function supportsGraphOverlays() {
+    return getCurrentProductType()?.supports_graph_overlays ?? true;
+  }
+
+  function supportsBandGraphStyle() {
+    return getCurrentProductType()?.supports_band_graph_style ?? true;
+  }
+
+  function graphHeading() {
+    const productType = getCurrentProductType();
+    if (!productType) return 'Product graph';
+    if (productType.graph_kind === 'silencer_loss') return 'Volume flow vs pressure loss';
+    if (productType.graph_kind === 'fan_map') return 'Airflow vs pressure';
+    return `${productType.label} graph`;
+  }
+
+  function buildProductSeriesOptions() {
+    const options = new Map();
+
+    for (const series of seriesRecords) {
+      if (productTypeFilter && series.product_type_key !== productTypeFilter) continue;
+      options.set(String(series.id ?? series.name), series);
+    }
+
+    for (const product of products) {
+      if (!product.series_name && !product.series_id) continue;
+      if (productTypeFilter && product.product_type_key !== productTypeFilter) continue;
+
+      const key = String(product.series_id ?? product.series_name);
+      if (!options.has(key)) {
+        options.set(key, {
+          id: product.series_id ?? null,
+          name: product.series_name || 'Unnamed series',
+          product_type_key: product.product_type_key
+        });
+      }
+    }
+
+    return [...options.values()].sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+  }
+
+  function formatParameterValue(parameter) {
+    if (parameter.value_string) return parameter.value_string;
+    if (parameter.value_number != null) {
+      return `${parameter.value_number}${parameter.unit ? ` ${parameter.unit}` : ''}`;
+    }
+    return '—';
+  }
+
+  function formatNumericValue(value) {
+    if (value == null || value === '') return '—';
+    const numeric = Number(value);
+    return Number.isNaN(numeric) ? String(value) : `${numeric}`;
+  }
+
+  function productHasFanAcousticTable(product) {
+    return product?.product_type_key === 'fan';
+  }
+
+  function buildChartOptions() {
+    const currentProduct = selectedProduct;
+    const chartTheme = getChartTheme($theme);
+    const productTypeName = String(currentProduct?.product_type_label || currentProduct?.product_type_key || '').trim();
+    const seriesName = String(currentProduct?.series_name || '').trim();
+    const productName = String(currentProduct?.model || 'Product Graph').trim();
+    const titleParts = [];
+    if (productTypeName) titleParts.push(productTypeName);
+    const productSegment = `${seriesName ? `${seriesName} - ` : ''}${productName}`.trim();
+    const chartTitle = `${titleParts.join(' | ')}${titleParts.length ? ' | ' : ''}${productSegment} performance graph`.trim();
+    chartOption = buildFullChartOption({
+      rpmLines,
+      rpmPoints,
+      efficiencyPoints,
+      chartTheme,
+      title: chartTitle || (currentProduct ? currentProduct.model : 'Product Graph'),
+      graphConfig: getCurrentGraphConfig(),
+      clipRpmAreaToPermissibleUse: true,
+      showRpmBandShading: supportsBandGraphStyle() ? (currentProduct?.show_rpm_band_shading ?? true) : false,
+      showSecondaryAxis: supportsGraphOverlays(),
+      adaptGraphBackgroundToTheme: true,
+      graphStyle: currentProduct
+        ? {
+            band_graph_background_color: currentProduct.band_graph_background_color,
+            band_graph_label_text_color: currentProduct.band_graph_label_text_color,
+            band_graph_faded_opacity: currentProduct.band_graph_faded_opacity,
+            band_graph_permissible_label_color: currentProduct.band_graph_permissible_label_color
+          }
+        : null
+    });
+  }
+
+  async function loadEverything() {
+    loadingList = true;
+    error = '';
+    try {
+      products = await getProducts();
+      try {
+        templateRegistry = await getTemplates();
+      } catch {
+        templateRegistry = { product_templates: [], series_templates: [], product_type_templates: [] };
+      }
+      try {
+        productTypes = await getProductTypes();
+      } catch {
+        productTypes = [];
+      }
+      if (selectedProductTypeId && productTypes.length > 0) {
+        const resolvedProductType = productTypes.find(
+          (item) => String(item.id) === String(selectedProductTypeId) || String(item.key) === String(selectedProductTypeId)
+        );
+        if (resolvedProductType && String(selectedProductTypeId) !== String(resolvedProductType.id)) {
+          selectedProductTypeId = String(resolvedProductType.id);
+        }
+      }
+      try {
+        seriesRecords = await getSeries();
+      } catch {
+        seriesRecords = [];
+      }
+      if (seriesTabSeriesId) {
+        const selectedSeries = seriesRecords.find((series) => Number(series.id) === Number(seriesTabSeriesId));
+        if (selectedSeries && !seriesTabProductTypeFilter) {
+          seriesTabProductTypeFilter = selectedSeries.product_type_key || '';
+        }
+      }
+      if (!selectedProductId && activeViewerTab === 'product') {
+        selectedProductId = products[0]?.id != null ? Number(products[0].id) : null;
+      }
+    } catch (e) {
+      error = e.message;
+    } finally {
+      loadingList = false;
+    }
+  }
+
+  async function loadChartData() {
+    if (!selectedProductId) {
+      rpmLines = [];
+      rpmPoints = [];
+      efficiencyPoints = [];
+      chartOption = {};
+      return;
+    }
+
+    loadingChart = true;
+    error = '';
+    try {
+      const chartData = await getProductChartData(selectedProductId);
+      rpmLines = chartData.rpmLines;
+      rpmPoints = chartData.rpmPoints;
+      efficiencyPoints = chartData.efficiencyPoints;
+      buildChartOptions();
+    } catch (e) {
+      error = e.message;
+    } finally {
+      loadingChart = false;
+    }
+  }
+
+  async function refreshViewerAfterProductMutation() {
+    await loadFilteredProducts();
+    await loadSelectedProduct();
+    await loadChartData();
+  }
+
+  async function refreshViewerAfterSeriesMutation() {
+    await loadEverything();
+    await loadSeriesOptions();
+    await loadSeriesTabOptions();
+  }
+
+  async function refreshViewerAfterProductTypeMutation(productTypeId = selectedProductTypeRecord?.id) {
+    await loadEverything();
+    await loadProductTypeContext(productTypeId);
+  }
+
+  async function regenerateProductGraph(product) {
+    refreshingProductGraphId = product.id;
+    error = '';
+    success = '';
+    try {
+      await refreshGraphImage(product.id);
+      await refreshViewerAfterProductMutation();
+      success = `Generated graph for ${product.model}.`;
+    } catch (e) {
+      error = e.message;
+    } finally {
+      refreshingProductGraphId = null;
+    }
+  }
+
+  async function regenerateProductPdf(product) {
+    refreshingProductPdfJob = null;
+    error = '';
+    success = '';
+    try {
+      const job = await runMaintenanceJob(
+        () => startRefreshProductPdfJob(product.id),
+        {
+          isCancelled: () => destroyed,
+          onUpdate: (nextJob) => {
+            refreshingProductPdfJob = nextJob;
+          }
+        }
+      );
+      refreshingProductPdfJob = job;
+      await refreshViewerAfterProductMutation();
+      productPdfPreviewRevision += 1;
+      success = `Generated printed and online PDFs for ${product.model}.`;
+    } catch (e) {
+      error = e.message;
+    } finally {
+      if (!destroyed) {
+        refreshingProductPdfJob = null;
+      }
+    }
+  }
+
+  async function regenerateProductTypePdf(productType) {
+    refreshingProductTypePdfJob = null;
+    error = '';
+    success = '';
+    try {
+      const job = await runMaintenanceJob(
+        () => startRefreshProductTypePdfJob(productType.id),
+        {
+          isCancelled: () => destroyed,
+          onUpdate: (nextJob) => {
+            refreshingProductTypePdfJob = nextJob;
+          }
+        }
+      );
+      refreshingProductTypePdfJob = job;
+      await refreshViewerAfterProductTypeMutation(productType.id);
+      productTypePdfPreviewRevision += 1;
+      success = `Generated product type PDF for ${productType.label}.`;
+    } catch (e) {
+      error = e.message;
+    } finally {
+      if (!destroyed) {
+        refreshingProductTypePdfJob = null;
+      }
+    }
+  }
+
+  async function regenerateSeriesGraph(series) {
+    refreshingSeriesGraphId = series.id;
+    error = '';
+    success = '';
+    try {
+      await refreshSeriesGraphImage(series.id);
+      await refreshViewerAfterSeriesMutation();
+      success = `Generated series graph for ${series.name}.`;
+    } catch (e) {
+      error = e.message;
+    } finally {
+      refreshingSeriesGraphId = null;
+    }
+  }
+
+  async function regenerateSeriesPdfAsset(series) {
+    refreshingSeriesPdfJob = null;
+    error = '';
+    success = '';
+    try {
+      const job = await runMaintenanceJob(
+        () => startRefreshSeriesPdfJob(series.id),
+        {
+          isCancelled: () => destroyed,
+          onUpdate: (nextJob) => {
+            refreshingSeriesPdfJob = nextJob;
+          }
+        }
+      );
+      refreshingSeriesPdfJob = job;
+      await refreshViewerAfterSeriesMutation();
+      seriesPdfPreviewRevision += 1;
+      success = `Generated printed and online PDFs for ${series.name}.`;
+    } catch (e) {
+      error = e.message;
+    } finally {
+      if (!destroyed) {
+        refreshingSeriesPdfJob = null;
+      }
+    }
+  }
+
+  function clearFilters() {
+    search = '';
+    productTypeFilter = '';
+    seriesFilter = '';
+  }
+
+  function selectProduct(product) {
+    activeViewerTab = 'product';
+    selectedProductId = product?.id != null ? Number(product.id) : null;
+  }
+
+  function handleProductTypeSelectionChange() {
+    selectedProductTypeContext = null;
+    if (activeViewerTab === 'product-type' && selectedProductTypeId) {
+      loadProductTypeContext(selectedProductTypeId);
+    }
+  }
+
+  async function loadSeriesOptions() {
+    try {
+      const explicitSeries = await getSeries(productTypeFilter ? { product_type_key: productTypeFilter } : {});
+      seriesRecords = explicitSeries;
+    } catch {
+      seriesRecords = [];
+    }
+    seriesOptions = buildProductSeriesOptions();
+    if (
+      seriesFilter &&
+      !seriesOptions.some(
+        (series) =>
+          Number(series.id) === Number(seriesFilter) ||
+          String(series.name || '') === String(seriesFilter)
+      )
+    ) {
+      seriesFilter = '';
+    }
+  }
+
+  async function loadSeriesTabOptions() {
+    seriesTabOptionsReady = false;
+    try {
+      seriesTabOptions = await getSeries(
+        seriesTabProductTypeFilter ? { product_type_key: seriesTabProductTypeFilter } : {}
+      );
+    } catch {
+      seriesTabOptions = [];
+    } finally {
+      seriesTabOptionsReady = true;
+    }
+
+    if (
+      seriesTabSeriesId &&
+      !seriesTabOptions.some((series) => Number(series.id) === Number(seriesTabSeriesId))
+    ) {
+      seriesTabSeriesId = '';
+    }
+
+  }
+
+  async function loadProductTypeContext(productTypeId = selectedProductTypeRecord?.id) {
+    if (!productTypeId) {
+      selectedProductTypeContext = null;
+      return;
+    }
+
+    const requestToken = ++productTypeContextRequestToken;
+    try {
+      const context = await getProductTypePdfContext(productTypeId);
+      if (requestToken === productTypeContextRequestToken) {
+        selectedProductTypeContext = context;
+      }
+    } catch {
+      if (requestToken === productTypeContextRequestToken) {
+        selectedProductTypeContext = null;
+      }
+    }
+  }
+
+  async function loadFilteredProducts() {
+    loadingList = true;
+    error = '';
+    try {
+      const params = {};
+      if (search) params.search = search;
+      if (productTypeFilter) params.product_type_key = productTypeFilter;
+      if (seriesFilter && !Number.isNaN(Number(seriesFilter))) {
+        params.series_id = String(seriesFilter);
+      }
+      products = await getProducts(params);
+      filteredProducts = [...products].sort((a, b) => {
+        const typeCompare = String(a.product_type_label || '').localeCompare(String(b.product_type_label || ''));
+        if (typeCompare !== 0) return typeCompare;
+        const seriesCompare = String(a.series_name || '').localeCompare(String(b.series_name || ''));
+        if (seriesCompare !== 0) return seriesCompare;
+        return String(a.model || '').localeCompare(String(b.model || ''));
+      });
+
+      if (selectedProductId && !filteredProducts.some((product) => Number(product.id) === Number(selectedProductId))) {
+        selectedProductId = filteredProducts[0]?.id != null ? Number(filteredProducts[0].id) : null;
+      }
+      if (!selectedProductId && filteredProducts.length && activeViewerTab === 'product') {
+        selectedProductId = Number(filteredProducts[0].id);
+      }
+    } catch (e) {
+      error = e.message;
+      products = [];
+      filteredProducts = [];
+    } finally {
+      loadingList = false;
+    }
+  }
+
+  async function loadSelectedProduct() {
+    if (!selectedProductId) {
+      selectedProduct = null;
+      rpmLines = [];
+      rpmPoints = [];
+      efficiencyPoints = [];
+      chartOption = {};
+      return;
+    }
+    error = '';
+    try {
+      selectedProduct = await getProduct(selectedProductId);
+    } catch (e) {
+      error = e.message;
+      selectedProduct = null;
+    }
+  }
+
+  $: if (selectedProduct, $theme, productTypes) {
+    buildChartOptions();
+  }
+
+  let previousProductTypeFilter = '';
+  let previousFilterKey = '';
+  let previousSelectedProductId = null;
+  let previousSeriesTabProductTypeFilter = '';
+
+  $: if (productTypeFilter !== previousProductTypeFilter) {
+    previousProductTypeFilter = productTypeFilter;
+    seriesFilter = '';
+    loadSeriesOptions();
+  }
+
+  $: if (seriesTabProductTypeFilter !== previousSeriesTabProductTypeFilter) {
+    previousSeriesTabProductTypeFilter = seriesTabProductTypeFilter;
+    if (seriesTabProductTypeFilter) {
+      loadSeriesTabOptions();
+    } else if (!viewerStateHydrating && seriesTabOptionsReady) {
+      seriesTabOptions = [];
+      if (seriesTabSeriesId) {
+        seriesTabSeriesId = '';
+      }
+    }
+  }
+
+  $: {
+    const filterKey = JSON.stringify({
+      search,
+      productTypeFilter,
+      seriesFilter
+    });
+    if (filterKey !== previousFilterKey) {
+      previousFilterKey = filterKey;
+      loadFilteredProducts();
+    }
+  }
+
+  $: if (selectedProductId !== previousSelectedProductId) {
+    previousSelectedProductId = selectedProductId;
+    loadSelectedProduct();
+    loadChartData();
+  }
+
+  $: selectedSeriesRecord =
+    seriesTabOptions.find((series) => Number(series.id) === Number(seriesTabSeriesId)) || null;
+
+  $: selectedProductTypeRecord =
+    productTypes.find(
+      (productType) => String(productType.id) === String(selectedProductTypeId) || String(productType.key) === String(selectedProductTypeId)
+    ) || null;
+
+  $: selectedProductTypeContextMissingSeries =
+    selectedProductTypeContext?.series?.filter((series) => Number(series.page_count || 0) === 0) || [];
+  $: selectedProductTypeContextWarning = selectedProductTypeContextMissingSeries.length
+    ? 'One or more linked series PDFs are missing or not generated yet, so this PDF context is incomplete.'
+    : '';
+
+  function reviewMissingSeriesPdfContext() {
+    if (!selectedProductTypeContextMissingSeries.length) return;
+    const firstMissingSeries = selectedProductTypeContextMissingSeries[0];
+    activeViewerTab = 'series';
+    seriesTabProductTypeFilter = selectedProductTypeRecord?.key || '';
+    seriesTabSeriesId = firstMissingSeries?.id != null ? String(firstMissingSeries.id) : '';
+  }
+
+  $: if (productTypes.length > 0 && selectedProductTypeId) {
+    const normalizedProductType = productTypes.find(
+      (productType) => String(productType.id) === String(selectedProductTypeId) || String(productType.key) === String(selectedProductTypeId)
+    );
+    if (normalizedProductType && String(selectedProductTypeId) !== String(normalizedProductType.id)) {
+      selectedProductTypeId = String(normalizedProductType.id);
+    }
+  }
+
+  $: if (selectedSeriesRecord && activeViewerTab !== 'series' && seriesTabSeriesId) {
+    // Preserve explicit deep links to series records.
+  }
+
+  $: if (viewerUrlStateReady) {
+    activeViewerTab;
+    selectedProductId;
+    selectedProductTypeId;
+    seriesTabSeriesId;
+    syncViewerUrl();
+  }
+
+  onMount(async () => {
+    await loadEverything();
+    await loadSeriesOptions();
+    await loadSeriesTabOptions();
+    await loadFilteredProducts();
+    if (activeViewerTab === 'product-type' && selectedProductTypeId && !selectedProductTypeContext) {
+      await loadProductTypeContext(selectedProductTypeId);
+    }
+    viewerUrlStateReady = true;
+    viewerStateHydrating = false;
+    syncViewerUrl();
+  });
+
+  onDestroy(() => {
+    destroyed = true;
+  });
+</script>
+
+<svelte:head>
+  <title>Viewer — Internal Facing</title>
+</svelte:head>
+
+<div class="page-stack">
+  <div class="mb-3">
+    <div class="col-12 col-xxl-8">
+      <p class="small text-uppercase text-body-secondary fw-semibold mb-1">Review & Generate</p>
+      <h1>Viewer</h1>
+      <p class="text-body-secondary mb-0">
+        Filter products, select a record, and review all of its information, images, graph output, PDF output, and series data.
+      </p>
+    </div>
+  </div>
+
+  {#if error}
+    <div class="alert alert-danger mb-0">{error}</div>
+  {/if}
+
+  {#if success}
+    <div class="alert alert-success mb-0">{success}</div>
+  {/if}
+
+  <ul class="nav nav-tabs">
+    <li class="nav-item">
+      <button
+        class:active={activeViewerTab === 'product'}
+        class="nav-link"
+        type="button"
+        on:click={() => (activeViewerTab = 'product')}
+      >
+        Product
+      </button>
+    </li>
+    <li class="nav-item">
+      <button
+        class:active={activeViewerTab === 'series'}
+        class="nav-link"
+        type="button"
+        on:click={() => (activeViewerTab = 'series')}
+      >
+        Series
+      </button>
+    </li>
+    <li class="nav-item">
+      <button
+        class:active={activeViewerTab === 'product-type'}
+        class="nav-link"
+        type="button"
+        on:click={() => (activeViewerTab = 'product-type')}
+      >
+        Product Types
+      </button>
+    </li>
+  </ul>
+
+  {#if activeViewerTab === 'product'}
+    <div class="row g-3 align-items-start">
+      <div class="col-12 col-xxl-4">
+        <div class="vstack gap-3 viewer-sidebar">
+          <div class="card shadow-sm">
+            <div class="card-body">
+              <div class="row g-3 align-items-end">
+                <div class="col-12">
+                  <label class="form-label" for="viewer-search">Search</label>
+                  <input class="form-control" id="viewer-search" bind:value={search} placeholder="Model, series, mounting, discharge" />
+                </div>
+                <div class="col-12">
+                  <label class="form-label" for="viewer-product-type">Product type</label>
+                  <select class="form-select" id="viewer-product-type" bind:value={productTypeFilter}>
+                    <option value="">All types</option>
+                    {#each productTypes as productType}
+                      <option value={productType.key}>{productType.label}</option>
+                    {/each}
+                  </select>
+                </div>
+                <div class="col-12">
+                  <label class="form-label" for="viewer-series">Series</label>
+                  <select class="form-select" id="viewer-series" bind:value={seriesFilter}>
+                <option value="">-- Choose option --</option>
+                {#each seriesOptions as series}
+                  <option value={series.id ?? series.name}>{series.name}</option>
+                {/each}
+                  </select>
+                </div>
+                <div class="col-12 d-grid">
+                  <button class="btn btn-outline-secondary" on:click={clearFilters}>Clear</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card shadow-sm">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-center mb-3 gap-2 flex-wrap">
+                <div>
+                  <h2 class="h5 mb-1">Products</h2>
+                  <p class="text-body-secondary mb-0">Choose a product to load its information.</p>
+                </div>
+                {#if loadingList}
+                  <span class="small text-body-secondary">Loading…</span>
+                {/if}
+              </div>
+
+              {#if !loadingList && filteredProducts.length === 0}
+                <p class="text-body-secondary mb-0">No products match the current filters.</p>
+              {:else}
+                <div class="table-responsive">
+                  <table class="table table-sm align-middle viewer-list-table mb-0">
+                    <thead>
+                      <tr>
+                        <th>Model</th>
+                        <th>Type</th>
+                        <th>Series</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {#each filteredProducts as product}
+                        <tr class:selected-row={Number(product.id) === Number(selectedProductId)} on:click={() => selectProduct(product)}>
+                          <td>
+                            <button class="btn btn-link p-0 text-start text-decoration-none fw-semibold viewer-select-button" type="button" on:click|stopPropagation={() => selectProduct(product)}>
+                              {product.model}
+                            </button>
+                          </td>
+                          <td>{product.product_type_label || product.product_type_key}</td>
+                          <td>{product.series_name || '—'}</td>
+                        </tr>
+                      {/each}
+                    </tbody>
+                  </table>
+                </div>
+              {/if}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-12 col-xxl-8">
+        <div class="vstack gap-3">
+      {#if selectedProduct}
+      {@const currentProduct = selectedProduct}
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <div class="d-flex flex-wrap align-items-start gap-2">
+            <div class="me-auto">
+              <h2 class="h4 mb-1">{currentProduct.model}</h2>
+              <div class="text-body-secondary">
+                {currentProduct.product_type_label || currentProduct.product_type_key}
+                {#if currentProduct.series_name} · {currentProduct.series_name}{/if}
+              </div>
+            </div>
+            <button class="btn btn-outline-secondary btn-sm" on:click={() => regenerateProductGraph(currentProduct)} disabled={refreshingProductGraphId === currentProduct.id}>
+              {refreshingProductGraphId === currentProduct.id ? 'Generating Graph...' : 'Generate Graph'}
+            </button>
+            <button class="btn btn-outline-secondary btn-sm" on:click={() => regenerateProductPdf(currentProduct)} disabled={refreshingProductPdfJob?.status === 'running'}>
+              {refreshingProductPdfJob?.status === 'running' ? 'Generating PDFs...' : 'Generate PDFs'}
+            </button>
+            <a class="btn btn-outline-primary btn-sm" href={productEditorUrl(currentProduct.id)}>Open in Editor</a>
+            {#if currentProduct.graph_image_url}
+              <a class="btn btn-outline-secondary btn-sm" href={currentProduct.graph_image_url} target="_blank" rel="noreferrer">Open Graph</a>
+            {/if}
+            {#if currentProduct.product_printed_pdf_url}
+              <a class="btn btn-outline-secondary btn-sm" href={currentProduct.product_printed_pdf_url} target="_blank" rel="noreferrer">Open Printed PDF</a>
+            {/if}
+            {#if currentProduct.product_online_pdf_url}
+              <a class="btn btn-outline-secondary btn-sm" href={currentProduct.product_online_pdf_url} target="_blank" rel="noreferrer">Open Online PDF</a>
+            {:else if currentProduct.product_pdf_url}
+              <a class="btn btn-outline-secondary btn-sm" href={currentProduct.product_pdf_url} target="_blank" rel="noreferrer">Open Existing PDF</a>
+            {/if}
+          </div>
+          <div class="small text-body-secondary mt-2">
+            Printed template: {productPdfTemplateLabels(currentProduct).printed} · Online template: {productPdfTemplateLabels(currentProduct).online}
+          </div>
+          <JobProgressPanel job={refreshingProductPdfJob} label="Product PDF generation" />
+
+      <div class="row g-3 mt-1">
+        <div class="col-12 col-md-3">
+          <div class="viewer-metric">
+            <div class="viewer-metric-label">Product Type</div>
+            <div>{currentProduct.product_type_label || currentProduct.product_type_key || '—'}</div>
+          </div>
+        </div>
+        <div class="col-12 col-md-3">
+          <div class="viewer-metric">
+            <div class="viewer-metric-label">Series</div>
+            <div>{currentProduct.series_name || '—'}</div>
+          </div>
+        </div>
+      </div>
+
+      {#if getCurrentProductType()}
+        <div class="mt-3">
+          <SeriesNamesBadgeList
+            seriesNames={getCurrentProductType()?.series_names || []}
+            title={`Series names for ${getCurrentProductType()?.label || 'this product type'}`}
+            emptyLabel="This product type has no linked series yet."
+          />
+        </div>
+      {/if}
+    </div>
+  </div>
+
+      <div class="row g-3">
+        <div class="col-12 col-lg-6">
+          <div class="card shadow-sm h-100">
+            <div class="card-body">
+              <h3 class="h6">Description1</h3>
+              <div class="viewer-html">{@html currentProduct.description1_html || '<p class="text-body-secondary mb-0">Not provided.</p>'}</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-12 col-lg-6">
+          <div class="card shadow-sm h-100">
+            <div class="card-body">
+              <h3 class="h6">Description2</h3>
+              <div class="viewer-html">{@html currentProduct.description2_html || '<p class="text-body-secondary mb-0">Not provided.</p>'}</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-12 col-lg-6">
+          <div class="card shadow-sm h-100">
+            <div class="card-body">
+              <h3 class="h6">Description3</h3>
+              <div class="viewer-html">{@html currentProduct.description3_html || '<p class="text-body-secondary mb-0">Not provided.</p>'}</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-12 col-lg-6">
+          <div class="card shadow-sm h-100">
+            <div class="card-body">
+              <h3 class="h6">Comments</h3>
+              <div class="viewer-html">{@html currentProduct.comments_html || '<p class="text-body-secondary mb-0">Not provided.</p>'}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h3 class="h5">Grouped Specifications</h3>
+          {#if (currentProduct.parameter_groups?.length ?? 0) > 0}
+            <div class="vstack gap-3 mt-3">
+              {#each currentProduct.parameter_groups as group}
+                <div class="border rounded p-3">
+                  <div class="fw-semibold mb-2">{group.group_name}</div>
+                  <div class="table-responsive">
+                    <table class="table table-sm mb-0 spec-group-table">
+                      <tbody>
+                        {#each group.parameters as parameter}
+                          <tr>
+                            <th style="width: 40%">{parameter.parameter_name}</th>
+                            <td>{formatParameterValue(parameter)}</td>
+                          </tr>
+                        {/each}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              {/each}
+            </div>
+          {:else}
+            <p class="text-body-secondary mb-0">No grouped specifications for this product yet.</p>
+          {/if}
+        </div>
+      </div>
+
+      {#if productHasFanAcousticTable(currentProduct)}
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <h3 class="h5">Fan Acoustic Table</h3>
+            <p class="text-body-secondary mb-3">Rows track the current RPM graph rows. Octave-band columns appear in the configured order.</p>
+            <div class="table-responsive fan-acoustic-viewer-table-wrap">
+              <table class="table table-sm align-middle fan-acoustic-viewer-table mb-0">
+                <colgroup>
+                  <col style="width: 7.5rem" />
+                  <col style="width: 8.5rem" />
+                  <col style="width: 7.5rem" />
+                  <col style="width: 7.5rem" />
+                  <col style="width: 10.5rem" />
+                  {#each currentProduct.fan_acoustic_table.sound_power_columns as _column}
+                    <col style="width: 4.75rem" />
+                  {/each}
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th rowspan="2">Speed (rpm)</th>
+                    <th rowspan="2">Peak Pressure (Pa)</th>
+                    <th rowspan="2">Peak Power (kW)</th>
+                    <th rowspan="2">Running Frequency</th>
+                    <th rowspan="2">Sound Pressure Level dB @ 3 meters</th>
+                    <th colspan={currentProduct.fan_acoustic_table.sound_power_columns?.length ?? 0} class="text-center">
+                      Sound Power Level SWL dB re 1pw
+                    </th>
+                  </tr>
+                  <tr>
+                    {#each currentProduct.fan_acoustic_table.sound_power_columns as column}
+                      <th>{column}</th>
+                    {/each}
+                  </tr>
+                </thead>
+                <tbody>
+                  {#if (currentProduct.fan_acoustic_table.rows?.length ?? 0) > 0}
+                    {#each currentProduct.fan_acoustic_table.rows as row}
+                      <tr>
+                        <td>{formatNumericValue(row.speed_rpm)}</td>
+                        <td>{formatNumericValue(row.peak_pressure_pa)}</td>
+                        <td>{formatNumericValue(row.peak_power_kw)}</td>
+                        <td>{formatNumericValue(row.running_frequency_hz)}</td>
+                        <td>{formatNumericValue(row.sound_pressure_db_3m)}</td>
+                        {#each currentProduct.fan_acoustic_table.sound_power_columns as column}
+                          <td>{formatNumericValue(row.sound_power_levels?.[column])}</td>
+                        {/each}
+                      </tr>
+                    {/each}
+                  {:else}
+                    <tr>
+                      <td colspan={5 + (currentProduct.fan_acoustic_table.sound_power_columns?.length ?? 0)} class="text-body-secondary">
+                        No fan acoustic rows yet.
+                      </td>
+                    </tr>
+                  {/if}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      {/if}
+
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h3 class="h5">Product Images</h3>
+          {#if (currentProduct.product_images?.length ?? 0) > 0}
+            <div class="image-grid mt-3">
+              {#each currentProduct.product_images as image}
+                <figure class="image-card">
+                  <img src={image.url} alt={currentProduct.model} />
+                </figure>
+              {/each}
+            </div>
+          {:else}
+            <p class="text-body-secondary mb-0">No product images yet.</p>
+          {/if}
+        </div>
+      </div>
+
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h3 class="h5">{graphHeading()}</h3>
+          {#if loadingChart}
+            <p class="text-body-secondary mb-0">Loading graph data…</p>
+          {:else if rpmPoints.length === 0 && efficiencyPoints.length === 0}
+            <p class="text-body-secondary mb-0">No graph points for this product yet.</p>
+          {:else}
+            <div class="mt-3">
+              <ECharts option={chartOption} height="700px" />
+            </div>
+          {/if}
+        </div>
+      </div>
+
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h3 class="h5">Product PDFs</h3>
+          {#if currentProduct.product_printed_pdf_url || currentProduct.product_online_pdf_url}
+            <div class="vstack gap-3 mt-3">
+              {#if currentProduct.product_printed_pdf_url}
+                <div>
+                  <div class="small text-body-secondary mb-2">Printed</div>
+                  <div class="ratio ratio-16x9">
+                    <iframe src={productPdfPreviewUrl(currentProduct, 'printed')} title={`${currentProduct.model} printed PDF preview`}></iframe>
+                  </div>
+                </div>
+              {/if}
+              {#if currentProduct.product_online_pdf_url}
+                <div>
+                  <div class="small text-body-secondary mb-2">Online</div>
+                  <div class="ratio ratio-16x9">
+                    <iframe src={productPdfPreviewUrl(currentProduct, 'online')} title={`${currentProduct.model} online PDF preview`}></iframe>
+                  </div>
+                </div>
+              {:else if currentProduct.product_pdf_url}
+                <div>
+                  <div class="small text-body-secondary mb-2">Existing</div>
+                  <div class="ratio ratio-16x9">
+                    <iframe src={versionedPdfPreviewUrl(currentProduct.product_pdf_url, productPdfPreviewRevision)} title={`${currentProduct.model} PDF preview`}></iframe>
+                  </div>
+                </div>
+              {/if}
+            </div>
+          {:else}
+            <p class="text-body-secondary mb-0">No product PDFs generated yet.</p>
+          {/if}
+          </div>
+        </div>
+      {:else}
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <p class="text-body-secondary mb-0">Select a product to review its details, graph, images, and PDF.</p>
+          </div>
+        </div>
+      {/if}
+        </div>
+      </div>
+    </div>
+  {:else if activeViewerTab === 'product-type'}
+    <div class="row g-3 align-items-start">
+      <div class="col-12 col-xxl-4">
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <label class="form-label" for="viewer-product-type-select">Product type</label>
+            <select
+              class="form-select"
+              id="viewer-product-type-select"
+              bind:value={selectedProductTypeId}
+              on:change={handleProductTypeSelectionChange}
+            >
+              <option value="">-- Choose option --</option>
+              {#each productTypes as productType}
+                <option value={String(productType.id)}>{productType.label}</option>
+              {/each}
+            </select>
+            <div class="d-grid gap-2 mt-3">
+              <button class="btn btn-outline-secondary" type="button" on:click={() => regenerateProductTypePdf(selectedProductTypeRecord)} disabled={!selectedProductTypeRecord || refreshingProductTypePdfJob?.status === 'running'}>
+                {refreshingProductTypePdfJob?.status === 'running' ? 'Generating PDF...' : 'Generate Product Type PDF'}
+              </button>
+              {#if selectedProductTypeRecord}
+                <div class="small text-body-secondary">
+                  Template: {productTypePdfTemplateLabel(selectedProductTypeRecord)}
+                </div>
+              {/if}
+              <JobProgressPanel job={refreshingProductTypePdfJob} label="Product type PDF generation" />
+              {#if selectedProductTypeRecord?.product_type_pdf_url}
+                <a class="btn btn-outline-primary" href={selectedProductTypeRecord.product_type_pdf_url} target="_blank" rel="noreferrer">Open Product Type PDF</a>
+              {/if}
+              {#if selectedProductTypeRecord}
+                <a class="btn btn-outline-secondary" href={productTypeEditorUrl(selectedProductTypeRecord.id)}>Open in Editor</a>
+              {/if}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-12 col-xxl-8">
+        {#if selectedProductTypeRecord}
+          <div class="vstack gap-3">
+            <div class="card shadow-sm">
+              <div class="card-body">
+                <div class="d-flex flex-wrap align-items-start gap-2">
+                  <div class="me-auto">
+                    <h2 class="h4 mb-1">{selectedProductTypeRecord.label}</h2>
+                    <div class="text-body-secondary">{selectedProductTypeRecord.key}</div>
+                  </div>
+                </div>
+                <div class="row g-3 mt-1">
+                  <div class="col-12 col-md-4">
+                    <div class="viewer-metric">
+                      <div class="viewer-metric-label">Series</div>
+                      <div>{selectedProductTypeRecord.series_names?.length || 0}</div>
+                    </div>
+                  </div>
+                  <div class="col-12 col-md-4">
+                    <div class="viewer-metric">
+                      <div class="viewer-metric-label">PDF</div>
+                      <div>{selectedProductTypeRecord.product_type_pdf_url ? 'Available' : 'Not generated yet'}</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="mt-3">
+                  <SeriesNamesBadgeList
+                    seriesNames={selectedProductTypeRecord.series_names || []}
+                    title={`Series names for ${selectedProductTypeRecord.label}`}
+                    emptyLabel="This product type has no linked series yet."
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div class="card shadow-sm">
+              <div class="card-body">
+                <div class="d-flex flex-wrap align-items-start gap-2">
+                  <div class="me-auto">
+                    <h3 class="h5 mb-1">Generated PDF</h3>
+                    <div class="small text-body-secondary">Inline preview of the latest generated PDF.</div>
+                  </div>
+                  {#if selectedProductTypeRecord?.product_type_pdf_url}
+                    <a class="btn btn-outline-secondary btn-sm" href={selectedProductTypeRecord.product_type_pdf_url} target="_blank" rel="noreferrer">Open PDF</a>
+                  {/if}
+                </div>
+                {#if selectedProductTypeRecord?.product_type_pdf_url}
+                  <div class="ratio ratio-16x9 mt-3">
+                    <iframe
+                      src={productTypePdfPreviewUrl(selectedProductTypeRecord)}
+                      title={`${selectedProductTypeRecord.label} PDF preview`}
+                    ></iframe>
+                  </div>
+                {:else}
+                  <p class="text-body-secondary mb-0 mt-3">No generated PDF available yet.</p>
+                {/if}
+              </div>
+            </div>
+
+            <div class="card shadow-sm">
+              <div class="card-body">
+                <h3 class="h5 mb-3">PDF context</h3>
+                {#if selectedProductTypeContext}
+                  {#if selectedProductTypeContextWarning}
+                    <div class="alert alert-warning">
+                      <div class="fw-semibold">Incomplete PDF context</div>
+                      <div>{selectedProductTypeContextWarning}</div>
+                      <div class="d-flex flex-wrap gap-2 mt-3">
+                        <button class="btn btn-warning btn-sm" type="button" on:click={reviewMissingSeriesPdfContext}>
+                          Review missing series
+                        </button>
+                      </div>
+                      {#if selectedProductTypeContextMissingSeries.length}
+                        <div class="mt-2">
+                          Missing series:
+                          {selectedProductTypeContextMissingSeries.map((series) => series.name).join(', ')}
+                        </div>
+                      {/if}
+                    </div>
+                  {/if}
+                  <div class="small text-body-secondary mb-3">
+                    Intro pages: {selectedProductTypeContext.intro_page_count} · Total pages: {selectedProductTypeContext.page_count}
+                  </div>
+                  <div class="vstack gap-3">
+                    {#each selectedProductTypeContext.series as series}
+                      <div class="border rounded p-3">
+                        <div class="d-flex justify-content-between gap-2 flex-wrap">
+                          <div class="fw-semibold">{series.name}</div>
+                          <div class="small text-body-secondary">Pages {series.page_start} to {series.page_end}</div>
+                        </div>
+                        {#if Number(series.page_count || 0) === 0}
+                          <div class="small text-warning-emphasis mt-1">Series PDF is missing or not generated yet.</div>
+                        {/if}
+                        <div class="small text-body-secondary mb-2">{series.product_count} products</div>
+                        <SeriesNamesBadgeList
+                          seriesNames={series.products?.map((product) => product.model) || []}
+                          title="Products"
+                          emptyLabel="No products in this series yet."
+                        />
+                      </div>
+                    {/each}
+                  </div>
+                {:else}
+                  <p class="text-body-secondary mb-0">No PDF context available yet.</p>
+                {/if}
+              </div>
+            </div>
+          </div>
+        {:else}
+          <div class="card shadow-sm">
+            <div class="card-body">
+              <p class="text-body-secondary mb-0">Select a product type to inspect its PDF data and generation state.</p>
+            </div>
+          </div>
+        {/if}
+      </div>
+    </div>
+  {:else}
+    <div class="vstack gap-3">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <div class="row g-3 align-items-end">
+            <div class="col-12 col-md-6 col-lg-3">
+              <label class="form-label" for="viewer-series-tab-type">Product type</label>
+              <select class="form-select" id="viewer-series-tab-type" bind:value={seriesTabProductTypeFilter}>
+                <option value="">-- Choose option --</option>
+                {#each productTypes as productType}
+                  <option value={productType.key}>{productType.label}</option>
+                {/each}
+              </select>
+            </div>
+            <div class="col-12 col-md-6 col-lg-3">
+              <label class="form-label" for="viewer-series-tab-series">Series</label>
+              <select class="form-select" id="viewer-series-tab-series" bind:value={seriesTabSeriesId} disabled={!seriesTabProductTypeFilter}>
+                <option value="">-- Choose option --</option>
+                {#each seriesTabOptions as series}
+                  <option value={series.id}>{series.name}</option>
+                {/each}
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {#if selectedSeriesRecord}
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <h3 class="h5">Series Data</h3>
+            <div class="text-body-secondary small mb-3">{selectedSeriesRecord.name} · {selectedSeriesRecord.product_count} products</div>
+            <div class="d-flex flex-wrap align-items-start gap-2 mb-3">
+              <div class="me-auto"></div>
+              <a class="btn btn-outline-primary btn-sm" href={seriesEditorUrl(selectedSeriesRecord.id)}>Open in Editor</a>
+              <button class="btn btn-outline-secondary btn-sm" on:click={() => regenerateSeriesGraph(selectedSeriesRecord)} disabled={refreshingSeriesGraphId === selectedSeriesRecord.id}>
+                {refreshingSeriesGraphId === selectedSeriesRecord.id ? 'Generating Graph...' : 'Generate Series Graph'}
+              </button>
+              <button class="btn btn-outline-secondary btn-sm" on:click={() => regenerateSeriesPdfAsset(selectedSeriesRecord)} disabled={refreshingSeriesPdfJob?.status === 'running'}>
+                {refreshingSeriesPdfJob?.status === 'running' ? 'Generating PDFs...' : 'Generate Series PDFs'}
+              </button>
+              {#if selectedSeriesRecord.series_graph_image_url}
+                <a class="btn btn-outline-secondary btn-sm" href={selectedSeriesRecord.series_graph_image_url} target="_blank" rel="noreferrer">Open Series Graph</a>
+              {/if}
+              {#if selectedSeriesRecord.series_printed_pdf_url}
+                <a class="btn btn-outline-secondary btn-sm" href={selectedSeriesRecord.series_printed_pdf_url} target="_blank" rel="noreferrer">Open Printed PDF</a>
+              {/if}
+              {#if selectedSeriesRecord.series_online_pdf_url}
+                <a class="btn btn-outline-secondary btn-sm" href={selectedSeriesRecord.series_online_pdf_url} target="_blank" rel="noreferrer">Open Online PDF</a>
+              {:else if selectedSeriesRecord.series_pdf_url}
+                <a class="btn btn-outline-secondary btn-sm" href={selectedSeriesRecord.series_pdf_url} target="_blank" rel="noreferrer">Open Existing PDF</a>
+              {/if}
+            </div>
+            <div class="small text-body-secondary mb-3">
+              Printed template: {seriesPdfTemplateLabels(selectedSeriesRecord).printed} · Online template: {seriesPdfTemplateLabels(selectedSeriesRecord).online}
+            </div>
+            <JobProgressPanel job={refreshingSeriesPdfJob} label="Series PDF generation" />
+
+            <div class="row g-3">
+              <div class="col-12 col-lg-6">
+                <h4 class="h6">Description1</h4>
+                <div class="viewer-html">{@html selectedSeriesRecord.description1_html || '<p class="text-body-secondary mb-0">Not provided.</p>'}</div>
+              </div>
+              <div class="col-12 col-lg-6">
+                <h4 class="h6">Description2</h4>
+                <div class="viewer-html">{@html selectedSeriesRecord.description2_html || '<p class="text-body-secondary mb-0">Not provided.</p>'}</div>
+              </div>
+              <div class="col-12 col-lg-6">
+                <h4 class="h6">Description3</h4>
+                <div class="viewer-html">{@html selectedSeriesRecord.description3_html || '<p class="text-body-secondary mb-0">Not provided.</p>'}</div>
+              </div>
+              <div class="col-12 col-lg-6">
+                <h4 class="h6">Description4</h4>
+                <div class="viewer-html">{@html selectedSeriesRecord.description4_html || '<p class="text-body-secondary mb-0">Not provided.</p>'}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <h3 class="h5">Series PDFs</h3>
+            {#if selectedSeriesRecord.series_printed_pdf_url || selectedSeriesRecord.series_online_pdf_url}
+              <div class="vstack gap-3 mt-3">
+                {#if selectedSeriesRecord.series_printed_pdf_url}
+                  <div>
+                    <div class="small text-body-secondary mb-2">Printed</div>
+                    <div class="ratio ratio-16x9">
+                      <iframe src={seriesPdfPreviewUrl(selectedSeriesRecord, 'printed')} title={`${selectedSeriesRecord.name} printed PDF preview`}></iframe>
+                    </div>
+                  </div>
+                {/if}
+                {#if selectedSeriesRecord.series_online_pdf_url}
+                  <div>
+                    <div class="small text-body-secondary mb-2">Online</div>
+                    <div class="ratio ratio-16x9">
+                      <iframe src={seriesPdfPreviewUrl(selectedSeriesRecord, 'online')} title={`${selectedSeriesRecord.name} online PDF preview`}></iframe>
+                    </div>
+                  </div>
+                {:else if selectedSeriesRecord.series_pdf_url}
+                  <div>
+                    <div class="small text-body-secondary mb-2">Existing</div>
+                    <div class="ratio ratio-16x9">
+                      <iframe src={versionedPdfPreviewUrl(selectedSeriesRecord.series_pdf_url, seriesPdfPreviewRevision)} title={`${selectedSeriesRecord.name} PDF preview`}></iframe>
+                    </div>
+                  </div>
+                {/if}
+              </div>
+            {:else}
+              <p class="text-body-secondary mb-0">No series PDFs generated yet.</p>
+            {/if}
+          </div>
+        </div>
+      {:else}
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <h3 class="h5">Series Data</h3>
+            <p class="text-body-secondary mb-0">Select a series to review its details and PDF.</p>
+          </div>
+        </div>
+      {/if}
+    </div>
+  {/if}
+</div>
+
+<style>
+  .page-stack {
+    display: grid;
+    gap: 1rem;
+  }
+
+  .viewer-metric {
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.85rem;
+    padding: 0.9rem 1rem;
+    background: color-mix(in srgb, var(--bs-body-bg) 94%, var(--bs-secondary-bg) 6%);
+  }
+
+  .viewer-metric-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--bs-secondary-color);
+  }
+
+  .viewer-list-table tbody tr {
+    cursor: pointer;
+  }
+
+  .selected-row {
+    background: color-mix(in srgb, var(--bs-primary) 22%, var(--bs-body-bg) 78%);
+  }
+
+  .viewer-list-table tbody tr.selected-row td {
+    background: transparent;
+  }
+
+  .viewer-select-button {
+    color: inherit;
+  }
+
+  .image-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 0.75rem;
+  }
+
+  .image-card {
+    margin: 0;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.75rem;
+    padding: 0.5rem;
+    background: color-mix(in srgb, var(--bs-body-bg) 92%, var(--bs-secondary-bg) 8%);
+  }
+
+  .image-card img {
+    width: 100%;
+    height: 160px;
+    object-fit: contain;
+    display: block;
+  }
+
+  .fan-acoustic-viewer-table {
+    width: max-content;
+    min-width: 100%;
+    table-layout: fixed;
+  }
+
+  .fan-acoustic-viewer-table th,
+  .fan-acoustic-viewer-table td {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    line-height: 1.25;
+    vertical-align: top;
+  }
+
+  .viewer-html :global(:first-child) {
+    margin-top: 0;
+  }
+
+  .viewer-html :global(:last-child) {
+    margin-bottom: 0;
+  }
+
+  .spec-group-table {
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  .spec-group-table tbody tr:nth-child(even) th,
+  .spec-group-table tbody tr:nth-child(even) td {
+    background: color-mix(in srgb, var(--bs-secondary-bg) 58%, var(--bs-body-bg) 42%);
+  }
+
+  .spec-group-table tbody th:first-child,
+  .spec-group-table tbody td:first-child {
+    padding-left: 1.15rem;
+  }
+
+</style>

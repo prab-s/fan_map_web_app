@@ -42,6 +42,7 @@ KNOWN_APP_TABLES = {
     "rpm_points",
     "efficiency_points",
     "product_images",
+    "series_images",
     "app_settings",
 }
 

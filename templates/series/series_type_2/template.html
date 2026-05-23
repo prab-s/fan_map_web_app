@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{series.name}} | Series PDF</title>
+  <link rel="stylesheet" href="./template.css" />
+</head>
+
+<body class="series-template series-template--type-2">
+  <main class="series-document" style="--series-accent: {{series.series_tab_color}};">
+    <section class="series-page series-cover-page">
+      <div class="series-cover-page__content">
+        <div class="series-cover-page__eyebrow">{{series.product_type_label}}</div>
+        <h1 class="series-cover-page__title">{{series.name}}</h1>
+        <h3 class="series-cover-page__subtitle">{{series.product_count}} products/sizes</h3>
+        <div class="series-cover-page__image-wrap drawing-image">
+          {{series.primary_series_image_html}}
+        </div>
+      </div>
+    </section>
+
+    <section class="page">
+      <header class="topbar">
+        <div class="topbar__title">
+          {{series.product_type_label}}s
+        </div>
+        <div class="topbar__model">{{series.name}}</div>
+      </header>
+
+      <section class="intro-grid">
+        <section class="main-panel">
+          <div class="copy-block">
+            <div class="copy-section">
+              <div class="richtext"><strong>Specifications: </strong>{{series.description1_html}}</div>
+            </div>
+            <div class="copy-section">
+              <div class="richtext"><strong>Impellers: </strong>{{series.description2_html}}</div>
+            </div>
+            <div class="copy-section">
+              <div class="richtext"><strong>Motor: </strong>{{series.description3_html}}</div>
+            </div>
+            <div class="copy-section">
+              <div class="richtext"><strong>Plate: </strong>{{series.description4_html}}</div>
+            </div>
+          </div>
+        </section>
+
+        <aside class="right-panel">
+          <section class="hero-panel">
+            <div class="hero-card">
+              {{series.primary_series_image_html}}
+            </div>
+            <div class="secondary-card">
+              {{series.secondary_series_image_html}}
+            </div>
+          </section>
+
+          <section class="graph-panel">
+            <img src="{{series.graph_image_url}}" alt="{{series.name}} series graph" class="graph-image" />
+          </section>
+        </aside>
+      </section>
+
+      <section class="performance-band">
+        <div class="performance-table">
+          <table class="performance-table__table">
+            <thead>
+              <!-- Performance columns are selected explicitly in backend/main.py for this template:
+                   main spec columns 1-2, plus the first impeller spec column. -->
+              <tr>
+                <th>Model</th>
+                <th>{{series.performance_column_1_label}}</th>
+                <th>{{series.performance_column_2_label}}</th>
+                <th>{{series.performance_column_3_label}}</th>
+                <th>Pressure Range</th>
+                <th>Airflow Range</th>
+                <th>SWL Range</th>
+                <th>Power Range</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{series.performance_table_rows}}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <footer class="footer-area">
+        <div class="footer-brand-row">
+          <div class="footer-brand footer-brand--left">
+            <img
+              src="{{series.company_logo_url}}"
+              alt="Vent-Tech"
+              class="footer-logo"
+            />
+          </div>
+          <div class="footer-site">www.venttech.co.nz</div>
+        </div>
+
+        <div class="footer-contact-row">
+          <div class="footer-contact">
+            <span class="footer-contact__item footer-contact__item--phone">
+              <span class="footer-contact__icon" aria-hidden="true">&#9742;</span>
+              <span class="footer-contact__label">Ph:</span>
+              <span class="footer-contact__value">04 595 1404</span>
+            </span>
+            <span class="footer-contact__divider" aria-hidden="true">|</span>
+            <span class="footer-contact__item footer-contact__item--email">
+              <span class="footer-contact__icon" aria-hidden="true">&#9993;</span>
+              <span class="footer-contact__label">Email:</span>
+              <span class="footer-contact__value footer-contact__value--accent">admin@venttech.co.nz</span>
+            </span>
+          </div>
+          <div class="footer-badge">{{series.name}}</div>
+        </div>
+      </footer>
+    </section>
+  </main>
+</body>
+
+</html>

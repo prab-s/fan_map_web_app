@@ -62,6 +62,36 @@ async function getProductTypes() {
   const r = await apiFetch("/product-types");
   return r.json();
 }
+async function getSeries(params = {}) {
+  const sp = new URLSearchParams(params).toString();
+  const r = await apiFetch("/series" + (sp ? "?" + sp : ""));
+  return r.json();
+}
+async function uploadSeriesImages(seriesId, files) {
+  const formData = new FormData();
+  for (const file of files) {
+    formData.append("files", file);
+  }
+  const r = await apiFetch(`/series/${seriesId}/series-images`, {
+    method: "POST",
+    body: formData
+  });
+  return r.json();
+}
+async function reorderSeriesImages(seriesId, imageIds) {
+  const r = await apiFetch(`/series/${seriesId}/series-images/reorder`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ image_ids: imageIds })
+  });
+  return r.json();
+}
+async function deleteSeriesImage(seriesId, imageId) {
+  const r = await apiFetch(`/series/${seriesId}/series-images/${imageId}`, {
+    method: "DELETE"
+  });
+  return r.json();
+}
 async function getProduct(id) {
   const r = await apiFetch(`/products/${id}`);
   return r.json();
@@ -94,9 +124,13 @@ export {
   getProductTypes as a,
   login as b,
   getAuthSession as c,
-  getProductChartData as d,
-  getProducts as e,
-  getProduct as f,
+  deleteSeriesImage as d,
+  getProductChartData as e,
+  getSeries as f,
   getUsers as g,
-  logout as l
+  getProducts as h,
+  getProduct as i,
+  logout as l,
+  reorderSeriesImages as r,
+  uploadSeriesImages as u
 };

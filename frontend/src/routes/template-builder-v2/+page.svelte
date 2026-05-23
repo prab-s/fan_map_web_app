@@ -267,6 +267,15 @@
       '{{series.description1_html}}': '<p>Sample series description shown in the editor preview.</p>',
       '{{series.description2_html}}': '<p>Additional series description preview text.</p>',
       '{{series.description3_html}}': '<p>Further series description preview text.</p>',
+      '{{series.cover_image_html}}': `<div class="series-image-placeholder">Series cover preview</div>`,
+      '{{series.primary_series_image_html}}': `<div class="series-image-placeholder">Primary series image preview</div>`,
+      '{{series.secondary_series_image_html}}': `<div class="series-image-placeholder">Secondary series image preview</div>`,
+      '{{series.performance_column_1_label}}': 'Frame',
+      '{{series.performance_column_2_label}}': 'Discharge',
+      '{{series.performance_column_3_label}}': 'Finish',
+      '{{series.performance_table_rows}}':
+        '<tr><td>Sample Series A</td><td>Cast aluminium</td><td>415V</td><td>Epoxy coated</td><td>120 - 220 Pa</td><td>900 - 1,300 L/s</td><td>42 - 58 dB</td><td>0.75 - 1.10 kW</td></tr>' +
+        '<tr><td>Sample Series B</td><td>Pressed steel</td><td>380V</td><td>Galvanised</td><td>90 - 180 Pa</td><td>700 - 1,050 L/s</td><td>39 - 54 dB</td><td>0.55 - 0.90 kW</td></tr>',
       '{{series.graph_image_tag}}': `<img src="${createPreviewPlaceholder('Series graph preview')}" alt="Series graph preview" />`,
       '{{product_type.label}}': previewProductType?.label || 'Product Type',
       '{{product_type.key}}': previewProductType?.key || 'product-type',

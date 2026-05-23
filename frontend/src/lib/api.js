@@ -221,6 +221,39 @@ export async function deleteSeries(id) {
   return r.json();
 }
 
+export async function getSeriesImages(seriesId) {
+  const r = await apiFetch(`/series/${seriesId}/series-images`);
+  return r.json();
+}
+
+export async function uploadSeriesImages(seriesId, files) {
+  const formData = new FormData();
+  for (const file of files) {
+    formData.append('files', file);
+  }
+  const r = await apiFetch(`/series/${seriesId}/series-images`, {
+    method: 'POST',
+    body: formData
+  });
+  return r.json();
+}
+
+export async function reorderSeriesImages(seriesId, imageIds) {
+  const r = await apiFetch(`/series/${seriesId}/series-images/reorder`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image_ids: imageIds })
+  });
+  return r.json();
+}
+
+export async function deleteSeriesImage(seriesId, imageId) {
+  const r = await apiFetch(`/series/${seriesId}/series-images/${imageId}`, {
+    method: 'DELETE'
+  });
+  return r.json();
+}
+
 export async function refreshSeriesGraphImage(id) {
   const r = await apiFetch(`/series/${id}/graph-image/refresh`, {
     method: 'POST'

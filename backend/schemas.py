@@ -1,7 +1,7 @@
 """
 Pydantic schemas for request/response validation.
 """
-from typing import Optional
+from typing import Annotated, Optional
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, confloat
 
 
@@ -256,10 +256,10 @@ class FileManagerDeleteRequest(BaseModel):
 class SeriesBase(BaseModel):
     name: str
     product_type_key: str
-    description1_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description1_html", "description_html"))
-    description2_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description2_html", "features_html"))
-    description3_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description3_html", "specifications_html"))
-    description4_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description4_html", "comments_html"))
+    description1_html: Annotated[Optional[str], Field(validation_alias=AliasChoices("description1_html", "description_html"))] = None
+    description2_html: Annotated[Optional[str], Field(validation_alias=AliasChoices("description2_html", "features_html"))] = None
+    description3_html: Annotated[Optional[str], Field(validation_alias=AliasChoices("description3_html", "specifications_html"))] = None
+    description4_html: Annotated[Optional[str], Field(validation_alias=AliasChoices("description4_html", "comments_html"))] = None
     template_id: Optional[str] = None
     printed_template_id: Optional[str] = None
     online_template_id: Optional[str] = None
@@ -272,10 +272,10 @@ class SeriesCreate(SeriesBase):
 class SeriesUpdate(BaseModel):
     name: Optional[str] = None
     product_type_key: Optional[str] = None
-    description1_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description1_html", "description_html"))
-    description2_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description2_html", "features_html"))
-    description3_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description3_html", "specifications_html"))
-    description4_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description4_html", "comments_html"))
+    description1_html: Annotated[Optional[str], Field(validation_alias=AliasChoices("description1_html", "description_html"))] = None
+    description2_html: Annotated[Optional[str], Field(validation_alias=AliasChoices("description2_html", "features_html"))] = None
+    description3_html: Annotated[Optional[str], Field(validation_alias=AliasChoices("description3_html", "specifications_html"))] = None
+    description4_html: Annotated[Optional[str], Field(validation_alias=AliasChoices("description4_html", "comments_html"))] = None
     template_id: Optional[str] = None
     printed_template_id: Optional[str] = None
     online_template_id: Optional[str] = None
@@ -294,11 +294,24 @@ class SeriesResponse(BaseModel):
     printed_template_id: Optional[str] = None
     online_template_id: Optional[str] = None
     product_count: int = 0
+    primary_series_image_url: Optional[str] = None
+    secondary_series_image_url: Optional[str] = None
     series_graph_image_url: Optional[str] = None
     series_pdf_url: Optional[str] = None
     series_printed_pdf_url: Optional[str] = None
     series_online_pdf_url: Optional[str] = None
     series_tab_color: Optional[str] = None
+    series_images: list["SeriesImageResponse"] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SeriesImageResponse(BaseModel):
+    id: int
+    series_id: int
+    file_name: str
+    sort_order: int
+    url: str
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -362,9 +375,9 @@ class ProductBase(BaseModel):
     template_id: Optional[str] = None
     printed_template_id: Optional[str] = None
     online_template_id: Optional[str] = None
-    description1_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description1_html", "description_html"))
-    description2_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description2_html", "features_html"))
-    description3_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description3_html", "specifications_html"))
+    description1_html: Annotated[Optional[str], Field(validation_alias=AliasChoices("description1_html", "description_html"))] = None
+    description2_html: Annotated[Optional[str], Field(validation_alias=AliasChoices("description2_html", "features_html"))] = None
+    description3_html: Annotated[Optional[str], Field(validation_alias=AliasChoices("description3_html", "specifications_html"))] = None
     comments_html: Optional[str] = None
     show_rpm_band_shading: bool = True
     band_graph_background_color: Optional[str] = None
@@ -388,9 +401,9 @@ class ProductUpdate(BaseModel):
     template_id: Optional[str] = None
     printed_template_id: Optional[str] = None
     online_template_id: Optional[str] = None
-    description1_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description1_html", "description_html"))
-    description2_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description2_html", "features_html"))
-    description3_html: Optional[str] = Field(default=None, validation_alias=AliasChoices("description3_html", "specifications_html"))
+    description1_html: Annotated[Optional[str], Field(validation_alias=AliasChoices("description1_html", "description_html"))] = None
+    description2_html: Annotated[Optional[str], Field(validation_alias=AliasChoices("description2_html", "features_html"))] = None
+    description3_html: Annotated[Optional[str], Field(validation_alias=AliasChoices("description3_html", "specifications_html"))] = None
     comments_html: Optional[str] = None
     show_rpm_band_shading: Optional[bool] = None
     band_graph_background_color: Optional[str] = None
@@ -452,21 +465,13 @@ class RpmLineResponse(RpmLineBase):
     id: int
     points: list["RpmPointResponse"] = Field(default_factory=list)
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
-    product_id: int = Field(
-        ...,
-        validation_alias=AliasChoices("product_id", "fan_id"),
-        serialization_alias="product_id",
-    )
+    product_id: Annotated[int, Field(validation_alias=AliasChoices("product_id", "fan_id"), serialization_alias="product_id")]
 
 
 class RpmPointBase(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     rpm_line_id: int
-    airflow: float = Field(
-        ...,
-        validation_alias=AliasChoices("airflow", "flow"),
-        serialization_alias="airflow",
-    )
+    airflow: Annotated[float, Field(validation_alias=AliasChoices("airflow", "flow"), serialization_alias="airflow")]
     pressure: float
 
 
@@ -476,11 +481,7 @@ class RpmPointCreate(RpmPointBase):
 
 class RpmPointResponse(RpmPointBase):
     id: int
-    product_id: int = Field(
-        ...,
-        validation_alias=AliasChoices("product_id", "fan_id"),
-        serialization_alias="product_id",
-    )
+    product_id: Annotated[int, Field(validation_alias=AliasChoices("product_id", "fan_id"), serialization_alias="product_id")]
     rpm: Optional[float] = None
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
@@ -489,11 +490,7 @@ class RpmPointResponse(RpmPointBase):
 # --- Efficiency points ---
 class EfficiencyPointBase(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
-    airflow: float = Field(
-        ...,
-        validation_alias=AliasChoices("airflow", "flow"),
-        serialization_alias="airflow",
-    )
+    airflow: Annotated[float, Field(validation_alias=AliasChoices("airflow", "flow"), serialization_alias="airflow")]
     efficiency_centre: Optional[float] = None
     efficiency_lower_end: Optional[float] = None
     efficiency_higher_end: Optional[float] = None
@@ -506,11 +503,7 @@ class EfficiencyPointCreate(EfficiencyPointBase):
 
 class EfficiencyPointResponse(EfficiencyPointBase):
     id: int
-    product_id: int = Field(
-        ...,
-        validation_alias=AliasChoices("product_id", "fan_id"),
-        serialization_alias="product_id",
-    )
+    product_id: Annotated[int, Field(validation_alias=AliasChoices("product_id", "fan_id"), serialization_alias="product_id")]
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
@@ -609,11 +602,7 @@ class CmsCatalogueIndexResponse(BaseModel):
 
 class ProductImageResponse(BaseModel):
     id: int
-    product_id: int = Field(
-        ...,
-        validation_alias=AliasChoices("product_id", "fan_id"),
-        serialization_alias="product_id",
-    )
+    product_id: Annotated[int, Field(validation_alias=AliasChoices("product_id", "fan_id"), serialization_alias="product_id")]
     file_name: str
     sort_order: int
     url: str
@@ -622,6 +611,10 @@ class ProductImageResponse(BaseModel):
 
 
 class ProductImageReorder(BaseModel):
+    image_ids: list[int] = Field(..., min_length=1)
+
+
+class SeriesImageReorder(BaseModel):
     image_ids: list[int] = Field(..., min_length=1)
 
 
@@ -768,6 +761,9 @@ class CmsSeriesResponse(BaseModel):
     series_printed_pdf_url: Optional[str] = None
     series_online_pdf_url: Optional[str] = None
     series_tab_color: Optional[str] = None
+    primary_series_image_url: Optional[str] = None
+    secondary_series_image_url: Optional[str] = None
+    series_images: list[SeriesImageResponse] = Field(default_factory=list)
     products: list[CmsSeriesProductSummary] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)

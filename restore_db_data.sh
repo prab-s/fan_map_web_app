@@ -266,7 +266,7 @@ run_post_restore_migrations() {
 
 log "Restoring media assets"
 mkdir -p data
-for media_dir in product_images product_graphs product_pdfs product_type_pdfs series_graphs series_pdfs; do
+for media_dir in product_images series_images product_graphs product_pdfs product_type_pdfs series_graphs series_pdfs; do
   target_dir="data/${media_dir}"
   source_dir="${STAGING_DIR}/data/${media_dir}"
   echo "  ${media_dir}"

@@ -1,4 +1,4 @@
-import { f as fallback, j as attr_style, d as bind_props, ad as stringify } from "./index2.js";
+import { f as fallback, j as attr_style, d as bind_props, af as stringify } from "./index2.js";
 import { o as onDestroy } from "./index-server.js";
 import "echarts";
 const LIGHT_CHART_THEME = {
@@ -34,10 +34,20 @@ function ECharts($$renderer, $$props) {
       null
       // (chart) => void
     );
+    let resizeFrame = null;
     onDestroy(() => {
-      window.removeEventListener("resize", resize);
+      window.removeEventListener("resize", scheduleResize);
+      if (resizeFrame !== null) {
+        window.cancelAnimationFrame(resizeFrame);
+        resizeFrame = null;
+      }
+      window.__ECHARTS_HOVER_COORDS__ = null;
     });
-    function resize() {
+    function scheduleResize() {
+      if (resizeFrame !== null) return;
+      resizeFrame = window.requestAnimationFrame(() => {
+        resizeFrame = null;
+      });
     }
     $$renderer2.push(`<div class="chart-container echart-host"${attr_style(`height: ${stringify(height)};`)}></div>`);
     bind_props($$props, { option, height, on, onChartReady });
@@ -319,11 +329,14 @@ function buildSmoothedCurveSamples(lineData, samplesPerSegment = 14) {
   return smoothed;
 }
 function buildFullChartTooltipFormatter(graphConfig, lineDefinitions) {
-  const xAxisName = graphConfig?.graph_x_axis_label ?? DEFAULT_GRAPH_CONFIG.graph_x_axis_label;
-  const yAxisName = graphConfig?.graph_y_axis_label ?? DEFAULT_GRAPH_CONFIG.graph_y_axis_label;
-  const tooltipLabelBySeriesName = Object.fromEntries(
-    (lineDefinitions ?? []).map((definition) => [definition.label, definition.tooltipLabel])
-  );
+  new Set((lineDefinitions ?? []).map((definition) => definition.label));
+  const airflowUnit = String(graphConfig?.graph_x_axis_unit ?? DEFAULT_GRAPH_CONFIG.graph_x_axis_unit).trim();
+  const pressureUnit = String(graphConfig?.graph_y_axis_unit ?? DEFAULT_GRAPH_CONFIG.graph_y_axis_unit).trim();
+  function formatReading(value, unit) {
+    const numeric = Number(value);
+    const formatted = Number.isFinite(numeric) ? String(Math.round(numeric)) : "";
+    return unit ? `${formatted} ${unit}` : formatted;
+  }
   return (params) => {
     const items = Array.isArray(params) ? params : [params];
     const visibleItems = items.filter((item) => {
@@ -331,17 +344,19 @@ function buildFullChartTooltipFormatter(graphConfig, lineDefinitions) {
       return !name.endsWith(" band") && !name.endsWith(" band faded") && !name.endsWith(" area");
     });
     if (!visibleItems.length) return "";
-    const flowValue = visibleItems.find((item) => Array.isArray(item.value))?.value?.[0] ?? visibleItems[0]?.axisValue;
-    const lines = [`${xAxisName}: ${formatNumericValue(flowValue)}`];
+    const cursorX = typeof window !== "undefined" && window.__ECHARTS_HOVER_COORDS__ ? window.__ECHARTS_HOVER_COORDS__.x : Array.isArray(visibleItems[0]?.value) ? visibleItems[0].value[0] : visibleItems[0]?.axisValue;
+    const cursorY = typeof window !== "undefined" && window.__ECHARTS_HOVER_COORDS__ ? window.__ECHARTS_HOVER_COORDS__.y : Array.isArray(visibleItems[0]?.value) ? visibleItems[0].value[1] : null;
+    const lines = [`<div style="margin-bottom:6px;font-weight:600;">Cursor : ${formatReading(cursorX, airflowUnit)} - ${formatReading(cursorY, pressureUnit)}</div>`];
     for (const item of visibleItems) {
       const name = String(item.seriesName ?? "");
-      const marker = item.marker ?? "";
+      const markerColor = item.color ?? "#2563eb";
       const pointValue = Array.isArray(item.value) ? item.value[1] : item.value;
-      const overlayLabel = tooltipLabelBySeriesName[name];
-      lines.push(`${overlayLabel ?? yAxisName}: ${formatNumericValue(pointValue)}`);
-      lines.push(`${marker}${name}`);
+      const xPointValue = Array.isArray(item.value) ? item.value[0] : item.axisValue;
+      lines.push(
+        `<div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;background:${markerColor};"></span>${name}: ${formatReading(xPointValue, airflowUnit)} - ${formatReading(pointValue, pressureUnit)}</div>`
+      );
     }
-    return lines.join("<br/>");
+    return `<div>${lines.join("")}</div>`;
   };
 }
 function collectUniqueSortedFlows(rpmCurveEntries, permissibleBoundaryData, extraFlows = []) {
@@ -861,6 +876,7 @@ function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, per
     const rpmLine = lineByRpm.get(Number(rpm)) ?? null;
     const pointsAtRpm = byRpm[String(rpm)] ?? [];
     const hasMultiplePoints = pointsAtRpm.length > 1;
+    const bandColor = resolveBandColor(rpmLine, idx);
     const rawLineData = pointsAtRpm.map((point) => [point.value[0], point.value[1]]).sort((a, b) => a[0] - b[0]);
     const displayLineData = !includeDragHandles && hasMultiplePoints ? buildSmoothedCurveSamples(rawLineData) : rawLineData;
     rpmCurveEntries.push([rpm, displayLineData]);
@@ -870,30 +886,38 @@ function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, per
       smooth: false,
       data: displayLineData,
       label: { show: false },
-      showSymbol: !includeDragHandles && !hasMultiplePoints,
-      symbolSize: !includeDragHandles && !hasMultiplePoints ? 8 : 0,
+      showSymbol: !includeDragHandles,
+      symbol: "circle",
+      symbolSize: !includeDragHandles ? 4 : 0,
       lineStyle: {
         width: hasMultiplePoints ? 2 : includeDragHandles ? 0 : 1,
         color: CHART_STYLE.rpmLineColor
       },
       itemStyle: {
-        color: CHART_STYLE.rpmLineColor
+        color: bandColor
       },
+      color: bandColor,
       areaStyle: void 0,
-      emphasis: { focus: "series" },
+      emphasis: {
+        focus: "series",
+        scale: true,
+        scaleSize: 1.6,
+        showSymbol: true,
+        symbolSize: 16
+      },
       z: includeDragHandles ? idx * 2 : rpms.length - idx
     });
     if (!includeDragHandles && displayLineData.length) {
       const labelUsesBandStyling = showRpmBandShading;
       const reversedLineData = displayLineData.slice().reverse();
-      const labelAnchorData = labelUsesBandStyling ? buildBandLabelAnchorData(reversedLineData) : reversedLineData;
+      labelUsesBandStyling ? buildBandLabelAnchorData(reversedLineData) : reversedLineData;
       const labelColor = labelUsesBandStyling ? rpmBandLabelColor ?? chartTheme.text : chartTheme.text;
       const labelGlowColor = toRgbaColor(getOppositeGlowColor(labelColor), 0.95);
       series.push({
         name: `${formatGraphLineValue(rpm, graphConfig, rpmLine)} label`,
         type: "line",
         smooth: false,
-        data: labelAnchorData,
+        data: labelUsesBandStyling ? buildBandLabelAnchorData(reversedLineData) : reversedLineData,
         showSymbol: false,
         silent: true,
         tooltip: { show: false },
@@ -904,11 +928,6 @@ function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, per
           color: labelColor,
           fontFamily: chartFontFamily,
           distance: 6,
-          // ECharts offset format is [x, y].
-          // x: negative = left, positive = right
-          // y: negative = up, positive = down
-          // Labels now anchor near the start of the curve, so this is the main
-          // place to tune their manual nudge away from the y-axis.
           offset: [1, 25],
           textBorderColor: labelGlowColor ?? void 0,
           textBorderWidth: 4.5 * resolvedLabelTextScale,
@@ -957,7 +976,7 @@ function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, per
       emphasis: {
         focus: "series",
         scale: true,
-        scaleSize: 1.2,
+        scaleSize: 1.6,
         itemStyle: { borderColor: "#000000", borderWidth: 2 }
       },
       z: idx * 2 + 1
@@ -1097,7 +1116,9 @@ function buildEfficiencyAndPermissibleSeries(points, chartTheme, includeDragHand
         emphasis: { disabled: true },
         data: [{ value: [anchorPoint[0], anchorPoint[1]] }],
         renderItem(params, api) {
-          const anchor = api.coord([api.value(0), api.value(1)]);
+          const x = api.value(0);
+          const y = api.value(1);
+          const anchor = api.coord([x, y]);
           const rightOffsetPixels = 70 + resolvedPermissibleLabelOffset.x;
           const verticalOffsetPixels = -15 + resolvedPermissibleLabelOffset.y;
           const rotation = 0;
@@ -1146,7 +1167,7 @@ function buildEfficiencyAndPermissibleSeries(points, chartTheme, includeDragHand
       emphasis: {
         focus: "series",
         scale: true,
-        scaleSize: 1.2,
+        scaleSize: 1.6,
         itemStyle: { borderColor: "#000000", borderWidth: 2 }
       },
       yAxisIndex: 1,
@@ -1229,10 +1250,22 @@ function buildFullChartOption({
     title: {
       text: title,
       left: "center",
-      textStyle: { color: chartTheme.text, fontSize: CHART_STYLE.titleFontSize, fontFamily: chartFontFamily }
+      width: 820,
+      textStyle: {
+        color: chartTheme.text,
+        fontSize: CHART_STYLE.titleFontSize - 4,
+        fontFamily: chartFontFamily,
+        width: 820,
+        overflow: "break",
+        lineHeight: CHART_STYLE.titleFontSize
+      }
     },
-    tooltip: tooltip ?? { trigger: "axis", formatter: buildFullChartTooltipFormatter(resolvedGraphConfig, lineDefinitions) },
-    grid: { left: "9%", right: "5%", top: "12%", bottom: "12%", z: -1 },
+    tooltip: tooltip ?? {
+      trigger: "axis",
+      axisPointer: { type: "line", snap: true },
+      formatter: buildFullChartTooltipFormatter(resolvedGraphConfig, lineDefinitions)
+    },
+    grid: { left: "7%", right: "5%", top: "6%", bottom: "8%", z: -1 },
     xAxis: {
       type: "value",
       name: xAxisName,

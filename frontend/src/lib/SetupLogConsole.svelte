@@ -8,20 +8,34 @@
   let streamStatus = 'connecting';
   let streamError = '';
   let lines = [];
+  let pendingLines = [];
   let scroller = null;
   let stickToBottom = true;
+  let flushFrame = null;
 
   function scrollToBottom() {
     if (!scroller) return;
     scroller.scrollTop = scroller.scrollHeight;
   }
 
-  async function appendLine(entry) {
-    lines = [...lines, entry].slice(-MAX_LINES);
+  function flushPendingLines() {
+    flushFrame = null;
+    if (!pendingLines.length) return;
+
+    const nextLines = pendingLines;
+    pendingLines = [];
+    lines = [...lines, ...nextLines].slice(-MAX_LINES);
     if (stickToBottom) {
-      await tick();
-      scrollToBottom();
+      void tick().then(() => {
+        scrollToBottom();
+      });
     }
+  }
+
+  function appendLine(entry) {
+    pendingLines = [...pendingLines, entry];
+    if (flushFrame !== null) return;
+    flushFrame = window.requestAnimationFrame(flushPendingLines);
   }
 
   function handleScroll() {
@@ -43,11 +57,11 @@
     streamError = '';
     stream = new EventSource(getSetupLogsStreamUrl());
 
-    stream.addEventListener('log', async (event) => {
+    stream.addEventListener('log', (event) => {
       const payload = JSON.parse(event.data);
       streamStatus = 'live';
       streamError = '';
-      await appendLine(payload);
+      appendLine(payload);
     });
 
     stream.onopen = () => {
@@ -66,6 +80,10 @@
   });
 
   onDestroy(() => {
+    if (flushFrame !== null) {
+      window.cancelAnimationFrame(flushFrame);
+      flushFrame = null;
+    }
     if (stream) {
       stream.close();
       stream = null;

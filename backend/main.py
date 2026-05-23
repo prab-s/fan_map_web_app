@@ -33,6 +33,7 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
+from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload, joinedload
 from pypdf import PdfReader, PdfWriter
 from reportlab.lib.colors import Color, HexColor
@@ -48,6 +49,7 @@ from backend.database import (
 from backend.models import (
     Product,
     Series,
+    SeriesImage,
     RpmLine,
     RpmPoint,
     EfficiencyPoint,
@@ -91,6 +93,8 @@ from backend.schemas import (
     UserUpdate,
     ProductImageResponse,
     ProductImageReorder,
+    SeriesImageResponse,
+    SeriesImageReorder,
     ProductTypeResponse,
     ProductTypeCreate,
     ProductTypeParameterGroupPresetUpdate,
@@ -120,6 +124,7 @@ SAFE_CHARS_RE = re.compile(r"[^a-z0-9]+")
 JINJA_PATTERN = re.compile(r"(\{\{[\s\S]*?\}\}|\{%-?[\s\S]*?-?%\}|\{#.*?#\})")
 GRAPH_FILTER_GROUP_NAME = "__graph__"
 PRODUCT_IMAGES_DIR = Path(DEFAULT_DATA_DIR) / "product_images"
+SERIES_IMAGES_DIR = Path(DEFAULT_DATA_DIR) / "series_images"
 PRODUCT_GRAPHS_DIR = Path(DEFAULT_DATA_DIR) / "product_graphs"
 PRODUCT_PDFS_DIR = Path(DEFAULT_DATA_DIR) / "product_pdfs"
 PRODUCT_TYPE_PDFS_DIR = Path(DEFAULT_DATA_DIR) / "product_type_pdfs"
@@ -128,6 +133,7 @@ SERIES_PDFS_DIR = Path(DEFAULT_DATA_DIR) / "series_pdfs"
 BACKUP_OUTPUT_DIR = Path(DEFAULT_DATA_DIR) / "backups"
 DATA_BACKUP_DIRS = [
     PRODUCT_IMAGES_DIR,
+    SERIES_IMAGES_DIR,
     PRODUCT_GRAPHS_DIR,
     PRODUCT_PDFS_DIR,
     PRODUCT_TYPE_PDFS_DIR,
@@ -141,6 +147,7 @@ TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates"
 TEMPLATE_REGISTRY_PATH = TEMPLATES_DIR / "registry.json"
 ECHARTS_RENDER_SCRIPT = FRONTEND_DIR / "scripts" / "render_product_graph.mjs"
 PRODUCT_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+SERIES_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 PRODUCT_GRAPHS_DIR.mkdir(parents=True, exist_ok=True)
 PRODUCT_PDFS_DIR.mkdir(parents=True, exist_ok=True)
 PRODUCT_TYPE_PDFS_DIR.mkdir(parents=True, exist_ok=True)
@@ -149,6 +156,10 @@ SERIES_PDFS_DIR.mkdir(parents=True, exist_ok=True)
 BACKUP_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
 logger = logging.getLogger(__name__)
+PDF_MEDIA_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "Cache-Control": "public, max-age=3600",
+}
 APP_LOG_LEVEL_NAME = os.getenv("LOG_LEVEL", "INFO").strip().upper() or "INFO"
 APP_LOG_LEVEL = getattr(logging, APP_LOG_LEVEL_NAME, logging.INFO)
 LOG_BUFFER_SIZE = int(os.getenv("SETUP_LOG_BUFFER_SIZE", "500"))
@@ -164,6 +175,8 @@ BOOTSTRAP_ADMIN_USERNAME = os.getenv("BOOTSTRAP_ADMIN_USERNAME", "admin").strip(
 BOOTSTRAP_ADMIN_PASSWORD = os.getenv("BOOTSTRAP_ADMIN_PASSWORD", "").strip()
 CMS_API_TOKEN = os.getenv("CMS_API_TOKEN", "").strip()
 PUBLIC_CATALOGUE_SITE_URL = os.getenv("PUBLIC_CATALOGUE_SITE_URL", "").strip().rstrip("/")
+PUBLIC_CATALOGUE_REFRESH_LOCK = threading.Lock()
+PUBLIC_CATALOGUE_REFRESH_IN_FLIGHT = False
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 POSTGRES_DB = os.getenv("POSTGRES_DB", "").strip()
 POSTGRES_USER = os.getenv("POSTGRES_USER", "").strip()
@@ -239,6 +252,16 @@ attach_in_memory_log_handler()
 def trace_product_filter(message: str, *args):
     if FINDER_DEBUG:
         logger.warning(message, *args)
+
+
+def pdf_file_response(file_path: Path) -> FileResponse:
+    return FileResponse(
+        file_path,
+        media_type="application/pdf",
+        filename=file_path.name,
+        content_disposition_type="inline",
+        headers=PDF_MEDIA_HEADERS,
+    )
 
 
 def sanitize_name(value: str) -> str:
@@ -815,6 +838,13 @@ def product_image_file_name(product: Product, index: int, extension: str) -> str
     return f"pic_{product_slug(product)}_{index}{ext}"
 
 
+def series_image_file_name(series: Series, index: int, extension: str) -> str:
+    ext = extension.lower()
+    if not ext.startswith("."):
+        ext = f".{ext}"
+    return f"series_pic_{series_slug(series)}_{index}{ext}"
+
+
 def graph_file_name(product: Product) -> str:
     return f"graph_{product_slug(product)}.png"
 
@@ -853,6 +883,10 @@ def product_type_pdf_path(product_type: ProductType, variant: str) -> Path:
 
 def image_file_path(file_name: str) -> Path:
     return PRODUCT_IMAGES_DIR / file_name
+
+
+def series_image_file_path(file_name: str) -> Path:
+    return SERIES_IMAGES_DIR / file_name
 
 
 def remove_file(path: str | os.PathLike | None):
@@ -1440,6 +1474,30 @@ def sync_product_image_files(product: Product):
         image.sort_order = index - 1
 
 
+def sync_series_image_files(series: Series):
+    ordered_images = sorted(series.series_images, key=lambda image: (image.sort_order, image.id))
+    temp_paths = {}
+
+    for image in ordered_images:
+        current_path = series_image_file_path(image.file_name)
+        if current_path.exists():
+            temp_path = series_image_file_path(f"tmp_{image.id}_{image.file_name}")
+            current_path.rename(temp_path)
+            temp_paths[image.id] = temp_path
+
+    for index, image in enumerate(ordered_images, start=1):
+        suffix = Path(image.file_name).suffix or ".jpg"
+        final_name = series_image_file_name(series, index, suffix)
+        final_path = series_image_file_path(final_name)
+        temp_path = temp_paths.get(image.id)
+        if temp_path and temp_path.exists():
+            if final_path.exists():
+                final_path.unlink()
+            temp_path.rename(final_path)
+        image.file_name = final_name
+        image.sort_order = index - 1
+
+
 def render_richtext_html(value: str | None) -> str:
     return value or '<p class="placeholder">Not provided.</p>'
 
@@ -1749,6 +1807,11 @@ def build_product_pdf_html(product: Product, variant: str) -> tuple[str, str]:
         if first_image_path.is_file():
             primary_image_uri = first_image_path.as_uri()
 
+    logo_uri = ""
+    logo_path = template_path.parent / "vent-tech-customer_site_logo.png"
+    if logo_path.is_file():
+        logo_uri = logo_path.resolve().as_uri()
+
     graph_image_uri = ""
     if product.graph_image_path:
         graph_path = Path(product.graph_image_path)
@@ -1777,6 +1840,7 @@ def build_product_pdf_html(product: Product, variant: str) -> tuple[str, str]:
             css_class="drawing-image",
             alt_text=f"{product.model or ''} detailed view",
         ),
+        "{{product.company_logo_url}}": logo_uri,
         "{{product.primary_product_image_url}}": primary_image_uri,
         "{{product.graph_image_url}}": graph_image_uri,
     }
@@ -1859,6 +1923,222 @@ def get_template_label(template_id: str | None, template_type: str) -> str:
 
 def series_graph_rule_label() -> str:
     return "Highest and lowest line from each product"
+
+
+SERIES_PERFORMANCE_EXCLUDED_GROUP_NAMES = {
+    "impeller type",
+    "material",
+    "motor finish",
+}
+SERIES_PERFORMANCE_COLUMN_LIMIT = 3
+
+
+def _series_performance_candidate_columns(series: Series) -> list[tuple[str, str, str]]:
+    ordered_products = sorted(series.products or [], key=lambda product: (product.model or "").lower())
+    candidate_columns: list[tuple[str, str, str]] = []
+    seen_columns: set[tuple[str, str]] = set()
+
+    for product in ordered_products:
+        for group in sorted(product.parameter_groups, key=lambda item: (item.sort_order, item.id)):
+            group_name = (group.group_name or "").strip()
+            if not group_name or group_name.casefold() in SERIES_PERFORMANCE_EXCLUDED_GROUP_NAMES:
+                continue
+            for parameter in sorted(group.parameters, key=lambda item: (item.sort_order, item.id)):
+                parameter_name = (parameter.parameter_name or "").strip()
+                key = (group_name, parameter_name)
+                if not parameter_name or key in seen_columns:
+                    continue
+                seen_columns.add(key)
+                candidate_columns.append((key[0], key[1], f"{key[0]}: {key[1]}"))
+                if len(candidate_columns) >= SERIES_PERFORMANCE_COLUMN_LIMIT:
+                    return candidate_columns
+    return candidate_columns
+
+
+def _series_type_2_performance_columns(series: Series) -> list[tuple[str, str, str]]:
+    ordered_products = sorted(series.products or [], key=lambda product: (product.model or "").lower())
+    selected_columns: list[tuple[str, str, str]] = []
+    seen_columns: set[tuple[str, str]] = set()
+
+    main_parameter_count = 0
+    impeller_size_selected = False
+
+    for product in ordered_products:
+        for group in sorted(product.parameter_groups, key=lambda item: (item.sort_order, item.id)):
+            group_name = (group.group_name or "").strip()
+            if not group_name or group_name.casefold() in SERIES_PERFORMANCE_EXCLUDED_GROUP_NAMES:
+                continue
+            group_slug = template_token_slug(group_name)
+            parameters = sorted(group.parameters, key=lambda item: (item.sort_order, item.id))
+
+            for parameter in parameters:
+                parameter_name = (parameter.parameter_name or "").strip()
+                if not parameter_name:
+                    continue
+
+                key = (group_name, parameter_name)
+                if key in seen_columns:
+                    continue
+
+                if group_slug == "main" and main_parameter_count < 2:
+                    selected_columns.append((key[0], key[1], _series_type_2_performance_column_label(key[0], key[1])))
+                    seen_columns.add(key)
+                    main_parameter_count += 1
+                    if len(selected_columns) >= SERIES_PERFORMANCE_COLUMN_LIMIT:
+                        return selected_columns
+                    continue
+
+                if group_slug == "impeller" and parameter_name.casefold() == "size" and not impeller_size_selected:
+                    selected_columns.append((key[0], key[1], _series_type_2_performance_column_label(key[0], key[1])))
+                    seen_columns.add(key)
+                    impeller_size_selected = True
+                    if len(selected_columns) >= SERIES_PERFORMANCE_COLUMN_LIMIT:
+                        return selected_columns
+
+        if len(selected_columns) >= SERIES_PERFORMANCE_COLUMN_LIMIT:
+            return selected_columns
+
+    if len(selected_columns) < SERIES_PERFORMANCE_COLUMN_LIMIT:
+        for column in _series_performance_candidate_columns(series):
+            key = (column[0], column[1])
+            if key in seen_columns:
+                continue
+            selected_columns.append((column[0], column[1], _series_type_2_performance_column_label(column[0], column[1])))
+            seen_columns.add(key)
+            if len(selected_columns) >= SERIES_PERFORMANCE_COLUMN_LIMIT:
+                break
+
+    return selected_columns[:SERIES_PERFORMANCE_COLUMN_LIMIT]
+
+
+def _series_performance_value_map(product: Product) -> dict[tuple[str, str], str]:
+    values: dict[tuple[str, str], str] = {}
+    for group in product.parameter_groups:
+        group_name = (group.group_name or "").strip()
+        if not group_name or group_name.casefold() in SERIES_PERFORMANCE_EXCLUDED_GROUP_NAMES:
+            continue
+        for parameter in group.parameters:
+            parameter_name = (parameter.parameter_name or "").strip()
+            if not parameter_name:
+                continue
+            values[(group_name, parameter_name)] = format_parameter_value(parameter) or "—"
+    return values
+
+
+def _series_type_2_performance_column_label(group_name: str, parameter_name: str) -> str:
+    if template_token_slug(group_name) == "main":
+        return parameter_name
+    if template_token_slug(group_name) == "impeller" and parameter_name.casefold() == "size":
+        return "Impeller size"
+    return f"{group_name}: {parameter_name}"
+
+
+def _format_range(values: list[float], unit: str = "", precision: int = 0) -> str:
+    if not values:
+        return "—"
+    minimum = min(values)
+    maximum = max(values)
+    if precision > 0:
+        minimum_text = f"{minimum:.{precision}f}".rstrip("0").rstrip(".")
+        maximum_text = f"{maximum:.{precision}f}".rstrip("0").rstrip(".")
+    else:
+        minimum_text = f"{minimum:g}"
+        maximum_text = f"{maximum:g}"
+    unit_text = f" {unit}" if unit else ""
+    if minimum_text == maximum_text:
+        return f"{minimum_text}{unit_text}"
+    return f"{minimum_text} - {maximum_text}{unit_text}"
+
+
+def _product_performance_ranges(product: Product) -> dict[str, str]:
+    airflow_values: list[float] = []
+    pressure_values: list[float] = []
+    power_values: list[float] = []
+    swl_values: list[float] = []
+
+    for line in sorted(product.rpm_lines or [], key=lambda item: item.rpm):
+        for point in getattr(line, "points", []) or []:
+            if point.airflow is not None:
+                airflow_values.append(float(point.airflow))
+            if point.pressure is not None:
+                pressure_values.append(float(point.pressure))
+
+    fan_table = product.fan_acoustic_table or {}
+    for row in fan_table.get("rows") or []:
+        if not isinstance(row, dict):
+            continue
+        if row.get("peak_power_kw") not in {None, ""}:
+            try:
+                power_values.append(float(row["peak_power_kw"]))
+            except (TypeError, ValueError):
+                pass
+        sound_power_levels = row.get("sound_power_levels") or {}
+        if isinstance(sound_power_levels, dict):
+            for value in sound_power_levels.values():
+                if value in {None, ""}:
+                    continue
+                try:
+                    swl_values.append(float(value))
+                except (TypeError, ValueError):
+                    continue
+
+    return {
+        "pressure_range": _format_range(pressure_values, "Pa"),
+        "airflow_range": _format_range(airflow_values, "L/s"),
+        "swl_range": _format_range(swl_values, "dB"),
+        "power_range": _format_range(power_values, "kW", precision=2),
+    }
+
+
+def render_series_performance_table_rows(
+    series: Series,
+    selected_columns: list[tuple[str, str, str]] | None = None,
+) -> str:
+    ordered_products = sorted(series.products or [], key=lambda product: (product.model or "").lower())
+    if not ordered_products:
+        return '<tr><td colspan="8" class="placeholder">No products are linked to this series yet.</td></tr>'
+
+    candidate_columns = (selected_columns or _series_performance_candidate_columns(series))[:SERIES_PERFORMANCE_COLUMN_LIMIT]
+    while len(candidate_columns) < SERIES_PERFORMANCE_COLUMN_LIMIT:
+        candidate_columns.append(("", "", ""))
+    body_rows: list[str] = []
+    for product in ordered_products:
+        values = _series_performance_value_map(product)
+        ranges = _product_performance_ranges(product)
+        cells = [
+            f"<td>{html.escape(product.model or '—')}</td>",
+            *[
+                f"<td>{html.escape(values.get((group_name, parameter_name), '—'))}</td>"
+                for group_name, parameter_name, _ in candidate_columns
+            ],
+            f"<td>{html.escape(ranges['pressure_range'])}</td>",
+            f"<td>{html.escape(ranges['airflow_range'])}</td>",
+            f"<td>{html.escape(ranges['swl_range'])}</td>",
+            f"<td>{html.escape(ranges['power_range'])}</td>",
+        ]
+        body_rows.append("<tr>" + "".join(cells) + "</tr>")
+
+    return "".join(body_rows)
+
+
+def render_series_image_html(
+    series: Series,
+    image_index: int,
+    css_class: str,
+    alt_text: str,
+    placeholder_text: str,
+    placeholder_class: str = "series-image-placeholder",
+) -> str:
+    ordered_images = sorted(series.series_images or [], key=lambda image: (image.sort_order, image.id))
+    if image_index < 1 or len(ordered_images) < image_index:
+        return f'<div class="{html.escape(placeholder_class)}">{html.escape(placeholder_text)}</div>'
+
+    image = ordered_images[image_index - 1]
+    image_path = series_image_file_path(image.file_name)
+    if not image_path.is_file():
+        return f'<div class="{html.escape(placeholder_class)}">{html.escape(placeholder_text)}</div>'
+
+    return f'<img src="{html.escape(image_path.as_uri())}" alt="{html.escape(alt_text)}" class="{html.escape(css_class)}" />'
 
 
 def render_series_products_summary_table(series: Series) -> str:
@@ -2035,31 +2315,58 @@ def build_series_pdf_html(series: Series, variant: str) -> tuple[str, str]:
     if graph_path.is_file():
         graph_uri = graph_path.as_uri()
 
-    ordered_products = sorted(series.products or [], key=lambda item: (item.model or "").casefold())
-    first_product = ordered_products[0] if ordered_products else None
-    first_product_image_uri = product_primary_image_uri(first_product) if first_product else ""
-    first_product_model = html.escape(first_product.model or "") if first_product else ""
-    cover_image_html = (
-        f'<img src="{html.escape(first_product_image_uri)}" alt="{first_product_model} primary product image" class="series-cover__image" />'
-        if first_product_image_uri
-        else '<div class="series-cover__placeholder">No primary image available</div>'
-    )
+    performance_columns = _series_performance_candidate_columns(series)
+    if template_definition.get("id") == "series-series_type_2":
+        performance_columns = _series_type_2_performance_columns(series)
+    performance_column_labels = [column[2] for column in performance_columns]
+    while len(performance_column_labels) < SERIES_PERFORMANCE_COLUMN_LIMIT:
+        performance_column_labels.append("—")
+
+    logo_uri = ""
+    logo_path = project_root / "templates" / "product" / "default" / "vent-tech-customer_site_logo.png"
+    if logo_path.is_file():
+        logo_uri = logo_path.resolve().as_uri()
 
     replacements = {
         "{{series.name}}": html.escape(series.name or ""),
         "{{series.product_type_label}}": html.escape(series.product_type_label or ""),
         "{{series.series_tab_color}}": html.escape(series.series_tab_color or SERIES_TAB_FALLBACK_COLOR),
-        "{{series.cover_image_html}}": cover_image_html,
+        "{{series.cover_image_html}}": render_series_image_html(
+            series,
+            image_index=1,
+            css_class="series-cover__image",
+            alt_text=f"{series.name or ''} primary series image",
+            placeholder_text="No primary series image available",
+            placeholder_class="series-cover__placeholder",
+        ),
+        "{{series.primary_series_image_html}}": render_series_image_html(
+            series,
+            image_index=1,
+            css_class="series-image-card__image series-image-card__image--primary",
+            alt_text=f"{series.name or ''} primary series image",
+            placeholder_text="No primary series image available",
+        ),
+        "{{series.secondary_series_image_html}}": render_series_image_html(
+            series,
+            image_index=2,
+            css_class="series-image-card__image series-image-card__image--secondary",
+            alt_text=f"{series.name or ''} secondary series image",
+            placeholder_text="No secondary series image available",
+        ),
         "{{series.description1_html}}": render_richtext_html(series.description1_html),
         "{{series.description2_html}}": render_richtext_html(series.description2_html),
         "{{series.description3_html}}": render_richtext_html(series.description3_html),
         "{{series.description4_html}}": render_richtext_html(series.description4_html),
         "{{series.comments_html}}": render_richtext_html(series.description4_html),
         "{{series.template_label}}": html.escape(get_template_label(template_id or series.template_id, "series")),
-        "{{series.product_count}}": html.escape(str(len(series.products or []))),
+        "{{series.product_count}}": html.escape(str(series.product_count)),
         "{{series.graph_rule_label}}": html.escape(series_graph_rule_label()),
         "{{series.graph_image_url}}": graph_uri,
-        "{{series.products_summary_table}}": render_series_products_summary_table(series),
+        "{{series.performance_column_1_label}}": html.escape(performance_column_labels[0]),
+        "{{series.performance_column_2_label}}": html.escape(performance_column_labels[1]),
+        "{{series.performance_column_3_label}}": html.escape(performance_column_labels[2]),
+        "{{series.performance_table_rows}}": render_series_performance_table_rows(series, performance_columns),
+        "{{series.company_logo_url}}": logo_uri,
     }
 
     rendered = html_template
@@ -2300,7 +2607,7 @@ def build_product_type_series_pdf_summaries(
                 "series_description_html": render_richtext_html(series.description1_html),
                 "first_product_image_uri": product_primary_image_uri(ordered_products[0]) if ordered_products else "",
                 "page_count": pdf_page_count(source_path) if source_path is not None else 0,
-                "product_count": len(series.products or []),
+                "product_count": series.product_count,
                 "products": [
                     {
                         "id": product.id,
@@ -2513,6 +2820,10 @@ def delete_product_image_file(image: ProductImage):
     remove_file(image_file_path(image.file_name))
 
 
+def delete_series_image_file(image: SeriesImage):
+    remove_file(series_image_file_path(image.file_name))
+
+
 def build_graph_config(product_type: ProductType | None) -> dict:
     return {
         "graph_kind": product_type.graph_kind if product_type else "fan_map",
@@ -2700,6 +3011,21 @@ def build_cms_catalogue_index_series(series: Series) -> dict:
     }
 
 
+def load_series_product_counts(db: Session, series_ids: list[int] | None = None) -> dict[int, int]:
+    if series_ids is not None and not series_ids:
+        return {}
+    q = db.query(Product.series_id, func.count(Product.id))
+    if series_ids is not None:
+        q = q.filter(Product.series_id.in_(series_ids))
+    rows = q.group_by(Product.series_id).all()
+    return {int(series_id): int(count) for series_id, count in rows if series_id is not None}
+
+
+def assign_series_product_counts(series_items: list[Series], counts: dict[int, int]) -> None:
+    for series in series_items:
+        setattr(series, "_product_count", counts.get(series.id, 0))
+
+
 def build_cms_catalogue_index(db: Session) -> dict:
     product_types = (
         db.query(ProductType)
@@ -2716,10 +3042,11 @@ def build_cms_catalogue_index(db: Session) -> dict:
     )
     series = (
         db.query(Series)
-        .options(joinedload(Series.product_type), selectinload(Series.products))
+        .options(joinedload(Series.product_type))
         .order_by(Series.name)
         .all()
     )
+    assign_series_product_counts(series, load_series_product_counts(db, [item.id for item in series]))
     products = (
         db.query(Product)
         .options(
@@ -2744,18 +3071,28 @@ def notify_public_catalogue_cache_refresh():
     if not PUBLIC_CATALOGUE_SITE_URL or not CMS_API_TOKEN:
         return
 
+    global PUBLIC_CATALOGUE_REFRESH_IN_FLIGHT
+    with PUBLIC_CATALOGUE_REFRESH_LOCK:
+        if PUBLIC_CATALOGUE_REFRESH_IN_FLIGHT:
+            return
+        PUBLIC_CATALOGUE_REFRESH_IN_FLIGHT = True
+
     def _post_refresh():
-        request = urllib.request.Request(
-            f"{PUBLIC_CATALOGUE_SITE_URL}/api/cache/refresh",
-            data=b"",
-            method="POST",
-            headers={"Authorization": f"Bearer {CMS_API_TOKEN}"},
-        )
+        global PUBLIC_CATALOGUE_REFRESH_IN_FLIGHT
         try:
+            request = urllib.request.Request(
+                f"{PUBLIC_CATALOGUE_SITE_URL}/api/cache/refresh",
+                data=b"",
+                method="POST",
+                headers={"Authorization": f"Bearer {CMS_API_TOKEN}"},
+            )
             with urllib.request.urlopen(request, timeout=5):
                 pass
         except (urllib.error.URLError, ValueError) as exc:
             logger.warning("Catalogue cache refresh notification failed: %s", exc)
+        finally:
+            with PUBLIC_CATALOGUE_REFRESH_LOCK:
+                PUBLIC_CATALOGUE_REFRESH_IN_FLIGHT = False
 
     threading.Thread(target=_post_refresh, daemon=True).start()
 
@@ -3615,6 +3952,10 @@ OPENAPI_TAGS = [
         "description": "Product image upload, ordering, and deletion endpoints.",
     },
     {
+        "name": "Series Images",
+        "description": "Series image upload, ordering, and deletion endpoints.",
+    },
+    {
         "name": "Media",
         "description": "Protected internal media endpoints for staff-only direct access.",
     },
@@ -3905,11 +4246,7 @@ def get_product_type_pdf_context(product_type_id: int, db: Session = Depends(get
     product_type = (
         db.query(ProductType)
         .options(
-            selectinload(ProductType.series)
-            .selectinload(Series.products)
-            .selectinload(Product.product_images),
-            selectinload(ProductType.series).selectinload(Series.products).selectinload(Product.product_type),
-            selectinload(ProductType.series).selectinload(Series.products).selectinload(Product.series),
+            selectinload(ProductType.series).selectinload(Series.products).joinedload(Product.product_type),
         )
         .filter(ProductType.id == product_type_id)
         .first()
@@ -3966,7 +4303,6 @@ def refresh_product_type_pdf(product_type_id: int, db: Session = Depends(get_db)
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=f"Unable to generate product type PDF: {exc}") from exc
 
-    db.refresh(product_type)
     return ProductTypePdfResponse(
         id=product_type.id,
         key=product_type.key,
@@ -3996,11 +4332,7 @@ def start_refresh_product_type_pdf_job(product_type_id: int):
         product_type = (
             db.query(ProductType)
             .options(
-                selectinload(ProductType.series)
-                .selectinload(Series.products)
-                .selectinload(Product.product_images),
-                selectinload(ProductType.series).selectinload(Series.products).selectinload(Product.product_type),
-                selectinload(ProductType.series).selectinload(Series.products).selectinload(Product.series),
+                selectinload(ProductType.series).selectinload(Series.products).joinedload(Product.product_type),
             )
             .filter(ProductType.id == product_type_id)
             .first()
@@ -4015,11 +4347,7 @@ def start_refresh_product_type_pdf_job(product_type_id: int):
             product_type = (
                 db.query(ProductType)
                 .options(
-                    selectinload(ProductType.series)
-                    .selectinload(Series.products)
-                    .selectinload(Product.product_images),
-                    selectinload(ProductType.series).selectinload(Series.products).selectinload(Product.product_type),
-                    selectinload(ProductType.series).selectinload(Series.products).selectinload(Product.series),
+                    selectinload(ProductType.series).selectinload(Series.products).joinedload(Product.product_type),
                 )
                 .filter(ProductType.id == product_type_id)
                 .first()
@@ -4417,10 +4745,15 @@ def list_series(
     db: Session = Depends(get_db),
     product_type_key: Optional[str] = Query(None),
 ):
-    q = db.query(Series).options(joinedload(Series.product_type))
+    q = db.query(Series).options(
+        joinedload(Series.product_type),
+        selectinload(Series.series_images),
+    )
     if product_type_key:
         q = q.join(ProductType).filter(ProductType.key == product_type_key)
-    return q.order_by(Series.name).all()
+    results = q.order_by(Series.name).all()
+    assign_series_product_counts(results, load_series_product_counts(db, [item.id for item in results]))
+    return results
 
 
 @app.post("/api/series", response_model=SeriesResponse, dependencies=[Depends(get_current_user)], tags=["Series"], summary="Create a series")
@@ -4460,6 +4793,7 @@ def create_series(body: SeriesCreate, db: Session = Depends(get_db)):
     ensure_series_tab_color(db, series)
     db.commit()
     db.refresh(series)
+    assign_series_product_counts([series], load_series_product_counts(db, [series.id]))
     notify_public_catalogue_cache_refresh()
     return series
 
@@ -4510,6 +4844,7 @@ def update_series(series_id: int, body: SeriesUpdate, db: Session = Depends(get_
     ensure_series_tab_color(db, series)
     db.commit()
     db.refresh(series)
+    assign_series_product_counts([series], load_series_product_counts(db, [series.id]))
     notify_public_catalogue_cache_refresh()
     return series
 
@@ -4532,12 +4867,11 @@ def refresh_series_graph_image(series_id: int, db: Session = Depends(get_db)):
     series = db.get(Series, series_id)
     if not series:
         raise HTTPException(status_code=404, detail="Series not found")
-    db.refresh(series)
     try:
         generate_series_graph(series)
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=f"Unable to generate series graph: {exc}") from exc
-    db.refresh(series)
+    assign_series_product_counts([series], load_series_product_counts(db, [series.id]))
     return series
 
 
@@ -4546,7 +4880,6 @@ def refresh_series_pdf(series_id: int, db: Session = Depends(get_db)):
     series = db.get(Series, series_id)
     if not series:
         raise HTTPException(status_code=404, detail="Series not found")
-    db.refresh(series)
     try:
         if series.product_type and series.product_type.supports_graph and series_has_graph_capable_line_data(series):
             generate_series_graph(series)
@@ -4558,7 +4891,7 @@ def refresh_series_pdf(series_id: int, db: Session = Depends(get_db)):
         generate_series_pdfs(series)
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=f"Unable to generate series PDF: {exc}") from exc
-    db.refresh(series)
+    assign_series_product_counts([series], load_series_product_counts(db, [series.id]))
     return series
 
 
@@ -4888,12 +5221,13 @@ def list_cms_series(
 ):
     q = db.query(Series).options(
         joinedload(Series.product_type),
-        selectinload(Series.products).joinedload(Product.product_type),
-        selectinload(Series.products).selectinload(Product.product_images),
+        selectinload(Series.series_images),
     )
     if product_type_key:
         q = q.join(ProductType).filter(ProductType.key == product_type_key)
-    return q.order_by(Series.name).all()
+    results = q.order_by(Series.name).all()
+    assign_series_product_counts(results, load_series_product_counts(db, [item.id for item in results]))
+    return results
 
 
 @app.get("/api/cms/series/{series_id}", response_model=CmsSeriesResponse, dependencies=[Depends(require_cms_token)], tags=["Customer CMS"], summary="Get one customer-facing series", description="Returns a single series record, including its linked products, for the WordPress customer-facing site.")
@@ -4902,14 +5236,14 @@ def get_cms_series(series_id: int, db: Session = Depends(get_db)):
         db.query(Series)
         .options(
             joinedload(Series.product_type),
-            selectinload(Series.products).joinedload(Product.product_type),
-            selectinload(Series.products).selectinload(Product.product_images),
+            selectinload(Series.series_images),
         )
         .filter(Series.id == series_id)
         .first()
     )
     if not series:
         raise HTTPException(status_code=404, detail="Series not found")
+    assign_series_product_counts([series], load_series_product_counts(db, [series.id]))
     return series
 
 
@@ -5391,7 +5725,6 @@ def refresh_product_graph_image(product_id: int, db: Session = Depends(get_db)):
     product = require_product(db, product_id)
     refresh_graph_for_product(db, product)
     db.commit()
-    db.refresh(product)
     return product
 
 
@@ -5407,7 +5740,6 @@ def refresh_product_pdf(product_id: int, db: Session = Depends(get_db)):
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=f"Unable to generate product PDF: {exc}") from exc
     db.commit()
-    db.refresh(product)
     return product
 
 
@@ -5617,11 +5949,7 @@ def start_regenerate_all_product_type_pdfs_job():
             product_types = (
                 db.query(ProductType)
                 .options(
-                    selectinload(ProductType.series)
-                    .selectinload(Series.products)
-                    .selectinload(Product.product_images),
-                    selectinload(ProductType.series).selectinload(Series.products).selectinload(Product.product_type),
-                    selectinload(ProductType.series).selectinload(Series.products).selectinload(Product.series),
+                    selectinload(ProductType.series).selectinload(Series.products).joinedload(Product.product_type),
                 )
                 .all()
             )
@@ -5991,11 +6319,98 @@ def delete_product_image(product_id: int, image_id: int, db: Session = Depends(g
     return {"deleted": image_id}
 
 
+@app.get("/api/series/{series_id}/series-images", response_model=list[SeriesImageResponse], dependencies=[Depends(get_current_user)], tags=["Series Images"])
+def get_series_images(series_id: int, db: Session = Depends(get_db)):
+    series = db.get(Series, series_id)
+    if not series:
+        raise HTTPException(404, "Series not found")
+    return sorted(series.series_images, key=lambda image: (image.sort_order, image.id))
+
+
+@app.post("/api/series/{series_id}/series-images", response_model=list[SeriesImageResponse], dependencies=[Depends(get_current_user)], tags=["Series Images"])
+async def upload_series_images(
+    series_id: int,
+    files: list[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+):
+    series = db.get(Series, series_id)
+    if not series:
+        raise HTTPException(404, "Series not found")
+    if not files:
+        raise HTTPException(400, "No files provided")
+
+    next_order = len(series.series_images)
+    for upload in files:
+        suffix = os.path.splitext(upload.filename or "")[1].lower() or ".jpg"
+        image = SeriesImage(
+            series_id=series_id,
+            file_name=f"upload_{series_id}_{next_order}{suffix}",
+            sort_order=next_order,
+        )
+        db.add(image)
+        db.flush()
+        contents = await upload.read()
+        with open(series_image_file_path(image.file_name), "wb") as output:
+            output.write(contents)
+        next_order += 1
+
+    sync_series_image_files(series)
+    db.commit()
+    db.refresh(series)
+    notify_public_catalogue_cache_refresh()
+    return sorted(series.series_images, key=lambda image: (image.sort_order, image.id))
+
+
+@app.post("/api/series/{series_id}/series-images/reorder", response_model=list[SeriesImageResponse], dependencies=[Depends(get_current_user)], tags=["Series Images"])
+def reorder_series_images(series_id: int, body: SeriesImageReorder, db: Session = Depends(get_db)):
+    series = db.get(Series, series_id)
+    if not series:
+        raise HTTPException(404, "Series not found")
+    images_by_id = {image.id: image for image in series.series_images}
+    if set(body.image_ids) != set(images_by_id.keys()):
+        raise HTTPException(400, "Image order must include every existing image exactly once")
+
+    for index, image_id in enumerate(body.image_ids):
+        images_by_id[image_id].sort_order = index
+
+    sync_series_image_files(series)
+    db.commit()
+    db.refresh(series)
+    notify_public_catalogue_cache_refresh()
+    return sorted(series.series_images, key=lambda image: (image.sort_order, image.id))
+
+
+@app.delete("/api/series/{series_id}/series-images/{image_id}", dependencies=[Depends(get_current_user)], tags=["Series Images"])
+def delete_series_image(series_id: int, image_id: int, db: Session = Depends(get_db)):
+    series = db.get(Series, series_id)
+    if not series:
+        raise HTTPException(404, "Series not found")
+    image = db.get(SeriesImage, image_id)
+    if not image or image.series_id != series_id:
+        raise HTTPException(404, "Series image not found")
+
+    delete_series_image_file(image)
+    db.delete(image)
+    db.flush()
+    sync_series_image_files(series)
+    db.commit()
+    notify_public_catalogue_cache_refresh()
+    return {"deleted": image_id}
+
+
 @app.get("/api/media/product_images/{file_name}", dependencies=[Depends(get_current_user)], tags=["Media"])
 def serve_product_image(file_name: str):
     file_path = image_file_path(file_name)
     if not file_path.is_file():
         raise HTTPException(status_code=404, detail="Product image not found")
+    return FileResponse(file_path)
+
+
+@app.get("/api/media/series_images/{file_name}", dependencies=[Depends(get_current_user)], tags=["Media"])
+def serve_series_image(file_name: str):
+    file_path = series_image_file_path(file_name)
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Series image not found")
     return FileResponse(file_path)
 
 
@@ -6012,7 +6427,7 @@ def serve_product_pdf(file_name: str):
     file_path = PRODUCT_PDFS_DIR / file_name
     if not file_path.is_file():
         raise HTTPException(status_code=404, detail="Product PDF not found")
-    return FileResponse(file_path, media_type="application/pdf")
+    return pdf_file_response(file_path)
 
 
 @app.get("/api/media/product_type_pdfs/{file_name}", dependencies=[Depends(get_current_user)], tags=["Media"])
@@ -6020,7 +6435,7 @@ def serve_product_type_pdf(file_name: str):
     file_path = PRODUCT_TYPE_PDFS_DIR / file_name
     if not file_path.is_file():
         raise HTTPException(status_code=404, detail="Product type PDF not found")
-    return FileResponse(file_path, media_type="application/pdf")
+    return pdf_file_response(file_path)
 
 
 @app.get("/api/media/series_graphs/{file_name}", dependencies=[Depends(get_current_user)], tags=["Media"])
@@ -6036,7 +6451,7 @@ def serve_series_pdf(file_name: str):
     file_path = SERIES_PDFS_DIR / file_name
     if not file_path.is_file():
         raise HTTPException(status_code=404, detail="Series PDF not found")
-    return FileResponse(file_path, media_type="application/pdf")
+    return pdf_file_response(file_path)
 
 
 @app.get(
@@ -6049,6 +6464,19 @@ def serve_cms_product_image(file_name: str):
     file_path = image_file_path(file_name)
     if not file_path.is_file():
         raise HTTPException(status_code=404, detail="Product image not found")
+    return FileResponse(file_path)
+
+
+@app.get(
+    "/api/cms/media/series_images/{file_name}",
+    tags=["Customer Media"],
+    summary="Get a public customer series image",
+    description="Public series image endpoint intended for rendered customer-facing pages.",
+)
+def serve_cms_series_image(file_name: str):
+    file_path = series_image_file_path(file_name)
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Series image not found")
     return FileResponse(file_path)
 
 
@@ -6075,7 +6503,7 @@ def serve_cms_product_pdf(file_name: str):
     file_path = PRODUCT_PDFS_DIR / file_name
     if not file_path.is_file():
         raise HTTPException(status_code=404, detail="Product PDF not found")
-    return FileResponse(file_path, media_type="application/pdf")
+    return pdf_file_response(file_path)
 
 
 @app.get(
@@ -6088,7 +6516,7 @@ def serve_cms_product_type_pdf(file_name: str):
     file_path = PRODUCT_TYPE_PDFS_DIR / file_name
     if not file_path.is_file():
         raise HTTPException(status_code=404, detail="Product type PDF not found")
-    return FileResponse(file_path, media_type="application/pdf")
+    return pdf_file_response(file_path)
 
 
 @app.get(
@@ -6114,7 +6542,7 @@ def serve_cms_series_pdf(file_name: str):
     file_path = SERIES_PDFS_DIR / file_name
     if not file_path.is_file():
         raise HTTPException(status_code=404, detail="Series PDF not found")
-    return FileResponse(file_path, media_type="application/pdf")
+    return pdf_file_response(file_path)
 
 
 # --- Frontend static serving ---

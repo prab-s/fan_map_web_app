@@ -31,6 +31,10 @@
     "imports": [
       "_index2.js",
       "_index-server.js",
+      "_exports.js",
+      "_utils.js",
+      "_root.js",
+      "_state.svelte.js",
       "_JobProgressPanel.js",
       "_SeriesNamesBadgeList.js"
     ]
@@ -64,7 +68,9 @@
     "file": "chunks/SeriesWorkspace.js",
     "name": "SeriesWorkspace",
     "imports": [
-      "_index2.js"
+      "_index2.js",
+      "_client.js",
+      "_api.js"
     ]
   },
   "_api.js": {
@@ -80,6 +86,17 @@
     "imports": [
       "_index.js",
       "_api.js"
+    ]
+  },
+  "_client.js": {
+    "file": "chunks/client.js",
+    "name": "client",
+    "imports": [
+      "_exports.js",
+      "_utils.js",
+      "_index.js",
+      "_root.js",
+      "_state.svelte.js"
     ]
   },
   "_config.js": {
@@ -184,10 +201,7 @@
     "imports": [
       "_index2.js",
       "_state.svelte.js",
-      "_exports.js",
-      "_utils.js",
-      "_index.js",
-      "_root.js"
+      "_client.js"
     ]
   },
   "node_modules/@sveltejs/kit/src/runtime/server/index.js": {
@@ -287,6 +301,23 @@
       "_ProductWorkspace.js"
     ]
   },
+  "src/routes/editor/edit/[product]/+page.js": {
+    "file": "entries/pages/editor/edit/_product_/_page.js",
+    "name": "entries/pages/editor/edit/_product_/_page",
+    "src": "src/routes/editor/edit/[product]/+page.js",
+    "isEntry": true
+  },
+  "src/routes/editor/edit/[product]/+page.svelte": {
+    "file": "entries/pages/editor/edit/_product_/_page.svelte.js",
+    "name": "entries/pages/editor/edit/_product_/_page.svelte",
+    "src": "src/routes/editor/edit/[product]/+page.svelte",
+    "isEntry": true,
+    "imports": [
+      "_index2.js",
+      "_ManagePageShell.js",
+      "_ProductWorkspace.js"
+    ]
+  },
   "src/routes/editor/product-types/+page.js": {
     "file": "entries/pages/editor/product-types/_page.js",
     "name": "entries/pages/editor/product-types/_page",
@@ -331,6 +362,23 @@
       "_ProductTypeWorkspace.js"
     ]
   },
+  "src/routes/editor/product-types/edit/[product_type]/+page.js": {
+    "file": "entries/pages/editor/product-types/edit/_product_type_/_page.js",
+    "name": "entries/pages/editor/product-types/edit/_product_type_/_page",
+    "src": "src/routes/editor/product-types/edit/[product_type]/+page.js",
+    "isEntry": true
+  },
+  "src/routes/editor/product-types/edit/[product_type]/+page.svelte": {
+    "file": "entries/pages/editor/product-types/edit/_product_type_/_page.svelte.js",
+    "name": "entries/pages/editor/product-types/edit/_product_type_/_page.svelte",
+    "src": "src/routes/editor/product-types/edit/[product_type]/+page.svelte",
+    "isEntry": true,
+    "imports": [
+      "_index2.js",
+      "_ManagePageShell.js",
+      "_ProductTypeWorkspace.js"
+    ]
+  },
   "src/routes/editor/series/+page.js": {
     "file": "entries/pages/editor/series/_page.js",
     "name": "entries/pages/editor/series/_page",
@@ -368,6 +416,23 @@
     "file": "entries/pages/editor/series/edit/_page.svelte.js",
     "name": "entries/pages/editor/series/edit/_page.svelte",
     "src": "src/routes/editor/series/edit/+page.svelte",
+    "isEntry": true,
+    "imports": [
+      "_index2.js",
+      "_ManagePageShell.js",
+      "_SeriesWorkspace.js"
+    ]
+  },
+  "src/routes/editor/series/edit/[series]/+page.js": {
+    "file": "entries/pages/editor/series/edit/_series_/_page.js",
+    "name": "entries/pages/editor/series/edit/_series_/_page",
+    "src": "src/routes/editor/series/edit/[series]/+page.js",
+    "isEntry": true
+  },
+  "src/routes/editor/series/edit/[series]/+page.svelte": {
+    "file": "entries/pages/editor/series/edit/_series_/_page.svelte.js",
+    "name": "entries/pages/editor/series/edit/_series_/_page.svelte",
+    "src": "src/routes/editor/series/edit/[series]/+page.svelte",
     "isEntry": true,
     "imports": [
       "_index2.js",
@@ -449,10 +514,16 @@
     "src": "src/routes/viewer/+page.js",
     "isEntry": true
   },
-  "src/routes/viewer/+page.svelte": {
-    "file": "entries/pages/viewer/_page.svelte.js",
-    "name": "entries/pages/viewer/_page.svelte",
-    "src": "src/routes/viewer/+page.svelte",
+  "src/routes/viewer/[tab]/[[record]]/+page.js": {
+    "file": "entries/pages/viewer/_tab_/__record__/_page.js",
+    "name": "entries/pages/viewer/_tab_/__record__/_page",
+    "src": "src/routes/viewer/[tab]/[[record]]/+page.js",
+    "isEntry": true
+  },
+  "src/routes/viewer/[tab]/[[record]]/+page.svelte": {
+    "file": "entries/pages/viewer/_tab_/__record__/_page.svelte.js",
+    "name": "entries/pages/viewer/_tab_/__record__/_page.svelte",
+    "src": "src/routes/viewer/[tab]/[[record]]/+page.svelte",
     "isEntry": true,
     "imports": [
       "_index2.js",
@@ -464,7 +535,7 @@
       "_SeriesNamesBadgeList.js"
     ],
     "css": [
-      "_app/immutable/assets/_page.C9tBdCMM.css"
+      "_app/immutable/assets/_page.DK_f5mgv.css"
     ]
   }
 }

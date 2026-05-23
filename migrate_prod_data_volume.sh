@@ -19,7 +19,7 @@ APP_TEMPLATES_VOLUME="${APP_TEMPLATES_VOLUME:-fan_graphs_templates}"
 SOURCE_DIR="${SOURCE_DIR:-data}"
 ALPINE_IMAGE="${ALPINE_IMAGE:-docker.io/library/alpine:3.20}"
 TEMPLATE_DIRS=(product series product_type registry.json)
-MEDIA_DIRS=(product_images product_graphs product_pdfs product_type_pdfs series_graphs series_pdfs)
+MEDIA_DIRS=(product_images series_images product_graphs product_pdfs product_type_pdfs series_graphs series_pdfs)
 
 if [[ ! -d "$SOURCE_DIR" ]]; then
   echo "Source data directory not found: $SOURCE_DIR"

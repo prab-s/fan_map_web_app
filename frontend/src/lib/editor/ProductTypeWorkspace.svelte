@@ -1,5 +1,6 @@
 <script>
   import { onDestroy, onMount } from 'svelte';
+  import { goto } from '$app/navigation';
   import { createProductType, getProductTypes, getTemplates, startRefreshProductTypePdfJob, updateProductType } from '$lib/api.js';
   import JobProgressPanel from '$lib/JobProgressPanel.svelte';
   import SeriesNamesBadgeList from '$lib/editor/SeriesNamesBadgeList.svelte';
@@ -20,14 +21,15 @@
 
   function syncProductTypeEditorUrl(productTypeId) {
     if (typeof window === 'undefined') return;
-    const params = new URLSearchParams(window.location.search);
-    params.delete('product_type');
-    if (productTypeId != null && productTypeId !== '') {
-      params.set('product_type', String(productTypeId));
-    }
-    const nextSearch = params.toString();
-    const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}${window.location.hash}`;
-    window.history.replaceState(window.history.state, '', nextUrl);
+    const nextProductTypeId = productTypeId == null || productTypeId === '' ? '' : String(productTypeId);
+    const nextUrl = nextProductTypeId ? `/editor/product-types/edit/${encodeURIComponent(nextProductTypeId)}` : '/editor/product-types/edit';
+    if (`${window.location.pathname}${window.location.search}${window.location.hash}` === nextUrl) return;
+    void goto(nextUrl, { replaceState: true, noScroll: true, keepFocus: true });
+  }
+
+  function productTypeViewerUrl(productTypeId = selectedProductType?.id) {
+    const nextProductTypeId = productTypeId == null || productTypeId === '' ? '' : String(productTypeId);
+    return nextProductTypeId ? `/viewer/product-type/${encodeURIComponent(nextProductTypeId)}` : '/viewer/product-type';
   }
 
   function resetDraft(productType = null) {
@@ -94,6 +96,12 @@
 
   function selectProductTypeFromUrl() {
     if (typeof window === 'undefined') return;
+    const pathMatch = window.location.pathname.match(/^\/editor\/product-types\/edit\/([^/]+)$/);
+    if (pathMatch?.[1]) {
+      selectedProductTypeId = decodeURIComponent(pathMatch[1]);
+      return;
+    }
+
     const params = new URLSearchParams(window.location.search);
     const requestedId = params.get('product_type');
     if (requestedId) {
@@ -351,6 +359,9 @@
                 Open Product Type PDF
               </a>
             {/if}
+            <a class="btn btn-outline-primary btn-sm" href={productTypeViewerUrl(selectedProductType.id)}>
+              View in Viewer
+            </a>
           </div>
         {/if}
 

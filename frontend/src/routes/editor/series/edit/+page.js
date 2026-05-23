@@ -1,21 +1,17 @@
-import { error } from '@sveltejs/kit';
+import { error, redirect } from '@sveltejs/kit';
+
+function seriesEditPath(series = '') {
+  return series ? `/editor/series/edit/${encodeURIComponent(String(series))}` : '/editor/series/edit';
+}
 
 export async function load({ fetch, url }) {
   const series = url.searchParams.get('series') || '';
 
   if (series) {
-    const response = await fetch('/api/series');
-    if (!response.ok) {
-      throw error(response.status, 'Unable to load series.');
-    }
-
-    const seriesRecords = await response.json();
-    if (!seriesRecords.some((seriesRecord) => String(seriesRecord.id) === String(series))) {
-      throw error(404, 'Series not found.');
-    }
+    throw redirect(307, seriesEditPath(series));
   }
 
   return {
-    series
+    series: ''
   };
 }

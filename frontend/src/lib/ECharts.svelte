@@ -13,6 +13,8 @@
   let handlerEntries = [];
   let zrHoverHandler = null;
   let zrLeaveHandler = null;
+  let resizeFrame = null;
+  let hasDataCoordGraphic = false;
 
   function normalizeGraphicElements(graphic) {
     if (!chart || !Array.isArray(graphic)) return graphic;
@@ -40,6 +42,15 @@
     };
   }
 
+  function optionHasDataCoordGraphic(nextOption) {
+    return Boolean(
+      nextOption &&
+        typeof nextOption === 'object' &&
+        Array.isArray(nextOption.graphic) &&
+        nextOption.graphic.some((element) => Array.isArray(element?.dataCoord))
+    );
+  }
+
   function attachHandlers() {
     if (!chart) return;
     // Remove old handlers first
@@ -58,11 +69,9 @@
     }
   }
 
-  $: if (container && option && Object.keys(option).length) {
+  $: if (chart && option && Object.keys(option).length) {
     try {
-      if (!chart) {
-        chart = echarts.init(container);
-      }
+      hasDataCoordGraphic = optionHasDataCoordGraphic(option);
       chart.setOption(normalizeOption(option), { notMerge: true });
       attachHandlers();
       attachHoverTracking();
@@ -102,29 +111,42 @@
   onMount(() => {
     if (container && !chart) {
       chart = echarts.init(container);
-      if (option && Object.keys(option).length) chart.setOption(normalizeOption(option), { notMerge: true });
+      if (option && Object.keys(option).length) {
+        hasDataCoordGraphic = optionHasDataCoordGraphic(option);
+        chart.setOption(normalizeOption(option), { notMerge: true });
+      }
 
       if (typeof onChartReady === 'function') {
         onChartReady(chart);
       }
       attachHoverTracking();
     }
-    window.addEventListener('resize', resize);
+    window.addEventListener('resize', scheduleResize);
   });
 
   onDestroy(() => {
-    window.removeEventListener('resize', resize);
+    window.removeEventListener('resize', scheduleResize);
+    if (resizeFrame !== null) {
+      window.cancelAnimationFrame(resizeFrame);
+      resizeFrame = null;
+    }
     window.__ECHARTS_HOVER_COORDS__ = null;
     if (chart) chart.dispose();
   });
 
+  function scheduleResize() {
+    if (resizeFrame !== null) return;
+    resizeFrame = window.requestAnimationFrame(() => {
+      resizeFrame = null;
+      resize();
+    });
+  }
+
   function resize() {
-    if (chart) {
-      chart.resize();
-      if (option && Object.keys(option).length) {
-        chart.setOption(normalizeOption(option), { notMerge: true });
-        attachHandlers();
-      }
+    if (!chart) return;
+    chart.resize();
+    if (hasDataCoordGraphic && option && Object.keys(option).length) {
+      chart.setOption(normalizeOption(option), { notMerge: true, lazyUpdate: true });
     }
   }
 </script>

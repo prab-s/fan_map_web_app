@@ -2417,14 +2417,15 @@
 
   function syncProductEditorUrl(productId) {
     if (typeof window === 'undefined') return;
-    const params = new URLSearchParams(window.location.search);
-    params.delete('product');
-    if (productId != null && productId !== '') {
-      params.set('product', String(productId));
-    }
-    const nextSearch = params.toString();
-    const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}${window.location.hash}`;
-    window.history.replaceState(window.history.state, '', nextUrl);
+    const nextProductId = productId == null || productId === '' ? '' : String(productId);
+    const nextUrl = nextProductId ? `/editor/edit/${encodeURIComponent(nextProductId)}` : '/editor/edit';
+    if (`${window.location.pathname}${window.location.search}${window.location.hash}` === nextUrl) return;
+    void goto(nextUrl, { replaceState: true, noScroll: true, keepFocus: true });
+  }
+
+  function productViewerUrl(productId = selectedProductId) {
+    const nextProductId = productId == null || productId === '' ? '' : String(productId);
+    return nextProductId ? `/viewer/product/${encodeURIComponent(nextProductId)}` : '/viewer/product';
   }
 
   $: if (initialProductId !== '' && Number(initialProductId) !== Number(selectedProductId)) {
@@ -3459,6 +3460,9 @@
           <button class="btn btn-primary" on:click={saveProduct} disabled={loading || savingProductDetails || savingMapPoints}>
             {savingProductDetails ? 'Saving Product Details...' : savingMapPoints ? (mapPointSaveProgressMessage || 'Saving Map Points...') : 'Save Changes'}
           </button>
+          <a class="btn btn-outline-primary" href={productViewerUrl(editingProductId)} target="_self">
+            View in Viewer
+          </a>
           <button
             class="btn btn-outline-danger"
             on:click={deleteCurrentProduct}

@@ -182,8 +182,6 @@ def _ensure_series_template_columns(target_engine):
                 """
             )
         )
-
-
 def _rename_series_comments_column(target_engine):
     inspector = inspect(target_engine)
     if "series" not in set(inspector.get_table_names()):

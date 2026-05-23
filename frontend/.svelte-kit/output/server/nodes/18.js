@@ -1,10 +1,8 @@
-import * as universal from '../entries/pages/viewer/_page.js';
+
 
 export const index = 18;
 let component_cache;
-export const component = async () => component_cache ??= (await import('../entries/pages/viewer/_page.svelte.js')).default;
-export { universal };
-export const universal_id = "src/routes/viewer/+page.js";
-export const imports = ["_app/immutable/nodes/18.Dh2RrARF.js","_app/immutable/chunks/ft-thZGf.js","_app/immutable/chunks/BUApaBEI.js","_app/immutable/chunks/CWj6FrbW.js","_app/immutable/chunks/CwKU-PYF.js","_app/immutable/chunks/C6CJiL_4.js","_app/immutable/chunks/DuarYxfY.js","_app/immutable/chunks/Ba1gQDHY.js","_app/immutable/chunks/BK6j85qX.js","_app/immutable/chunks/D3eFy9m5.js","_app/immutable/chunks/Df4-lkXd.js","_app/immutable/chunks/Cj7Sq08b.js","_app/immutable/chunks/CQpSwdnu.js","_app/immutable/chunks/Bfc47y5P.js","_app/immutable/chunks/DK9B0loH.js","_app/immutable/chunks/DR1oJ4wt.js","_app/immutable/chunks/DAEcheWN.js","_app/immutable/chunks/BiVeJLU6.js","_app/immutable/chunks/Bjzy9LBM.js","_app/immutable/chunks/B5u0XXfu.js","_app/immutable/chunks/BNqf1zIy.js"];
-export const stylesheets = ["_app/immutable/assets/18.C9tBdCMM.css"];
+export const component = async () => component_cache ??= (await import('../entries/pages/setup/_page.svelte.js')).default;
+export const imports = ["_app/immutable/nodes/18.Bdq0Bl7q.js","_app/immutable/chunks/CWj6FrbW.js","_app/immutable/chunks/BE3Ymb6W.js","_app/immutable/chunks/DjM084lz.js","_app/immutable/chunks/PhV_yTG7.js","_app/immutable/chunks/DKEnfhXw.js","_app/immutable/chunks/BKQHlZF4.js","_app/immutable/chunks/Ct1u3rbf.js","_app/immutable/chunks/C2YU_FUt.js","_app/immutable/chunks/BrX_bT4t.js","_app/immutable/chunks/Cb3O3CYq.js","_app/immutable/chunks/ByqEtcxO.js","_app/immutable/chunks/Bfc47y5P.js","_app/immutable/chunks/D8cqi-Qf.js","_app/immutable/chunks/DFXQM9Ij.js","_app/immutable/chunks/BKmqCniO.js","_app/immutable/chunks/vAmBirHz.js","_app/immutable/chunks/DkECU_-f.js","_app/immutable/chunks/CphzpU3_.js"];
+export const stylesheets = ["_app/immutable/assets/18.Co9_rRDY.css"];
 export const fonts = [];
