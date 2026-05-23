@@ -74,7 +74,11 @@
             </div>
 
             <section class="graph-panel">
-              <img src="{{series.graph_image_url}}" alt="{{series.name}} series graph" class="graph-image" />
+              <div class="series-graph series-graph--live" data-series-graph style="--series-graph-height: 73mm;">
+                <script type="application/json" class="series-graph__payload">{{series.graph_payload_json}}</script>
+                <div class="series-graph__mount"></div>
+                <img src="{{series.graph_image_url}}" alt="{{series.name}} series graph" class="graph-image series-graph__fallback" />
+              </div>
             </section>
           </section>
         </section>
@@ -86,7 +90,11 @@
         <section class="lower-grid">
           <section class="drawing-panel">
             <div class="drawing-panel__inner">
-              <img src="{{series.graph_image_url}}" alt="{{series.name}} graph detail" class="drawing-image" />
+              <div class="series-graph series-graph--live" data-series-graph style="--series-graph-height: 56mm;">
+                <script type="application/json" class="series-graph__payload">{{series.graph_payload_json}}</script>
+                <div class="series-graph__mount"></div>
+                <img src="{{series.graph_image_url}}" alt="{{series.name}} graph detail" class="drawing-image series-graph__fallback" />
+              </div>
             </div>
           </section>
 
@@ -111,5 +119,6 @@
         </section>
       </section>
     </main>
+    <script defer src="/series-graph-hydrator.js"></script>
   </body>
 </html>

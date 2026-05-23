@@ -1,51 +1,7 @@
 import { clsx as clsx$1 } from "clsx";
+import { r as run_all, b as deferred, i as includes, n as noop, c as safe_equals, e as equals, o as object_prototype, g as array_prototype, h as get_descriptor, j as get_prototype_of, k as is_array, l as is_extensible, m as index_of, p as has_own_property } from "./equality.js";
 import { b as browser } from "./false.js";
 import * as devalue from "devalue";
-var is_array = Array.isArray;
-var index_of = Array.prototype.indexOf;
-var includes = Array.prototype.includes;
-var array_from = Array.from;
-var define_property = Object.defineProperty;
-var get_descriptor = Object.getOwnPropertyDescriptor;
-var object_prototype = Object.prototype;
-var array_prototype = Array.prototype;
-var get_prototype_of = Object.getPrototypeOf;
-var is_extensible = Object.isExtensible;
-var has_own_property = Object.prototype.hasOwnProperty;
-const noop = () => {
-};
-function run_all(arr) {
-  for (var i = 0; i < arr.length; i++) {
-    arr[i]();
-  }
-}
-function deferred() {
-  var resolve;
-  var reject;
-  var promise = new Promise((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
-}
-function fallback(value, fallback2, lazy = false) {
-  return value === void 0 ? lazy ? (
-    /** @type {() => V} */
-    fallback2()
-  ) : (
-    /** @type {V} */
-    fallback2
-  ) : value;
-}
-function equals(value) {
-  return value === this.v;
-}
-function safe_not_equal(a, b) {
-  return a != a ? b == b : a !== b || a !== null && typeof a === "object" || typeof a === "function";
-}
-function safe_equals(value) {
-  return !safe_not_equal(value, this.v);
-}
 const DERIVED = 1 << 1;
 const EFFECT = 1 << 2;
 const RENDER_EFFECT = 1 << 3;
@@ -3112,74 +3068,69 @@ function derived(fn) {
   };
 }
 export {
-  hydration_failed as $,
-  block as A,
+  push$1 as $,
+  pause_effect as A,
   BOUNDARY_EFFECT as B,
   COMMENT_NODE as C,
-  branch as D,
-  create_text as E,
-  pause_effect as F,
-  current_batch as G,
+  current_batch as D,
+  move_effect as E,
+  defer_effect as F,
+  set_active_effect as G,
   HYDRATION_ERROR as H,
-  move_effect as I,
-  defer_effect as J,
-  set_active_effect as K,
-  set_active_reaction as L,
-  set_component_context as M,
-  Batch as N,
-  handle_error as O,
-  active_reaction as P,
-  component_context as Q,
-  internal_set as R,
-  destroy_effect as S,
-  invoke_error_boundary as T,
-  svelte_boundary_reset_onerror as U,
-  HYDRATION_START_FAILED as V,
-  EFFECT_TRANSPARENT as W,
-  EFFECT_PRESERVED as X,
-  define_property as Y,
-  init_operations as Z,
-  get_first_child as _,
-  attr as a,
-  clear_text_content as a0,
-  component_root as a1,
-  array_from as a2,
-  is_passive_event as a3,
-  push$1 as a4,
-  pop$1 as a5,
-  set as a6,
-  LEGACY_PROPS as a7,
-  flushSync as a8,
-  mutable_source as a9,
-  render as aa,
-  setContext as ab,
-  derived as ac,
-  safe_not_equal as ad,
-  ssr_context as ae,
-  stringify as af,
-  attr_class as b,
-  slot as c,
+  set_active_reaction as I,
+  set_component_context as J,
+  Batch as K,
+  handle_error as L,
+  active_reaction as M,
+  component_context as N,
+  internal_set as O,
+  destroy_effect as P,
+  invoke_error_boundary as Q,
+  svelte_boundary_reset_onerror as R,
+  HYDRATION_START_FAILED as S,
+  EFFECT_TRANSPARENT as T,
+  EFFECT_PRESERVED as U,
+  init_operations as V,
+  get_first_child as W,
+  hydration_failed as X,
+  clear_text_content as Y,
+  component_root as Z,
+  is_passive_event as _,
+  slot as a,
+  pop$1 as a0,
+  set as a1,
+  LEGACY_PROPS as a2,
+  flushSync as a3,
+  mutable_source as a4,
+  render as a5,
+  setContext as a6,
+  derived as a7,
+  ssr_context as a8,
+  stringify as a9,
+  clsx as aa,
+  attr as b,
+  attr_class as c,
   bind_props as d,
   escape_html as e,
-  fallback as f,
+  ensure_array_like as f,
   getContext as g,
   head as h,
-  ensure_array_like as i,
-  attr_style as j,
-  clsx as k,
-  HYDRATION_END as l,
-  HYDRATION_START as m,
-  noop as n,
-  HYDRATION_START_ELSE as o,
-  get_next_sibling as p,
-  effect_tracking as q,
-  get as r,
+  attr_style as i,
+  HYDRATION_END as j,
+  HYDRATION_START as k,
+  HYDRATION_START_ELSE as l,
+  get_next_sibling as m,
+  effect_tracking as n,
+  get as o,
+  source as p,
+  untrack as q,
+  render_effect as r,
   store_get as s,
-  render_effect as t,
+  increment as t,
   unsubscribe_stores as u,
-  source as v,
-  untrack as w,
-  increment as x,
-  queue_micro_task as y,
-  active_effect as z
+  queue_micro_task as v,
+  active_effect as w,
+  block as x,
+  branch as y,
+  create_text as z
 };

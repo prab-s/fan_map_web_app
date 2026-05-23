@@ -6,6 +6,7 @@
     getProduct,
     getProducts,
     getTemplates,
+    getSeriesById,
     getProductTypePdfContext,
     getProductTypes,
     getSeries,
@@ -70,10 +71,15 @@
   let seriesTabSeriesId = normalizeViewerStringId(data?.series);
   let seriesTabOptions = [];
   let selectedSeriesRecord = null;
+  let selectedSeriesGraphRecord = null;
+  let seriesChartOption = {};
+  let loadingSeriesGraph = false;
   let viewerUrlStateReady = false;
   let viewerStateHydrating = true;
   let seriesTabOptionsReady = false;
   let productTypeContextRequestToken = 0;
+  let seriesGraphRequestToken = 0;
+  let previousSelectedSeriesGraphId = null;
 
   let refreshingProductGraphId = null;
   let refreshingProductPdfJob = null;
@@ -270,6 +276,29 @@
     return product?.product_type_key === 'fan';
   }
 
+  function flattenSeriesGraphPayload(seriesGraphPayload) {
+    const rpmLines = Array.isArray(seriesGraphPayload?.rpmLines) ? seriesGraphPayload.rpmLines : [];
+    const rpmPoints = [];
+
+    for (const line of rpmLines) {
+      const rpmLineId = line?.id != null ? line.id : rpmPoints.length + 1;
+      const rpmValue = line?.rpm != null ? line.rpm : rpmLineId;
+      const points = Array.isArray(line?.points) ? line.points : [];
+
+      points.forEach((point, pointIndex) => {
+        rpmPoints.push({
+          id: point?.id ?? `${rpmLineId}-${pointIndex}`,
+          airflow: point?.airflow,
+          pressure: point?.pressure,
+          rpm_line_id: rpmLineId,
+          rpm: rpmValue
+        });
+      });
+    }
+
+    return { rpmLines, rpmPoints };
+  }
+
   function buildChartOptions() {
     const currentProduct = selectedProduct;
     const chartTheme = getChartTheme($theme);
@@ -299,6 +328,34 @@
             band_graph_permissible_label_color: currentProduct.band_graph_permissible_label_color
           }
         : null
+    });
+  }
+
+  function buildSeriesChartOptions() {
+    const seriesGraphPayload = selectedSeriesGraphRecord?.series_graph_payload;
+    if (!seriesGraphPayload?.hasGraphData) {
+      seriesChartOption = {};
+      return;
+    }
+
+    const rpmLines = Array.isArray(seriesGraphPayload.rpmLines) ? seriesGraphPayload.rpmLines : [];
+    const rpmPoints = Array.isArray(seriesGraphPayload.rpmPoints) && seriesGraphPayload.rpmPoints.length
+      ? seriesGraphPayload.rpmPoints
+      : flattenSeriesGraphPayload(seriesGraphPayload).rpmPoints;
+    const chartTheme = getChartTheme($theme);
+    const seriesName = String(selectedSeriesGraphRecord?.name || 'Series Graph').trim();
+    const title = String(seriesGraphPayload.graphTitle || seriesGraphPayload.title || `${seriesName} performance graph`).trim();
+
+    seriesChartOption = buildFullChartOption({
+      rpmLines,
+      rpmPoints,
+      efficiencyPoints: Array.isArray(seriesGraphPayload.efficiencyPoints) ? seriesGraphPayload.efficiencyPoints : [],
+      chartTheme,
+      title,
+      graphConfig: seriesGraphPayload.graphConfig,
+      showRpmBandShading: Boolean(seriesGraphPayload.showRpmBandShading),
+      graphStyle: seriesGraphPayload.graphStyle ?? null,
+      adaptGraphBackgroundToTheme: true
     });
   }
 
@@ -380,6 +437,7 @@
     await loadEverything();
     await loadSeriesOptions();
     await loadSeriesTabOptions();
+    await loadSelectedSeriesGraph();
   }
 
   async function refreshViewerAfterProductTypeMutation(productTypeId = selectedProductTypeRecord?.id) {
@@ -394,7 +452,7 @@
     try {
       await refreshGraphImage(product.id);
       await refreshViewerAfterProductMutation();
-      success = `Generated graph for ${product.model}.`;
+      reloadViewerPage();
     } catch (e) {
       error = e.message;
     } finally {
@@ -461,7 +519,7 @@
     error = '';
     success = '';
     try {
-      await refreshSeriesGraphImage(series.id);
+      selectedSeriesGraphRecord = await refreshSeriesGraphImage(series.id);
       await refreshViewerAfterSeriesMutation();
       success = `Generated series graph for ${series.name}.`;
     } catch (e) {
@@ -516,6 +574,11 @@
     }
   }
 
+  function reloadViewerPage() {
+    if (!browser) return;
+    window.location.reload();
+  }
+
   async function loadSeriesOptions() {
     try {
       const explicitSeries = await getSeries(productTypeFilter ? { product_type_key: productTypeFilter } : {});
@@ -555,6 +618,40 @@
       seriesTabSeriesId = '';
     }
 
+  }
+
+  async function loadSelectedSeriesGraph() {
+    const selectedSeriesId = selectedSeriesRecord?.id != null ? Number(selectedSeriesRecord.id) : null;
+    if (!selectedSeriesId) {
+      selectedSeriesGraphRecord = null;
+      seriesChartOption = {};
+      loadingSeriesGraph = false;
+      previousSelectedSeriesGraphId = null;
+      return;
+    }
+
+    if (selectedSeriesId === previousSelectedSeriesGraphId && selectedSeriesGraphRecord) {
+      return;
+    }
+
+    previousSelectedSeriesGraphId = selectedSeriesId;
+    const requestToken = ++seriesGraphRequestToken;
+    loadingSeriesGraph = true;
+
+    try {
+      const seriesDetail = await getSeriesById(selectedSeriesId);
+      if (requestToken !== seriesGraphRequestToken) return;
+      selectedSeriesGraphRecord = seriesDetail;
+      buildSeriesChartOptions();
+    } catch {
+      if (requestToken !== seriesGraphRequestToken) return;
+      selectedSeriesGraphRecord = null;
+      seriesChartOption = {};
+    } finally {
+      if (requestToken === seriesGraphRequestToken) {
+        loadingSeriesGraph = false;
+      }
+    }
   }
 
   async function loadProductTypeContext(productTypeId = selectedProductTypeRecord?.id) {
@@ -676,6 +773,10 @@
   $: selectedSeriesRecord =
     seriesTabOptions.find((series) => Number(series.id) === Number(seriesTabSeriesId)) || null;
 
+  $: if (selectedSeriesRecord?.id !== previousSelectedSeriesGraphId) {
+    loadSelectedSeriesGraph();
+  }
+
   $: selectedProductTypeRecord =
     productTypes.find(
       (productType) => String(productType.id) === String(selectedProductTypeId) || String(productType.key) === String(selectedProductTypeId)
@@ -706,6 +807,12 @@
 
   $: if (selectedSeriesRecord && activeViewerTab !== 'series' && seriesTabSeriesId) {
     // Preserve explicit deep links to series records.
+  }
+
+  $: if (selectedSeriesGraphRecord && $theme) {
+    buildSeriesChartOptions();
+  } else if (!selectedSeriesGraphRecord) {
+    seriesChartOption = {};
   }
 
   $: if (viewerUrlStateReady) {
@@ -1334,9 +1441,6 @@
               <button class="btn btn-outline-secondary btn-sm" on:click={() => regenerateSeriesPdfAsset(selectedSeriesRecord)} disabled={refreshingSeriesPdfJob?.status === 'running'}>
                 {refreshingSeriesPdfJob?.status === 'running' ? 'Generating PDFs...' : 'Generate Series PDFs'}
               </button>
-              {#if selectedSeriesRecord.series_graph_image_url}
-                <a class="btn btn-outline-secondary btn-sm" href={selectedSeriesRecord.series_graph_image_url} target="_blank" rel="noreferrer">Open Series Graph</a>
-              {/if}
               {#if selectedSeriesRecord.series_printed_pdf_url}
                 <a class="btn btn-outline-secondary btn-sm" href={selectedSeriesRecord.series_printed_pdf_url} target="_blank" rel="noreferrer">Open Printed PDF</a>
               {/if}
@@ -1350,6 +1454,26 @@
               Printed template: {seriesPdfTemplateLabels(selectedSeriesRecord).printed} · Online template: {seriesPdfTemplateLabels(selectedSeriesRecord).online}
             </div>
             <JobProgressPanel job={refreshingSeriesPdfJob} label="Series PDF generation" />
+
+            <div class="card series-graph-card shadow-sm mb-3">
+              <div class="card-body">
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                  <h4 class="h6 mb-0">Series Graph</h4>
+                  <div class="ms-auto">
+                    {#if selectedSeriesRecord.series_graph_image_url}
+                      <a class="btn btn-outline-secondary btn-sm" href={selectedSeriesRecord.series_graph_image_url} target="_blank" rel="noreferrer">Open Series Graph</a>
+                    {/if}
+                  </div>
+                </div>
+                {#if loadingSeriesGraph}
+                  <p class="text-body-secondary mb-0">Loading live series graph...</p>
+                {:else if Object.keys(seriesChartOption).length > 0}
+                  <ECharts option={seriesChartOption} height="700px" />
+                {:else}
+                  <p class="text-body-secondary mb-0">No series graph data is available yet.</p>
+                {/if}
+              </div>
+            </div>
 
             <div class="row g-3">
               <div class="col-12 col-lg-6">
@@ -1474,6 +1598,11 @@
     height: 160px;
     object-fit: contain;
     display: block;
+  }
+
+  .series-graph-card {
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.85rem;
   }
 
   .fan-acoustic-viewer-table {

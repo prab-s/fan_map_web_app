@@ -4,8 +4,8 @@ function url(path) {
   return `${API_BASE}${path}`;
 }
 
-async function apiFetch(path, options = {}) {
-  const response = await fetch(url(path), {
+async function apiFetch(path, options = {}, fetchImpl = fetch) {
+  const response = await fetchImpl(url(path), {
     credentials: 'include',
     ...options
   });
@@ -195,6 +195,32 @@ export async function uploadTemplateAsset(templateType, templateId, body) {
 export async function getSeries(params = {}) {
   const sp = new URLSearchParams(params).toString();
   const r = await apiFetch('/series' + (sp ? '?' + sp : ''));
+  return r.json();
+}
+
+export async function getSeriesById(id) {
+  const r = await apiFetch(`/series/${encodeURIComponent(String(id))}`);
+  return r.json();
+}
+
+export async function getPublicSeries(seriesIdentifier, fetchImpl = fetch) {
+  const r = await apiFetch(`/public/series/${encodeURIComponent(seriesIdentifier)}`, {}, fetchImpl);
+  return r.json();
+}
+
+export async function getPublicProductTypes(fetchImpl = fetch) {
+  const r = await apiFetch('/public/product-types', {}, fetchImpl);
+  return r.json();
+}
+
+export async function getPublicProducts(params = {}, fetchImpl = fetch) {
+  const sp = new URLSearchParams(params).toString();
+  const r = await apiFetch('/public/products' + (sp ? `?${sp}` : ''), {}, fetchImpl);
+  return r.json();
+}
+
+export async function getPublicProduct(productIdentifier, fetchImpl = fetch) {
+  const r = await apiFetch(`/public/products/${encodeURIComponent(productIdentifier)}`, {}, fetchImpl);
   return r.json();
 }
 

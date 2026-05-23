@@ -1,5 +1,5 @@
 <script>
-  import { onDestroy, onMount } from 'svelte';
+  import { onDestroy } from 'svelte';
   import { formatMaintenanceDuration, maintenanceJobElapsedMs, maintenanceJobProgressPercent } from '$lib/maintenanceJobs.js';
 
   export let job = null;
@@ -39,15 +39,21 @@
   $: startedLabel = formatMaintenanceDuration(elapsedMs);
   $: staleLabel = formatMaintenanceDuration(staleForMs);
 
-  onMount(() => {
-    heartbeat = setInterval(() => {
-      now = Date.now();
-    }, 1000);
-  });
+  $: {
+    if (isRunning && !heartbeat) {
+      heartbeat = setInterval(() => {
+        now = Date.now();
+      }, 1000);
+    } else if (!isRunning && heartbeat) {
+      clearInterval(heartbeat);
+      heartbeat = null;
+    }
+  }
 
   onDestroy(() => {
     if (heartbeat) {
       clearInterval(heartbeat);
+      heartbeat = null;
     }
   });
 </script>

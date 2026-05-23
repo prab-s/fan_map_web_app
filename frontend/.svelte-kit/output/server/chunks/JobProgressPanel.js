@@ -1,5 +1,6 @@
-import { f as fallback, e as escape_html, b as attr_class, a as attr, j as attr_style, d as bind_props } from "./index2.js";
+import { e as escape_html, c as attr_class, b as attr, i as attr_style, d as bind_props } from "./index2.js";
 import { o as onDestroy } from "./index-server.js";
+import { f as fallback } from "./equality.js";
 function maintenanceJobProgressPercent(job) {
   if (job?.progress_percent == null) return null;
   const percent = Number(job.progress_percent);
@@ -43,6 +44,7 @@ function JobProgressPanel($$renderer, $$props) {
     let now = Date.now();
     let lastProgressSignature = "";
     let lastProgressChangeAt = Date.now();
+    let heartbeat = null;
     function progressSignature(nextJob) {
       return [
         nextJob?.status ?? "",
@@ -53,11 +55,28 @@ function JobProgressPanel($$renderer, $$props) {
       ].join("|");
     }
     onDestroy(() => {
+      if (heartbeat) {
+        clearInterval(heartbeat);
+        heartbeat = null;
+      }
     });
     progressPercent = maintenanceJobProgressPercent(job);
     isRunning = job?.status === "running";
     isCompleted = job?.status === "completed";
     isFailed = job?.status === "failed";
+    {
+      if (isRunning && !heartbeat) {
+        heartbeat = setInterval(
+          () => {
+            now = Date.now();
+          },
+          1e3
+        );
+      } else if (!isRunning && heartbeat) {
+        clearInterval(heartbeat);
+        heartbeat = null;
+      }
+    }
     elapsedMs = maintenanceJobElapsedMs(job, now);
     if (job) {
       const nextSignature = progressSignature(job);

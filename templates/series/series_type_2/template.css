@@ -379,11 +379,8 @@ body.series-template--type-2 {
 }
 
 .graph-panel {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
   min-width: 0;
-  min-height: 62mm;
 }
 
 .graph-image {
@@ -391,6 +388,28 @@ body.series-template--type-2 {
   width: 100%;
   max-height: 80mm;
   object-fit: contain;
+}
+
+.series-graph--live {
+  position: relative;
+  width: 100%;
+  min-height: var(--series-graph-height, 80mm);
+}
+
+.series-graph__mount {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.series-graph__fallback {
+  position: relative;
+  z-index: 1;
+}
+
+.series-graph--live.is-hydrated .series-graph__fallback {
+  display: none;
 }
 
 .performance-band {

@@ -269,6 +269,19 @@ body.series-template {
   min-height: 73mm;
 }
 
+.series-graph--live {
+  width: 100%;
+}
+
+.series-graph__mount {
+  width: 100%;
+  height: var(--series-graph-height, 73mm);
+}
+
+.series-graph--live.is-hydrated .series-graph__fallback {
+  display: none;
+}
+
 .graph-image {
   display: block;
   width: 100%;
@@ -342,6 +355,10 @@ body.series-template {
   align-items: center;
   justify-content: center;
   border: 0.3mm solid transparent;
+}
+
+.drawing-panel__inner .series-graph__mount {
+  height: var(--series-graph-height, 56mm);
 }
 
 .drawing-image {

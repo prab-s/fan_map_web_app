@@ -8,6 +8,10 @@
 
   let username = '';
   let password = '';
+  let isPublicRoute = false;
+  const PUBLIC_ROUTE_PREFIXES = ['/series', '/products'];
+
+  $: isPublicRoute = PUBLIC_ROUTE_PREFIXES.some((prefix) => $page.url.pathname === prefix || $page.url.pathname.startsWith(`${prefix}/`));
 
   onMount(() => {
     initTheme();
@@ -29,7 +33,11 @@
 </script>
 
 <div class="app-shell">
-  {#if !$auth.ready}
+  {#if isPublicRoute}
+    <main class="app-frame py-0">
+      <slot />
+    </main>
+  {:else if !$auth.ready}
     <main class="app-frame py-5">
       <div class="d-flex justify-content-center">
         <div class="card shadow-sm" style="max-width: 420px; width: 100%;">

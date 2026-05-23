@@ -32,8 +32,66 @@ class CatalogueCache:
         self.cache_path = settings.catalogue_cache_path
         self.refresh_interval_seconds = settings.catalogue_refresh_interval_seconds
         self._snapshot = CatalogueSnapshot()
+        self._product_types_by_key: dict[str, dict] = {}
+        self._series_by_product_type_key: dict[str, list[dict]] = {}
+        self._products_by_product_type_key: dict[str, list[dict]] = {}
+        self._products_by_series_id: dict[str, list[dict]] = {}
         self._refresh_task: asyncio.Task | None = None
         self._lock = asyncio.Lock()
+
+    @staticmethod
+    def _normalize_lookup_key(value) -> str:
+        return str(value or "").strip()
+
+    @staticmethod
+    def _series_sort_key(item: dict):
+        return str(item.get("name") or "").casefold()
+
+    @staticmethod
+    def _product_sort_key(item: dict):
+        return str(item.get("model") or "").casefold()
+
+    def _rebuild_indexes(self, snapshot: CatalogueSnapshot):
+        product_types_by_key: dict[str, dict] = {}
+        series_by_product_type_key: dict[str, list[dict]] = {}
+        products_by_product_type_key: dict[str, list[dict]] = {}
+        products_by_series_id: dict[str, list[dict]] = {}
+
+        for item in snapshot.product_types:
+            key = self._normalize_lookup_key(item.get("key"))
+            if key:
+                product_types_by_key[key] = item
+
+        for item in snapshot.series:
+            product_type_key = self._normalize_lookup_key(item.get("product_type_key"))
+            if product_type_key:
+                series_by_product_type_key.setdefault(product_type_key, []).append(item)
+
+        for item in snapshot.products:
+            product_type_key = self._normalize_lookup_key(item.get("product_type_key"))
+            if product_type_key:
+                products_by_product_type_key.setdefault(product_type_key, []).append(item)
+
+            series_id = self._normalize_lookup_key(item.get("series_id"))
+            if series_id:
+                products_by_series_id.setdefault(series_id, []).append(item)
+
+        for series_items in series_by_product_type_key.values():
+            series_items.sort(key=self._series_sort_key)
+        for product_items in products_by_product_type_key.values():
+            product_items.sort(key=self._product_sort_key)
+        for product_items in products_by_series_id.values():
+            product_items.sort(key=self._product_sort_key)
+
+        self._product_types_by_key = product_types_by_key
+        self._series_by_product_type_key = series_by_product_type_key
+        self._products_by_product_type_key = products_by_product_type_key
+        self._products_by_series_id = products_by_series_id
+
+    async def _set_snapshot(self, snapshot: CatalogueSnapshot):
+        async with self._lock:
+            self._snapshot = snapshot
+            self._rebuild_indexes(snapshot)
 
     async def initialize(self):
         self._load_from_disk()
@@ -88,6 +146,7 @@ class CatalogueCache:
             products=list(payload.get("products") or []),
             fetched_at=payload.get("fetched_at"),
         )
+        self._rebuild_indexes(self._snapshot)
 
     def _write_to_disk(self):
         if not self.cache_path:
@@ -103,27 +162,31 @@ class CatalogueCache:
         start = time.perf_counter()
         logger.debug("catalogue cache refresh starting against backend %s", settings.backend_api_base_url)
         try:
-            payload = await api.catalogue_index()
+            product_types = await api.product_types()
+            products = await api.products()
         except (ApiClientError, Exception) as exc:
             logger.warning("Catalogue cache refresh failed: %s", exc)
             raise
 
-        if not isinstance(payload, dict):
-            raise ApiClientError(502, "Catalogue index payload was invalid.")
+        if not isinstance(product_types, list):
+            raise ApiClientError(502, "Public product types payload was invalid.")
+        if not isinstance(products, list):
+            raise ApiClientError(502, "Public products payload was invalid.")
 
+        product_type_list = list(product_types)
+        product_list = list(products)
         snapshot = CatalogueSnapshot(
-            product_types=list(payload.get("product_types") or []),
-            series=list(payload.get("series") or []),
-            products=list(payload.get("products") or []),
+            product_types=product_type_list,
+            series=build_series_summary_from_products(product_list),
+            products=product_list,
             fetched_at=datetime.now(timezone.utc).isoformat(),
         )
 
-        async with self._lock:
-            self._snapshot = snapshot
-            try:
-                self._write_to_disk()
-            except OSError as exc:
-                logger.warning("Unable to write catalogue cache to %s: %s", self.cache_path, exc)
+        await self._set_snapshot(snapshot)
+        try:
+            self._write_to_disk()
+        except OSError as exc:
+            logger.warning("Unable to write catalogue cache to %s: %s", self.cache_path, exc)
         logger.info(
             "Catalogue cache refreshed in %.1fms (%d product types, %d series, %d products)",
             (time.perf_counter() - start) * 1000.0,
@@ -176,27 +239,25 @@ class CatalogueCache:
 
     def product_type(self, product_type_key: str) -> dict | None:
         start = time.perf_counter()
-        normalized_key = str(product_type_key or "").strip()
+        normalized_key = self._normalize_lookup_key(product_type_key)
         if not normalized_key:
             logger.debug("catalogue cache product_type lookup skipped because no key was provided")
             return None
-        for item in self._snapshot.product_types:
-            if str(item.get("key") or "").strip() == normalized_key:
-                logger.debug("catalogue cache product_type lookup for %s took %.2fms", normalized_key, (time.perf_counter() - start) * 1000.0)
-                return dict(item)
-        logger.debug("catalogue cache product_type lookup for %s missed in %.2fms", normalized_key, (time.perf_counter() - start) * 1000.0)
-        return None
+        item = self._product_types_by_key.get(normalized_key)
+        if item is None:
+            logger.debug("catalogue cache product_type lookup for %s missed in %.2fms", normalized_key, (time.perf_counter() - start) * 1000.0)
+            return None
+        logger.debug("catalogue cache product_type lookup for %s took %.2fms", normalized_key, (time.perf_counter() - start) * 1000.0)
+        return dict(item)
 
     def series_list(self, product_type_key: str | None = None) -> list[dict]:
         start = time.perf_counter()
-        series = self._snapshot.series
-        if product_type_key:
-            normalized_key = str(product_type_key or "").strip()
-            series = [item for item in series if str(item.get("product_type_key") or "").strip() == normalized_key]
+        normalized_key = self._normalize_lookup_key(product_type_key)
+        series = self._series_by_product_type_key.get(normalized_key, []) if normalized_key else self._snapshot.series
         result = sorted((dict(item) for item in series), key=lambda item: str(item.get("name") or "").casefold())
         logger.debug(
             "catalogue cache series_list lookup for %s returned %d items in %.2fms",
-            product_type_key or "*",
+            normalized_key or "*",
             len(result),
             (time.perf_counter() - start) * 1000.0,
         )
@@ -216,17 +277,26 @@ class CatalogueCache:
         except ParameterFilterError:
             raise
 
+        normalized_type_key = self._normalize_lookup_key(product_type_key)
+        normalized_series_id = self._normalize_lookup_key(series_id) if series_id not in (None, "") else ""
+        if normalized_series_id:
+            candidates = self._products_by_series_id.get(normalized_series_id, [])
+        elif normalized_type_key:
+            candidates = self._products_by_product_type_key.get(normalized_type_key, [])
+        else:
+            candidates = self._snapshot.products
+
         result = filter_products(
-            [dict(item) for item in self._snapshot.products],
-            product_type_key=product_type_key,
+            [dict(item) for item in candidates],
+            product_type_key=normalized_type_key,
             search=search,
-            series_id=series_id,
+            series_id=normalized_series_id or None,
             parameter_filters=parsed_filters,
         )
         logger.debug(
             "catalogue cache products lookup type=%s series=%s search=%s returned %d items in %.2fms",
-            product_type_key or "*",
-            series_id or "*",
+            normalized_type_key or "*",
+            normalized_series_id or "*",
             search or "*",
             len(result),
             (time.perf_counter() - start) * 1000.0,

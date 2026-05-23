@@ -10,7 +10,7 @@ return {
 	assets: new Set(["favicon.png"]),
 	mimeTypes: {".png":"image/png"},
 	_: {
-		client: {start:"_app/immutable/entry/start.DRoiIGlU.js",app:"_app/immutable/entry/app.BAP8YnBj.js",imports:["_app/immutable/entry/start.DRoiIGlU.js","_app/immutable/chunks/DDg0VLLT.js","_app/immutable/chunks/PhV_yTG7.js","_app/immutable/chunks/DjM084lz.js","_app/immutable/chunks/BUApaBEI.js","_app/immutable/entry/app.BAP8YnBj.js","_app/immutable/chunks/C1FmrZbK.js","_app/immutable/chunks/DjM084lz.js","_app/immutable/chunks/CWj6FrbW.js","_app/immutable/chunks/PhV_yTG7.js","_app/immutable/chunks/DKEnfhXw.js","_app/immutable/chunks/BKmqCniO.js","_app/immutable/chunks/vAmBirHz.js"],stylesheets:[],fonts:[],uses_env_dynamic_public:false},
+		client: {start:"_app/immutable/entry/start.DAGITLWm.js",app:"_app/immutable/entry/app.DhtUHhD0.js",imports:["_app/immutable/entry/start.DAGITLWm.js","_app/immutable/chunks/DN4oOorn.js","_app/immutable/chunks/DDveYc0A.js","_app/immutable/chunks/CwDMihiN.js","_app/immutable/chunks/BUApaBEI.js","_app/immutable/entry/app.DhtUHhD0.js","_app/immutable/chunks/C1FmrZbK.js","_app/immutable/chunks/CwDMihiN.js","_app/immutable/chunks/CWj6FrbW.js","_app/immutable/chunks/DDveYc0A.js","_app/immutable/chunks/Clzr85AD.js","_app/immutable/chunks/CBwzbs7A.js","_app/immutable/chunks/C5otqFfd.js","_app/immutable/chunks/LNRkU0hI.js"],stylesheets:[],fonts:[],uses_env_dynamic_public:false},
 		nodes: [
 			__memo(() => import('./nodes/0.js')),
 			__memo(() => import('./nodes/1.js')),
@@ -34,7 +34,11 @@ return {
 			__memo(() => import('./nodes/19.js')),
 			__memo(() => import('./nodes/20.js')),
 			__memo(() => import('./nodes/21.js')),
-			__memo(() => import('./nodes/22.js'))
+			__memo(() => import('./nodes/22.js')),
+			__memo(() => import('./nodes/23.js')),
+			__memo(() => import('./nodes/24.js')),
+			__memo(() => import('./nodes/25.js')),
+			__memo(() => import('./nodes/26.js'))
 		],
 		remotes: {
 			
@@ -153,38 +157,66 @@ return {
 				endpoint: null
 			},
 			{
+				id: "/products",
+				pattern: /^\/products\/?$/,
+				params: [],
+				page: { layouts: [0,], errors: [1,], leaf: 18 },
+				endpoint: null
+			},
+			{
+				id: "/products/type/[product_type]",
+				pattern: /^\/products\/type\/([^/]+?)\/?$/,
+				params: [{"name":"product_type","optional":false,"rest":false,"chained":false}],
+				page: { layouts: [0,], errors: [1,], leaf: 20 },
+				endpoint: null
+			},
+			{
+				id: "/products/[product]",
+				pattern: /^\/products\/([^/]+?)\/?$/,
+				params: [{"name":"product","optional":false,"rest":false,"chained":false}],
+				page: { layouts: [0,], errors: [1,], leaf: 19 },
+				endpoint: null
+			},
+			{
+				id: "/series/[series]",
+				pattern: /^\/series\/([^/]+?)\/?$/,
+				params: [{"name":"series","optional":false,"rest":false,"chained":false}],
+				page: { layouts: [0,], errors: [1,], leaf: 21 },
+				endpoint: null
+			},
+			{
 				id: "/setup",
 				pattern: /^\/setup\/?$/,
 				params: [],
-				page: { layouts: [0,], errors: [1,], leaf: 18 },
+				page: { layouts: [0,], errors: [1,], leaf: 22 },
 				endpoint: null
 			},
 			{
 				id: "/template-builder-v2",
 				pattern: /^\/template-builder-v2\/?$/,
 				params: [],
-				page: { layouts: [0,], errors: [1,], leaf: 20 },
+				page: { layouts: [0,], errors: [1,], leaf: 24 },
 				endpoint: null
 			},
 			{
 				id: "/template-builder",
 				pattern: /^\/template-builder\/?$/,
 				params: [],
-				page: { layouts: [0,], errors: [1,], leaf: 19 },
+				page: { layouts: [0,], errors: [1,], leaf: 23 },
 				endpoint: null
 			},
 			{
 				id: "/viewer",
 				pattern: /^\/viewer\/?$/,
 				params: [],
-				page: { layouts: [0,], errors: [1,], leaf: 21 },
+				page: { layouts: [0,], errors: [1,], leaf: 25 },
 				endpoint: null
 			},
 			{
 				id: "/viewer/[tab]/[[record]]",
 				pattern: /^\/viewer\/([^/]+?)(?:\/([^/]+))?\/?$/,
 				params: [{"name":"tab","optional":false,"rest":false,"chained":false},{"name":"record","optional":true,"rest":false,"chained":true}],
-				page: { layouts: [0,], errors: [1,], leaf: 22 },
+				page: { layouts: [0,], errors: [1,], leaf: 26 },
 				endpoint: null
 			}
 		],

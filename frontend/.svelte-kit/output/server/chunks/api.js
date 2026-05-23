@@ -2,8 +2,8 @@ import { A as API_BASE } from "./config.js";
 function url(path) {
   return `${API_BASE}${path}`;
 }
-async function apiFetch(path, options = {}) {
-  const response = await fetch(url(path), {
+async function apiFetch(path, options = {}, fetchImpl = fetch) {
+  const response = await fetchImpl(url(path), {
     credentials: "include",
     ...options
   });
@@ -67,6 +67,27 @@ async function getSeries(params = {}) {
   const r = await apiFetch("/series" + (sp ? "?" + sp : ""));
   return r.json();
 }
+async function getSeriesById(id) {
+  const r = await apiFetch(`/series/${encodeURIComponent(String(id))}`);
+  return r.json();
+}
+async function getPublicSeries(seriesIdentifier, fetchImpl = fetch) {
+  const r = await apiFetch(`/public/series/${encodeURIComponent(seriesIdentifier)}`, {}, fetchImpl);
+  return r.json();
+}
+async function getPublicProductTypes(fetchImpl = fetch) {
+  const r = await apiFetch("/public/product-types", {}, fetchImpl);
+  return r.json();
+}
+async function getPublicProducts(params = {}, fetchImpl = fetch) {
+  const sp = new URLSearchParams(params).toString();
+  const r = await apiFetch("/public/products" + (sp ? `?${sp}` : ""), {}, fetchImpl);
+  return r.json();
+}
+async function getPublicProduct(productIdentifier, fetchImpl = fetch) {
+  const r = await apiFetch(`/public/products/${encodeURIComponent(productIdentifier)}`, {}, fetchImpl);
+  return r.json();
+}
 async function uploadSeriesImages(seriesId, files) {
   const formData = new FormData();
   for (const file of files) {
@@ -121,16 +142,21 @@ async function getUsers() {
   return r.json();
 }
 export {
-  getProductTypes as a,
-  login as b,
-  getAuthSession as c,
+  login as a,
+  getAuthSession as b,
+  getPublicProduct as c,
   deleteSeriesImage as d,
-  getProductChartData as e,
-  getSeries as f,
-  getUsers as g,
-  getProducts as h,
-  getProduct as i,
+  getPublicProducts as e,
+  getPublicSeries as f,
+  getPublicProductTypes as g,
+  getUsers as h,
+  getProductTypes as i,
+  getProductChartData as j,
+  getSeries as k,
   logout as l,
+  getSeriesById as m,
+  getProducts as n,
+  getProduct as o,
   reorderSeriesImages as r,
   uploadSeriesImages as u
 };

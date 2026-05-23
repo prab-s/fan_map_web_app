@@ -1,6 +1,5 @@
 <script>
-  import { onMount, onDestroy } from 'svelte';
-  import * as echarts from 'echarts';
+  import { onMount } from 'svelte';
 
   /** @type {import('echarts').EChartsOption} */
   export let option = {};
@@ -10,11 +9,13 @@
 
   let container;
   let chart;
+  let echartsModule = null;
   let handlerEntries = [];
   let zrHoverHandler = null;
   let zrLeaveHandler = null;
   let resizeFrame = null;
   let hasDataCoordGraphic = false;
+  let destroyed = false;
 
   function normalizeGraphicElements(graphic) {
     if (!chart || !Array.isArray(graphic)) return graphic;
@@ -109,30 +110,45 @@
   }
 
   onMount(() => {
-    if (container && !chart) {
-      chart = echarts.init(container);
-      if (option && Object.keys(option).length) {
-        hasDataCoordGraphic = optionHasDataCoordGraphic(option);
-        chart.setOption(normalizeOption(option), { notMerge: true });
-      }
-
-      if (typeof onChartReady === 'function') {
-        onChartReady(chart);
-      }
-      attachHoverTracking();
-    }
+    destroyed = false;
+    void initializeChart().catch((error) => {
+      console.error('ECharts load error:', error);
+    });
     window.addEventListener('resize', scheduleResize);
+
+    return () => {
+      destroyed = true;
+      window.removeEventListener('resize', scheduleResize);
+      if (resizeFrame !== null) {
+        window.cancelAnimationFrame(resizeFrame);
+        resizeFrame = null;
+      }
+      window.__ECHARTS_HOVER_COORDS__ = null;
+      if (chart) chart.dispose();
+      chart = null;
+    };
   });
 
-  onDestroy(() => {
-    window.removeEventListener('resize', scheduleResize);
-    if (resizeFrame !== null) {
-      window.cancelAnimationFrame(resizeFrame);
-      resizeFrame = null;
+  async function initializeChart() {
+    if (!container || chart) return;
+
+    if (!echartsModule) {
+      echartsModule = await import('echarts');
     }
-    window.__ECHARTS_HOVER_COORDS__ = null;
-    if (chart) chart.dispose();
-  });
+
+    if (destroyed || !container || chart) return;
+
+    chart = echartsModule.init(container);
+    if (option && Object.keys(option).length) {
+      hasDataCoordGraphic = optionHasDataCoordGraphic(option);
+      chart.setOption(normalizeOption(option), { notMerge: true });
+    }
+
+    if (typeof onChartReady === 'function') {
+      onChartReady(chart);
+    }
+    attachHoverTracking();
+  }
 
   function scheduleResize() {
     if (resizeFrame !== null) return;

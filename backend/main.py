@@ -14,7 +14,6 @@ import secrets
 import shlex
 import shutil
 import subprocess
-import tarfile
 import tempfile
 import threading
 import zipfile
@@ -68,7 +67,6 @@ from backend.models import AppSettings
 from backend.timezone import APP_TIMEZONE, backend_now, backend_now_iso
 from backend.schemas import (
     BandGraphStyleSettings,
-    CmsProductGraphValuesResponse,
     ProductCreate,
     ProductUpdate,
     ProductResponse,
@@ -116,7 +114,6 @@ from backend.schemas import (
     FileManagerListingResponse,
     FileManagerRenameRequest,
     ProductTypePdfResponse,
-    CmsCatalogueIndexResponse,
     SetupLogEntryResponse,
 )
 
@@ -141,7 +138,6 @@ DATA_BACKUP_DIRS = [
     SERIES_PDFS_DIR,
 ]
 DATA_BACKUP_DIR_NAMES = [path.name for path in DATA_BACKUP_DIRS]
-WORDPRESS_SITE_DIR = Path("/app/wordpress_site")
 FRONTEND_DIR = Path(__file__).resolve().parents[1] / "frontend"
 TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates"
 TEMPLATE_REGISTRY_PATH = TEMPLATES_DIR / "registry.json"
@@ -180,10 +176,6 @@ PUBLIC_CATALOGUE_REFRESH_IN_FLIGHT = False
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 POSTGRES_DB = os.getenv("POSTGRES_DB", "").strip()
 POSTGRES_USER = os.getenv("POSTGRES_USER", "").strip()
-WORDPRESS_DB_NAME = os.getenv("WORDPRESS_DB_NAME", "").strip()
-WORDPRESS_DB_USER = os.getenv("WORDPRESS_DB_USER", "").strip()
-WORDPRESS_DB_PASSWORD = os.getenv("WORDPRESS_DB_PASSWORD", "").strip()
-WORDPRESS_DB_ROOT_PASSWORD = os.getenv("WORDPRESS_DB_ROOT_PASSWORD", "").strip()
 PASSWORD_HASH_ITERATIONS = 600_000
 POSTGRES_CLIENT_IMAGE = os.getenv("PG_CLIENT_IMAGE", "docker.io/library/postgres:16").strip() or "docker.io/library/postgres:16"
 MAINTENANCE_JOBS: dict[str, dict] = {}
@@ -273,12 +265,65 @@ def template_token_slug(value: str) -> str:
     return sanitize_name(value)
 
 
+def json_for_html_script(value) -> str:
+    return (
+        json.dumps(value, separators=(",", ":"))
+        .replace("&", "\\u0026")
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+    )
+
+
 def product_slug(product: Product) -> str:
     return sanitize_name(product.model)
 
 
+def public_product_slug(product: Product) -> str:
+    name_slug = re.sub(r"[^a-z0-9]+", "-", (product.model or "").strip().lower()).strip("-")
+    if name_slug:
+        return f"{product.id}-{name_slug}"
+    return str(product.id)
+
+
+def product_public_identifier_candidates(product: Product) -> set[str]:
+    name_slug = re.sub(r"[^a-z0-9]+", "-", (product.model or "").strip().lower()).strip("-")
+    canonical_slug = product_slug(product)
+    return {
+        str(product.id),
+        public_product_slug(product),
+        name_slug,
+        canonical_slug,
+        canonical_slug.replace("_", "-"),
+    }
+
+
 def series_slug(series: Series) -> str:
     return sanitize_name(f"{series.product_type_key or 'series'}_{series.name}")
+
+
+def public_series_slug(series: Series) -> str:
+    name_slug = re.sub(r"[^a-z0-9]+", "-", (series.name or "").strip().lower()).strip("-")
+    if name_slug:
+        return f"{series.id}-{name_slug}"
+    return str(series.id)
+
+
+def series_public_identifier_candidates(series: Series) -> set[str]:
+    name_slug = re.sub(r"[^a-z0-9]+", "-", (series.name or "").strip().lower()).strip("-")
+    product_type_name_slug = re.sub(
+        r"[^a-z0-9]+",
+        "-",
+        f"{series.product_type_key or 'series'} {series.name or ''}".strip().lower(),
+    ).strip("-")
+    canonical_slug = series_slug(series)
+    return {
+        str(series.id),
+        public_series_slug(series),
+        name_slug,
+        product_type_name_slug,
+        canonical_slug,
+        canonical_slug.replace("_", "-"),
+    }
 
 
 def apply_product_type_parameter_presets(product_type: ProductType, preset_groups: list[ProductTypeParameterGroupPresetUpdate]):
@@ -1203,6 +1248,16 @@ def _hex_to_rgb(value: str) -> tuple[float, float, float]:
     return tuple(int(text[index : index + 2], 16) / 255.0 for index in (0, 2, 4))
 
 
+def _darken_hex_color(value: str, factor: float = 0.72) -> str:
+    red, green, blue = _hex_to_rgb(value)
+    scale = max(0.0, min(float(factor), 1.0))
+    return "#{:02x}{:02x}{:02x}".format(
+        int(red * 255 * scale),
+        int(green * 255 * scale),
+        int(blue * 255 * scale),
+    )
+
+
 def _series_tab_layout(page_height: float, tab_count: int) -> list[tuple[float, float]]:
     count = max(int(tab_count), 1)
     usable_height = max(page_height - SERIES_TAB_OUTER_MARGIN_TOP - SERIES_TAB_OUTER_MARGIN_BOTTOM, 0)
@@ -1351,6 +1406,29 @@ def get_series_by_id(db: Session, series_id: int | None) -> Series | None:
     if series is None:
         raise HTTPException(status_code=400, detail=f"Unknown series id: {series_id}")
     return series
+
+
+def load_series_graph_ready_series(db: Session, series_id: int) -> Series:
+    series = (
+        db.query(Series)
+        .options(
+            joinedload(Series.product_type),
+            selectinload(Series.series_images),
+            selectinload(Series.products).selectinload(Product.rpm_lines).selectinload(RpmLine.points),
+            selectinload(Series.products).selectinload(Product.efficiency_points),
+        )
+        .filter(Series.id == series_id)
+        .first()
+    )
+    if not series:
+        raise HTTPException(status_code=404, detail="Series not found")
+    assign_series_product_counts([series], load_series_product_counts(db, [series.id]))
+    return series
+
+
+def series_response_with_graph_payload(series: Series) -> SeriesResponse:
+    response = SeriesResponse.model_validate(series, from_attributes=True)
+    return response.model_copy(update={"series_graph_payload": build_series_graph_payload(series)})
 
 
 def sync_product_series(product: Product, series: Series | None) -> None:
@@ -2211,6 +2289,7 @@ def build_series_graph_payload(series: Series) -> dict | None:
         ordered_lines = sorted(product.rpm_lines or [], key=lambda line: line.rpm)
         if not ordered_lines:
             continue
+        product_color = _darken_hex_color(series_tab_color_for_identity(product.id), 0.72)
         selected_lines = [ordered_lines[0]]
         if len(ordered_lines) > 1 and ordered_lines[-1].id != ordered_lines[0].id:
             selected_lines.append(ordered_lines[-1])
@@ -2231,7 +2310,8 @@ def build_series_graph_payload(series: Series) -> dict | None:
                     "product_id": product.id,
                     "rpm": synthetic_line_id,
                     "display_label": display_label,
-                    "band_color": line.band_color,
+                    "band_color": product_color,
+                    "line_role": "low" if len(selected_lines) > 1 and index == 0 else "high",
                 }
             )
             for point in sorted(line.points or [], key=lambda item: item.airflow):
@@ -2251,7 +2331,9 @@ def build_series_graph_payload(series: Series) -> dict | None:
         return None
 
     return {
+        "hasGraphData": True,
         "title": f"{series.name} Series Graph",
+        "graphTitle": f"{series.name} Series Graph",
         "showRpmBandShading": False,
         "graphConfig": build_graph_config(product_type),
         "graphStyle": None,
@@ -2314,6 +2396,7 @@ def build_series_pdf_html(series: Series, variant: str) -> tuple[str, str]:
     graph_path = series_graph_path(series)
     if graph_path.is_file():
         graph_uri = graph_path.as_uri()
+    series_graph_payload = build_series_graph_payload(series)
 
     performance_columns = _series_performance_candidate_columns(series)
     if template_definition.get("id") == "series-series_type_2":
@@ -2362,6 +2445,7 @@ def build_series_pdf_html(series: Series, variant: str) -> tuple[str, str]:
         "{{series.product_count}}": html.escape(str(series.product_count)),
         "{{series.graph_rule_label}}": html.escape(series_graph_rule_label()),
         "{{series.graph_image_url}}": graph_uri,
+        "{{series.graph_payload_json}}": json_for_html_script(series_graph_payload),
         "{{series.performance_column_1_label}}": html.escape(performance_column_labels[0]),
         "{{series.performance_column_2_label}}": html.escape(performance_column_labels[1]),
         "{{series.performance_column_3_label}}": html.escape(performance_column_labels[2]),
@@ -2936,81 +3020,6 @@ def graph_filter_values_for_products(products: list[Product]) -> dict[str, list[
     }
 
 
-def build_cms_catalogue_index_parameter_group(group: ProductParameterGroup) -> dict:
-    return {
-        "group_name": group.group_name,
-        "sort_order": group.sort_order,
-        "parameters": [
-            {
-                "parameter_name": parameter.parameter_name,
-                "sort_order": parameter.sort_order,
-                "value_string": parameter.value_string,
-                "value_number": parameter.value_number,
-                "unit": parameter.unit,
-            }
-            for parameter in group.parameters or []
-        ],
-    }
-
-
-def build_cms_catalogue_index_product(product: Product) -> dict:
-    return {
-        "id": product.id,
-        "model": product.model,
-        "product_type_key": product.product_type_key,
-        "product_type_label": product.product_type_label,
-        "series_id": product.series_id,
-        "series_name": product.series_name_value,
-        "primary_product_image_url": product.primary_product_image_url,
-        "product_pdf_url": product.product_pdf_url,
-        "product_printed_pdf_url": product.product_printed_pdf_url,
-        "product_online_pdf_url": product.product_online_pdf_url,
-        "parameter_groups": [
-            build_cms_catalogue_index_parameter_group(group)
-            for group in sorted(product.parameter_groups or [], key=lambda item: (item.sort_order, item.id))
-        ],
-        "rpm_lines": [
-            {
-                "rpm": line.rpm,
-                "band_color": line.band_color,
-                "sort_order": index,
-                "points": [
-                    {
-                        "airflow": point.airflow,
-                        "pressure": point.pressure,
-                        "sort_order": point_index,
-                    }
-                    for point_index, point in enumerate(sorted(line.points or [], key=lambda item: item.id))
-                ],
-            }
-            for index, line in enumerate(sorted(product.rpm_lines or [], key=lambda item: (item.rpm, item.id)))
-        ],
-        "efficiency_points": [
-            {
-                "airflow": point.airflow,
-                "sort_order": index,
-                "efficiency_centre": point.efficiency_centre,
-                "efficiency_lower_end": point.efficiency_lower_end,
-                "efficiency_higher_end": point.efficiency_higher_end,
-                "permissible_use": point.permissible_use,
-            }
-            for index, point in enumerate(sorted(product.efficiency_points or [], key=lambda item: (item.airflow, item.id)))
-        ],
-        "fan_acoustic_table": product.fan_acoustic_table,
-    }
-
-
-def build_cms_catalogue_index_series(series: Series) -> dict:
-    return {
-        "id": series.id,
-        "name": series.name,
-        "product_type_key": series.product_type_key,
-        "product_type_label": series.product_type_label,
-        "product_count": series.product_count,
-        "series_tab_color": series.series_tab_color,
-    }
-
-
 def load_series_product_counts(db: Session, series_ids: list[int] | None = None) -> dict[int, int]:
     if series_ids is not None and not series_ids:
         return {}
@@ -3024,47 +3033,6 @@ def load_series_product_counts(db: Session, series_ids: list[int] | None = None)
 def assign_series_product_counts(series_items: list[Series], counts: dict[int, int]) -> None:
     for series in series_items:
         setattr(series, "_product_count", counts.get(series.id, 0))
-
-
-def build_cms_catalogue_index(db: Session) -> dict:
-    product_types = (
-        db.query(ProductType)
-        .options(
-            selectinload(ProductType.series),
-            selectinload(ProductType.parameter_group_presets).selectinload(
-                ProductTypeParameterGroupPreset.parameter_presets
-            ),
-            selectinload(ProductType.rpm_line_presets).selectinload(ProductTypeRpmLinePreset.point_presets),
-            selectinload(ProductType.efficiency_point_presets),
-        )
-        .order_by(ProductType.label)
-        .all()
-    )
-    series = (
-        db.query(Series)
-        .options(joinedload(Series.product_type))
-        .order_by(Series.name)
-        .all()
-    )
-    assign_series_product_counts(series, load_series_product_counts(db, [item.id for item in series]))
-    products = (
-        db.query(Product)
-        .options(
-            joinedload(Product.product_type),
-            joinedload(Product.series),
-            selectinload(Product.product_images),
-            selectinload(Product.parameter_groups).selectinload(ProductParameterGroup.parameters),
-            selectinload(Product.rpm_lines).selectinload(RpmLine.points),
-            selectinload(Product.efficiency_points),
-        )
-        .order_by(Product.model)
-        .all()
-    )
-    return {
-        "product_types": product_types,
-        "series": [build_cms_catalogue_index_series(item) for item in series],
-        "products": [build_cms_catalogue_index_product(item) for item in products],
-    }
 
 
 def notify_public_catalogue_cache_refresh():
@@ -3425,20 +3393,6 @@ def require_admin_user(current_user: User = Depends(get_current_user)) -> User:
     return current_user
 
 
-def require_cms_token(request: Request):
-    if not CMS_API_TOKEN:
-        raise HTTPException(status_code=503, detail="CMS API token is not configured")
-
-    auth_header = request.headers.get("Authorization", "")
-    if auth_header.startswith("Bearer "):
-        provided_token = auth_header[7:].strip()
-    else:
-        provided_token = request.headers.get("X-CMS-Token", "").strip()
-
-    if not provided_token or not secrets.compare_digest(provided_token, CMS_API_TOKEN):
-        raise HTTPException(status_code=401, detail="Invalid CMS token")
-
-
 def active_admin_count(db: Session) -> int:
     return db.query(User).filter(User.is_admin.is_(True), User.is_active.is_(True)).count()
 
@@ -3449,10 +3403,6 @@ def postgres_cli_database_url() -> str:
     if DATABASE_URL.startswith("postgresql+psycopg://"):
         return "postgresql://" + DATABASE_URL[len("postgresql+psycopg://"):]
     return DATABASE_URL
-
-
-def wordpress_available() -> bool:
-    return bool(WORDPRESS_DB_NAME and WORDPRESS_DB_USER and WORDPRESS_DB_PASSWORD and WORDPRESS_DB_ROOT_PASSWORD)
 
 
 def run_command(command: list[str], *, input_bytes: bytes | None = None):
@@ -3715,7 +3665,7 @@ def create_database_backup_bundle(progress_callback=None) -> Path:
     timestamp = backend_now().strftime("%Y%m%d_%H%M%S")
     archive_name = f"fan_graphs_db_data_backup_{timestamp}.zip"
     archive_path = BACKUP_OUTPUT_DIR / archive_name
-    backup_stages_total = 8
+    backup_stages_total = 2
 
     with tempfile.TemporaryDirectory() as staging_dir_raw:
         staging_dir = Path(staging_dir_raw)
@@ -3725,51 +3675,23 @@ def create_database_backup_bundle(progress_callback=None) -> Path:
         postgres_dump = run_postgres_client_tool(["pg_dump", "--no-owner", "--no-privileges"])
         postgres_dump_path.write_bytes(postgres_dump.stdout)
 
-        if wordpress_available():
-            wordpress_dump_path = staging_dir / "wordpress_dump.sql"
-            if progress_callback:
-                progress_callback("Creating WordPress database dump", 7, backup_stages_total)
-            wordpress_dump = run_command(
-                [
-                    "mariadb-dump",
-                    "-h",
-                    "wordpress_db",
-                    "-u",
-                    WORDPRESS_DB_USER,
-                    f"-p{WORDPRESS_DB_PASSWORD}",
-                    WORDPRESS_DB_NAME,
-                ]
-            )
-            wordpress_dump_path.write_bytes(wordpress_dump.stdout)
-
-            wp_content_dir = WORDPRESS_SITE_DIR / "wp-content"
-            if wp_content_dir.is_dir():
-                if progress_callback:
-                    progress_callback("Collecting WordPress content", 7, backup_stages_total)
-                wordpress_dir = staging_dir / "wordpress"
-                wordpress_dir.mkdir(parents=True, exist_ok=True)
-                with tarfile.open(wordpress_dir / "wp-content.tar", "w") as tar:
-                    tar.add(wp_content_dir, arcname="wp-content")
-
         _write_backup_readme(
             staging_dir,
             "Internal Facing DB data backup archive",
             [
                 "- postgres_dump.sql : PostgreSQL database dump",
-                "- wordpress_dump.sql : WordPress MariaDB dump (if present)",
-                "- wordpress/wp-content.tar : WordPress content snapshot (if present)",
             ],
         )
 
         if progress_callback:
-            progress_callback("Creating database archive", 8, backup_stages_total)
+            progress_callback("Creating database archive", 2, backup_stages_total)
         _write_zip_archive(staging_dir, archive_path)
 
     return archive_path
 
 
 def restore_backup_bundle(archive_bytes: bytes, progress_callback=None):
-    restore_stages_total = 9
+    restore_stages_total = len(DATA_BACKUP_DIR_NAMES) + 3
     with tempfile.TemporaryDirectory() as staging_dir_raw:
         staging_dir = Path(staging_dir_raw)
         archive_path = staging_dir / "upload.zip"
@@ -3801,49 +3723,6 @@ def restore_backup_bundle(archive_bytes: bytes, progress_callback=None):
             input_bytes=postgres_dump_path.read_bytes(),
         )
 
-        wordpress_dump_path = staging_dir / "wordpress_dump.sql"
-        wordpress_content_tar = staging_dir / "wordpress" / "wp-content.tar"
-        if wordpress_available() and wordpress_dump_path.is_file():
-            if progress_callback:
-                progress_callback("Restoring WordPress database", 4, restore_stages_total)
-            run_command(
-                [
-                    "mariadb",
-                    "-h",
-                    "wordpress_db",
-                    "-u",
-                    "root",
-                    f"-p{WORDPRESS_DB_ROOT_PASSWORD}",
-                    "-e",
-                    (
-                        f"DROP DATABASE IF EXISTS `{WORDPRESS_DB_NAME}`; "
-                        f"CREATE DATABASE `{WORDPRESS_DB_NAME}`; "
-                        f"GRANT ALL PRIVILEGES ON `{WORDPRESS_DB_NAME}`.* TO '{WORDPRESS_DB_USER}'@'%'; "
-                        "FLUSH PRIVILEGES;"
-                    ),
-                ]
-            )
-            run_command(
-                [
-                    "mariadb",
-                    "-h",
-                    "wordpress_db",
-                    "-u",
-                    "root",
-                    f"-p{WORDPRESS_DB_ROOT_PASSWORD}",
-                    WORDPRESS_DB_NAME,
-                ],
-                input_bytes=wordpress_dump_path.read_bytes(),
-            )
-
-        if wordpress_content_tar.is_file():
-            if progress_callback:
-                progress_callback("Restoring WordPress content", 5, restore_stages_total)
-            wp_content_dir = WORDPRESS_SITE_DIR / "wp-content"
-            shutil.rmtree(wp_content_dir, ignore_errors=True)
-            with tarfile.open(wordpress_content_tar, "r") as tar:
-                tar.extractall(WORDPRESS_SITE_DIR)
-
         for offset, media_dir in enumerate(
             DATA_BACKUP_DIR_NAMES,
             start=4,
@@ -3852,7 +3731,7 @@ def restore_backup_bundle(archive_bytes: bytes, progress_callback=None):
             target_dir = Path(DEFAULT_DATA_DIR) / media_dir
             if source_dir.is_dir():
                 if progress_callback:
-                    progress_callback(f"Restoring {media_dir}", min(offset, restore_stages_total - 1), restore_stages_total)
+                    progress_callback(f"Restoring {media_dir}", offset, restore_stages_total)
                 shutil.rmtree(target_dir, ignore_errors=True)
                 target_dir.mkdir(parents=True, exist_ok=True)
                 shutil.copytree(source_dir, target_dir, dirs_exist_ok=True)
@@ -3912,12 +3791,12 @@ OPENAPI_TAGS = [
         "description": "Staff user administration endpoints.",
     },
     {
-        "name": "Customer CMS",
-        "description": "Read-only product data endpoints used by the WordPress customer-facing site via the CMS bearer token.",
+        "name": "Public Catalog",
+        "description": "Read-only product, product type, and series endpoints used by the public customer-facing site.",
     },
     {
-        "name": "Customer Media",
-        "description": "Public customer-facing product image and graph file endpoints intended for rendered website pages.",
+        "name": "Public Media",
+        "description": "Public customer-facing product image, graph, and PDF file endpoints intended for rendered website pages.",
     },
     {
         "name": "Products",
@@ -3970,9 +3849,9 @@ app = FastAPI(
     description=(
         "Product platform API for the Internal Facing application.\n\n"
         "Use `/api/products...` for the internal staff application.\n"
-        "Use `/api/cms/products...` for the customer-facing WordPress integration.\n"
-        "Use `/api/cms/media/...` for public customer-facing product images and graph files.\n"
-        "Legacy `/api/fans...` and `/api/cms/fans...` aliases still work, but they are intentionally hidden from the schema."
+        "Use `/api/public/products...` and `/api/public/series...` for the customer-facing public site.\n"
+        "Use `/api/public/media/...` for public customer-facing product images and graph files.\n"
+        "Legacy `/api/fans...` aliases still work, but they are intentionally hidden from the schema."
     ),
     openapi_tags=OPENAPI_TAGS,
     docs_url=None,
@@ -4043,14 +3922,13 @@ def list_product_types(db: Session = Depends(get_db)):
 
 
 @app.get(
-    "/api/cms/product-types",
+    "/api/public/product-types",
     response_model=list[ProductTypeResponse],
-    dependencies=[Depends(require_cms_token)],
-    tags=["Customer CMS"],
-    summary="List customer-facing product types",
-    description="Read-only product-type feed for the WordPress customer-facing site.",
+    tags=["Public Catalog"],
+    summary="List public product types",
+    description="Returns product types for the public catalog navigation.",
 )
-def list_cms_product_types(db: Session = Depends(get_db)):
+def list_public_product_types(db: Session = Depends(get_db)):
     return (
         db.query(ProductType)
         .options(
@@ -4756,6 +4634,12 @@ def list_series(
     return results
 
 
+@app.get("/api/series/{series_id}", response_model=SeriesResponse, dependencies=[Depends(get_current_user)], tags=["Series"], summary="Get a series")
+def get_series(series_id: int, db: Session = Depends(get_db)):
+    series = load_series_graph_ready_series(db, series_id)
+    return series_response_with_graph_payload(series)
+
+
 @app.post("/api/series", response_model=SeriesResponse, dependencies=[Depends(get_current_user)], tags=["Series"], summary="Create a series")
 def create_series(body: SeriesCreate, db: Session = Depends(get_db)):
     product_type = get_product_type_by_key(db, body.product_type_key)
@@ -4864,22 +4748,17 @@ def delete_series(series_id: int, db: Session = Depends(get_db)):
 
 @app.post("/api/series/{series_id}/graph-image/refresh", response_model=SeriesResponse, dependencies=[Depends(get_current_user)], tags=["Series"], summary="Generate a series graph image")
 def refresh_series_graph_image(series_id: int, db: Session = Depends(get_db)):
-    series = db.get(Series, series_id)
-    if not series:
-        raise HTTPException(status_code=404, detail="Series not found")
+    series = load_series_graph_ready_series(db, series_id)
     try:
         generate_series_graph(series)
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=f"Unable to generate series graph: {exc}") from exc
-    assign_series_product_counts([series], load_series_product_counts(db, [series.id]))
-    return series
+    return series_response_with_graph_payload(series)
 
 
 @app.post("/api/series/{series_id}/pdf/refresh", response_model=SeriesResponse, dependencies=[Depends(get_current_user)], tags=["Series"], summary="Generate a series PDF")
 def refresh_series_pdf(series_id: int, db: Session = Depends(get_db)):
-    series = db.get(Series, series_id)
-    if not series:
-        raise HTTPException(status_code=404, detail="Series not found")
+    series = load_series_graph_ready_series(db, series_id)
     try:
         if series.product_type and series.product_type.supports_graph and series_has_graph_capable_line_data(series):
             generate_series_graph(series)
@@ -4891,8 +4770,7 @@ def refresh_series_pdf(series_id: int, db: Session = Depends(get_db)):
         generate_series_pdfs(series)
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=f"Unable to generate series PDF: {exc}") from exc
-    assign_series_product_counts([series], load_series_product_counts(db, [series.id]))
-    return series
+    return series_response_with_graph_payload(series)
 
 
 @app.post(
@@ -5086,10 +4964,8 @@ def update_band_graph_style_settings(body: BandGraphStyleSettings, db: Session =
     return settings
 
 
-@app.get("/api/cms/fans", response_model=list[CmsProductResponse], dependencies=[Depends(require_cms_token)], tags=["Customer CMS"], include_in_schema=False)
-@app.get("/api/cms/products", response_model=list[CmsProductResponse], dependencies=[Depends(require_cms_token)], tags=["Customer CMS"], summary="List customer-facing products", description="Read-only product catalogue feed for the WordPress customer-facing site. Supports search, product type, series, and grouped-parameter filtering.")
-def list_cms_products(
-    db: Session = Depends(get_db),
+def _load_public_products(
+    db: Session,
     search: Optional[str] = Query(None),
     product_type_key: Optional[str] = Query(None),
     series_id: Optional[int] = Query(None),
@@ -5098,7 +4974,7 @@ def list_cms_products(
 ):
     parsed_parameter_filters = parse_parameter_filters(parameter_filters)
     trace_product_filter(
-        "product filter trace request: endpoint=/api/cms/products search=%s product_type_key=%s series_id=%s series_name=%s raw_filters=%s parsed_filters=%s",
+        "product filter trace request: endpoint=/api/public/products search=%s product_type_key=%s series_id=%s series_name=%s raw_filters=%s parsed_filters=%s",
         search,
         product_type_key,
         series_id,
@@ -5121,15 +4997,52 @@ def list_cms_products(
         q = q.join(ProductType).filter(ProductType.key == product_type_key)
     if series_id is not None:
         q = q.filter(Product.series_id == series_id)
-    if series_name:
-        q = q.filter(Product.series_name.ilike(f"%{series_name}%"))
+        if series_name:
+            q = q.filter(Product.series_name.ilike(f"%{series_name}%"))
     results = q.order_by(Product.model).all()
     return [product for product in results if product_matches_parameter_filters(product, parsed_parameter_filters)]
 
 
-@app.get("/api/cms/fans/{product_id}", response_model=CmsProductResponse, dependencies=[Depends(require_cms_token)], tags=["Customer CMS"], include_in_schema=False)
-@app.get("/api/cms/products/{product_id}", response_model=CmsProductResponse, dependencies=[Depends(require_cms_token)], tags=["Customer CMS"], summary="Get one customer-facing product", description="Returns a single product record, including grouped specifications and media URLs, for the WordPress customer-facing site.")
-def get_cms_product(product_id: int, db: Session = Depends(get_db)):
+@app.get("/api/public/products", response_model=list[CmsProductResponse], tags=["Public Catalog"], summary="List public products", description="Read-only product catalogue feed for the public Svelte site. Supports search, product type, series, and grouped-parameter filtering.")
+def list_public_products(
+    db: Session = Depends(get_db),
+    search: Optional[str] = Query(None),
+    product_type_key: Optional[str] = Query(None),
+    series_id: Optional[int] = Query(None),
+    series_name: Optional[str] = Query(None),
+    parameter_filters: Optional[str] = Query(None),
+):
+    return _load_public_products(
+        db,
+        search=search,
+        product_type_key=product_type_key,
+        series_id=series_id,
+        series_name=series_name,
+        parameter_filters=parameter_filters,
+    )
+
+
+@app.get("/api/public/products/{product_identifier}", response_model=CmsProductResponse, tags=["Public Catalog"], summary="Get one public product", description="Returns a single product record, including grouped specifications and media URLs, for the public Svelte site.")
+def get_public_product(product_identifier: str, db: Session = Depends(get_db)):
+    normalized_identifier = (product_identifier or "").strip().lower()
+    if not normalized_identifier:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    product_candidates = (
+        db.query(Product)
+        .options(joinedload(Product.product_type))
+        .order_by(Product.id)
+        .all()
+    )
+    matched_product = None
+    for candidate in product_candidates:
+        if normalized_identifier in {value.strip().lower() for value in product_public_identifier_candidates(candidate)}:
+            matched_product = candidate
+            break
+
+    if not matched_product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
     product = (
         db.query(Product)
         .options(
@@ -5141,7 +5054,7 @@ def get_cms_product(product_id: int, db: Session = Depends(get_db)):
             selectinload(Product.rpm_lines).selectinload(RpmLine.points),
             selectinload(Product.efficiency_points),
         )
-        .filter(Product.id == product_id)
+        .filter(Product.id == matched_product.id)
         .first()
     )
     if not product:
@@ -5149,102 +5062,43 @@ def get_cms_product(product_id: int, db: Session = Depends(get_db)):
     return product
 
 
-@app.get(
-    "/api/cms/product-graph-values",
-    response_model=CmsProductGraphValuesResponse,
-    dependencies=[Depends(require_cms_token)],
-    tags=["Customer CMS"],
-    summary="Get customer-facing graph filter values",
-    description="Returns graph filter ranges for the current customer-facing finder filters.",
-)
-def get_cms_product_graph_values(
-    db: Session = Depends(get_db),
-    search: Optional[str] = Query(None),
-    product_type_key: Optional[str] = Query(None),
-    series_id: Optional[int] = Query(None),
-    parameter_filters: Optional[str] = Query(None),
-):
-    parsed_parameter_filters = parse_parameter_filters(parameter_filters)
-    trace_product_filter(
-        "product filter trace request: endpoint=/api/cms/product-graph-values search=%s product_type_key=%s series_id=%s raw_filters=%s parsed_filters=%s",
-        search,
-        product_type_key,
-        series_id,
-        parameter_filters,
-        parsed_parameter_filters,
+@app.get("/api/public/series/{series_identifier}", response_model=CmsSeriesResponse, tags=["Public Catalog"], summary="Get one public series", description="Returns a single series record for the customer-facing Svelte site, including its linked products and chart payload.")
+def get_public_series(series_identifier: str, db: Session = Depends(get_db)):
+    normalized_identifier = (series_identifier or "").strip().lower()
+    if not normalized_identifier:
+        raise HTTPException(status_code=404, detail="Series not found")
+
+    series_candidates = (
+        db.query(Series)
+        .options(joinedload(Series.product_type))
+        .order_by(Series.id)
+        .all()
     )
-    q = db.query(Product).options(
-        joinedload(Product.product_type),
-        selectinload(Product.parameter_groups).selectinload(ProductParameterGroup.parameters),
-        selectinload(Product.rpm_lines),
-        selectinload(Product.rpm_lines).selectinload(RpmLine.points),
-        selectinload(Product.efficiency_points),
-    )
-    if search:
-        s = f"%{search}%"
-        q = q.filter(Product.model.ilike(s))
-    if product_type_key:
-        q = q.join(ProductType).filter(ProductType.key == product_type_key)
-    if series_id is not None:
-        q = q.filter(Product.series_id == series_id)
+    matched_series = None
+    for candidate in series_candidates:
+        if normalized_identifier in {value.strip().lower() for value in series_public_identifier_candidates(candidate)}:
+            matched_series = candidate
+            break
 
-    products = [
-        product
-        for product in q.order_by(Product.model).all()
-        if product_matches_parameter_filters(product, parsed_parameter_filters)
-    ]
+    if not matched_series:
+        raise HTTPException(status_code=404, detail="Series not found")
 
-    graph_values = graph_filter_values_for_products(products)
-    return CmsProductGraphValuesResponse(
-        rpm=graph_values["rpm"],
-        airflow=graph_values["airflow"],
-        pressure=graph_values["pressure"],
-    )
-
-
-@app.get(
-    "/api/cms/catalogue-index",
-    response_model=CmsCatalogueIndexResponse,
-    dependencies=[Depends(require_cms_token)],
-    tags=["Customer CMS"],
-    summary="Get lightweight customer-facing catalogue index",
-    description="Returns the lightweight catalogue data used by the public site to populate dropdowns and filter metadata without loading product detail payloads.",
-)
-def get_cms_catalogue_index(db: Session = Depends(get_db)):
-    return build_cms_catalogue_index(db)
-
-
-@app.get("/api/cms/series", response_model=list[CmsSeriesResponse], dependencies=[Depends(require_cms_token)], tags=["Customer CMS"], summary="List customer-facing series", description="Read-only series feed for the WordPress customer-facing site. Supports product type filtering.")
-def list_cms_series(
-    db: Session = Depends(get_db),
-    product_type_key: Optional[str] = Query(None),
-):
-    q = db.query(Series).options(
-        joinedload(Series.product_type),
-        selectinload(Series.series_images),
-    )
-    if product_type_key:
-        q = q.join(ProductType).filter(ProductType.key == product_type_key)
-    results = q.order_by(Series.name).all()
-    assign_series_product_counts(results, load_series_product_counts(db, [item.id for item in results]))
-    return results
-
-
-@app.get("/api/cms/series/{series_id}", response_model=CmsSeriesResponse, dependencies=[Depends(require_cms_token)], tags=["Customer CMS"], summary="Get one customer-facing series", description="Returns a single series record, including its linked products, for the WordPress customer-facing site.")
-def get_cms_series(series_id: int, db: Session = Depends(get_db)):
     series = (
         db.query(Series)
         .options(
             joinedload(Series.product_type),
             selectinload(Series.series_images),
+            selectinload(Series.products).selectinload(Product.rpm_lines).selectinload(RpmLine.points),
         )
-        .filter(Series.id == series_id)
+        .filter(Series.id == matched_series.id)
         .first()
     )
     if not series:
         raise HTTPException(status_code=404, detail="Series not found")
+
     assign_series_product_counts([series], load_series_product_counts(db, [series.id]))
-    return series
+    response = CmsSeriesResponse.model_validate(series, from_attributes=True)
+    return response.model_copy(update={"series_graph_payload": build_series_graph_payload(series)})
 
 
 # --- Products CRUD ---
@@ -6455,8 +6309,8 @@ def serve_series_pdf(file_name: str):
 
 
 @app.get(
-    "/api/cms/media/product_images/{file_name}",
-    tags=["Customer Media"],
+    "/api/public/media/product_images/{file_name}",
+    tags=["Public Media"],
     summary="Get a public customer product image",
     description="Public product image endpoint intended for rendered customer-facing pages.",
 )
@@ -6468,8 +6322,8 @@ def serve_cms_product_image(file_name: str):
 
 
 @app.get(
-    "/api/cms/media/series_images/{file_name}",
-    tags=["Customer Media"],
+    "/api/public/media/series_images/{file_name}",
+    tags=["Public Media"],
     summary="Get a public customer series image",
     description="Public series image endpoint intended for rendered customer-facing pages.",
 )
@@ -6481,8 +6335,8 @@ def serve_cms_series_image(file_name: str):
 
 
 @app.get(
-    "/api/cms/media/product_graphs/{file_name}",
-    tags=["Customer Media"],
+    "/api/public/media/product_graphs/{file_name}",
+    tags=["Public Media"],
     summary="Get a public customer product graph image",
     description="Public graph image endpoint intended for rendered customer-facing pages and downloads.",
 )
@@ -6494,8 +6348,8 @@ def serve_cms_product_graph(file_name: str):
 
 
 @app.get(
-    "/api/cms/media/product_pdfs/{file_name}",
-    tags=["Customer Media"],
+    "/api/public/media/product_pdfs/{file_name}",
+    tags=["Public Media"],
     summary="Get a public customer product PDF",
     description="Public product PDF endpoint intended for customer-facing downloads.",
 )
@@ -6507,8 +6361,8 @@ def serve_cms_product_pdf(file_name: str):
 
 
 @app.get(
-    "/api/cms/media/product_type_pdfs/{file_name}",
-    tags=["Customer Media"],
+    "/api/public/media/product_type_pdfs/{file_name}",
+    tags=["Public Media"],
     summary="Get a public customer product type PDF",
     description="Public product type PDF endpoint intended for customer-facing downloads.",
 )
@@ -6520,8 +6374,8 @@ def serve_cms_product_type_pdf(file_name: str):
 
 
 @app.get(
-    "/api/cms/media/series_graphs/{file_name}",
-    tags=["Customer Media"],
+    "/api/public/media/series_graphs/{file_name}",
+    tags=["Public Media"],
     summary="Get a public customer series graph image",
     description="Public series graph endpoint intended for rendered customer-facing pages and downloads.",
 )
@@ -6533,8 +6387,8 @@ def serve_cms_series_graph(file_name: str):
 
 
 @app.get(
-    "/api/cms/media/series_pdfs/{file_name}",
-    tags=["Customer Media"],
+    "/api/public/media/series_pdfs/{file_name}",
+    tags=["Public Media"],
     summary="Get a public customer series PDF",
     description="Public series PDF endpoint intended for customer-facing downloads.",
 )

@@ -1,9 +1,10 @@
-import { f as fallback, e as escape_html, d as bind_props, h as head, a as attr, j as attr_style, i as ensure_array_like, b as attr_class } from "../../../chunks/index2.js";
+import { e as escape_html, d as bind_props, h as head, b as attr, i as attr_style, f as ensure_array_like, c as attr_class } from "../../../chunks/index2.js";
 import { Compartment } from "@codemirror/state";
 import { MatchDecorator, Decoration, ViewPlugin, EditorView } from "@codemirror/view";
 import { html } from "@codemirror/lang-html";
 import { css } from "@codemirror/lang-css";
 import { o as onDestroy } from "../../../chunks/index-server.js";
+import { f as fallback } from "../../../chunks/equality.js";
 function SourceEditor($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
     let value = fallback($$props["value"], "");

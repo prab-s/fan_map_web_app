@@ -1,7 +1,8 @@
 import httpx
 import logging
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import Response
+from fastapi.background import BackgroundTask
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.catalogue_cache import catalogue_cache
@@ -53,12 +54,18 @@ async def add_build_marker_header(request: Request, call_next):
 @app.on_event("startup")
 async def startup_catalogue_cache():
     app.state.catalogue_cache = catalogue_cache
+    app.state.media_client = httpx.AsyncClient(timeout=settings.request_timeout_seconds)
     await catalogue_cache.initialize()
 
 
 @app.on_event("shutdown")
 async def shutdown_catalogue_cache():
     await catalogue_cache.shutdown()
+    await api.aclose()
+    media_client = getattr(app.state, "media_client", None)
+    if media_client is not None:
+        await media_client.aclose()
+        app.state.media_client = None
 
 
 @app.post("/api/cache/refresh")
@@ -79,19 +86,27 @@ async def refresh_catalogue_cache(request: Request):
 
 
 @app.get("/api/cms/media/{media_path:path}")
-async def proxy_cms_media(media_path: str, request: Request):
-    upstream_url = f"{settings.backend_api_base_url}/api/cms/media/{media_path}"
+@app.get("/api/public/media/{media_path:path}")
+async def proxy_public_media(media_path: str, request: Request):
+    upstream_url = f"{settings.backend_api_base_url}/api/public/media/{media_path}"
     if request.url.query:
         upstream_url = f"{upstream_url}?{request.url.query}"
 
+    upstream = None
     try:
-        async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
-            upstream = await client.get(upstream_url)
-            upstream.raise_for_status()
+        client = request.app.state.media_client
+
+        upstream_request = client.build_request("GET", upstream_url)
+        upstream = await client.send(upstream_request, stream=True)
+        upstream.raise_for_status()
     except httpx.HTTPStatusError as exc:
+        if upstream is not None:
+            await upstream.aclose()
         detail = exc.response.text.strip() or f"Media request failed with status {exc.response.status_code}."
         raise HTTPException(status_code=exc.response.status_code, detail=detail) from exc
     except httpx.HTTPError as exc:
+        if upstream is not None:
+            await upstream.aclose()
         raise HTTPException(status_code=502, detail="Media is unavailable right now.") from exc
 
     passthrough_headers = {}
@@ -99,7 +114,12 @@ async def proxy_cms_media(media_path: str, request: Request):
         if header_name in upstream.headers:
             passthrough_headers[header_name] = upstream.headers[header_name]
 
-    return Response(content=upstream.content, media_type=upstream.headers.get("content-type"), headers=passthrough_headers)
+    return StreamingResponse(
+        upstream.aiter_bytes(),
+        media_type=upstream.headers.get("content-type"),
+        headers=passthrough_headers,
+        background=BackgroundTask(upstream.aclose),
+    )
 
 
 @app.exception_handler(404)

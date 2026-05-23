@@ -1,6 +1,5 @@
 <script>
   import { onMount } from 'svelte';
-  import 'grapesjs/dist/css/grapes.min.css';
   import {
     createTemplate,
     deleteTemplate,
@@ -13,10 +12,7 @@
     uploadTemplateAsset
   } from '$lib/api.js';
   import SeriesNamesBadgeList from '$lib/editor/SeriesNamesBadgeList.svelte';
-  import { buildTemplateBlocks } from '$lib/template-builder/blocks.js';
   import SourceEditor from '$lib/template-builder/SourceEditor.svelte';
-  import { installAdvancedGradientControls } from '$lib/template-builder/advancedGradient.js';
-  import { installHtmlAttributeControls } from '$lib/template-builder/htmlAttributes.js';
   import {
     formatCssSource,
     formatHtmlSource,
@@ -34,6 +30,7 @@
 
   let editorHost;
   let editor = null;
+  let editorHelpersPromise = null;
   let templates = { product_templates: [], series_templates: [], product_type_templates: [] };
   let productTypes = [];
   let templateType = '';
@@ -59,8 +56,7 @@
   let sidebarResizeCleanup = null;
   let sidebarPane;
   let sidebarResizer;
-  let htmlSyncTimeout = null;
-  let cssSyncTimeout = null;
+  let editorSyncTimeout = null;
   const canvasCssStyleId = 'template-builder-v2-canvas-css';
   const sidebarMinWidth = 300;
   const sidebarMaxWidth = 520;
@@ -72,6 +68,8 @@
   let lastAutoLoadedTemplateKey = '';
   let sidebarResizeActive = false;
   let suppressCssPullUntil = 0;
+  let htmlPullScheduled = false;
+  let cssPullScheduled = false;
 
   function templateCollection(type) {
     if (type === 'series') return templates.series_templates ?? [];
@@ -224,6 +222,15 @@
       '{{product.primary_product_image_url}}': createPreviewPlaceholder('Product image preview'),
       '{{product.graph_image_url}}': createPreviewPlaceholder('Product graph preview'),
       '{{series.graph_image_url}}': createPreviewPlaceholder('Series graph preview'),
+      '{{series.graph_payload_json}}': JSON.stringify({
+        title: 'Series Graph Preview',
+        graphConfig: {
+          graph_kind: 'fan_map'
+        },
+        rpmLines: [],
+        rpmPoints: [],
+        efficiencyPoints: []
+      }),
       '{{product.grouped_specs_impeller_html}}': createPreviewSpecsHtml('Impeller'),
       '{{product.grouped_specs_motor_html}}': createPreviewSpecsHtml('Motor'),
       '{{product.grouped_specs_fan_html}}': createPreviewSpecsHtml('Fan'),
@@ -426,12 +433,25 @@
     }
   }
 
+  function scheduleEditorSync() {
+    if (!editor) return;
+    window.clearTimeout(editorSyncTimeout);
+    editorSyncTimeout = window.setTimeout(() => {
+      if (htmlPullScheduled) {
+        htmlPullScheduled = false;
+        pullHtmlFromEditor();
+      }
+      if (cssPullScheduled) {
+        cssPullScheduled = false;
+        pullCssFromEditor();
+      }
+    }, 120);
+  }
+
   function scheduleHtmlPullFromEditor() {
     if (!editor || syncingHtmlFromSource) return;
-    window.clearTimeout(htmlSyncTimeout);
-    htmlSyncTimeout = window.setTimeout(() => {
-      pullHtmlFromEditor();
-    }, 120);
+    htmlPullScheduled = true;
+    scheduleEditorSync();
   }
 
   function pushCssSourceToEditor() {
@@ -460,10 +480,8 @@
   function scheduleCssPullFromEditor() {
     if (!editor || syncingCssFromSource) return;
     if (Date.now() < suppressCssPullUntil) return;
-    window.clearTimeout(cssSyncTimeout);
-    cssSyncTimeout = window.setTimeout(() => {
-      pullCssFromEditor();
-    }, 120);
+    cssPullScheduled = true;
+    scheduleEditorSync();
   }
 
   function syncCanvasCssIntoFrame() {
@@ -619,6 +637,14 @@
     if (editor || !editorHost) return;
 
     if (!grapesModule) {
+      if (!editorHelpersPromise) {
+        editorHelpersPromise = Promise.all([
+          import('grapesjs/dist/css/grapes.min.css'),
+          import('$lib/template-builder/blocks.js'),
+          import('$lib/template-builder/advancedGradient.js'),
+          import('$lib/template-builder/htmlAttributes.js')
+        ]);
+      }
       [grapesModule, presetWebpageModule, blocksBasicModule, pluginExportModule] = await Promise.all([
         import('grapesjs').then((mod) => mod.default),
         import('grapesjs-preset-webpage').then((mod) => mod.default),
@@ -626,6 +652,17 @@
         import('grapesjs-plugin-export').then((mod) => mod.default)
       ]);
     }
+
+    const [, blocksModule, advancedGradientModule, htmlAttributesModule] =
+      await (editorHelpersPromise ?? Promise.all([
+        import('grapesjs/dist/css/grapes.min.css'),
+        import('$lib/template-builder/blocks.js'),
+        import('$lib/template-builder/advancedGradient.js'),
+        import('$lib/template-builder/htmlAttributes.js')
+      ]));
+    const { buildTemplateBlocks } = blocksModule;
+    const { installAdvancedGradientControls } = advancedGradientModule;
+    const { installHtmlAttributeControls } = htmlAttributesModule;
 
     editor = grapesModule.init({
       container: editorHost,
@@ -780,8 +817,7 @@
     return () => {
       blocksResizeCleanup?.();
       blocksResizeCleanup = null;
-      window.clearTimeout(htmlSyncTimeout);
-      window.clearTimeout(cssSyncTimeout);
+      window.clearTimeout(editorSyncTimeout);
       editor?.destroy();
     };
   });

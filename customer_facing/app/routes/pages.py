@@ -1,5 +1,7 @@
 import logging
 import time
+import hashlib
+import colorsys
 
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import RedirectResponse
@@ -62,6 +64,17 @@ def product_downloads(product: dict) -> list[dict]:
         {"label": "Online PDF", "url": product.get("product_online_pdf_url"), "note": "Web-ready version"},
     ]
     return [item for item in items if item["url"]]
+
+
+def product_color_for_identity(identity: int | str | None) -> str:
+    if identity in (None, ""):
+        return "#64748b"
+    digest = hashlib.sha1(str(identity).encode("utf-8")).digest()
+    hue = int.from_bytes(digest[:2], "big") / 65535.0
+    saturation = 0.62 + (digest[2] / 255.0) * 0.18
+    lightness = 0.44 + (digest[3] / 255.0) * 0.08
+    red, green, blue = colorsys.hls_to_rgb(hue, lightness, saturation)
+    return "#{:02x}{:02x}{:02x}".format(int(red * 255 * 0.72), int(green * 255 * 0.72), int(blue * 255 * 0.72))
 
 
 def build_product_graph_payload(product: dict, product_type: dict | None) -> dict:
@@ -175,6 +188,7 @@ def build_series_graph_payload(series: dict, product_type: dict | None, series_p
         ordered_lines = sorted(product.get("rpm_lines", []) or [], key=lambda item: (item.get("rpm", 0), item.get("id", 0)))
         if not ordered_lines:
             continue
+        product_color = product_color_for_identity(product.get("id"))
 
         selected_lines = [ordered_lines[0]]
         if len(ordered_lines) > 1 and ordered_lines[-1] != ordered_lines[0]:
@@ -194,7 +208,8 @@ def build_series_graph_payload(series: dict, product_type: dict | None, series_p
                 "id": synthetic_line_id,
                 "rpm": synthetic_line_id,
                 "display_label": display_label,
-                "band_color": line.get("band_color"),
+                "band_color": product_color,
+                "line_role": "low" if len(selected_lines) > 1 and index == 0 else "high",
                 "points": [],
             })
             for point in sorted(line.get("points", []) or [], key=lambda item: (item.get("airflow", 0), item.get("id", 0))):

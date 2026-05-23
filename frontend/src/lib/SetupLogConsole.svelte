@@ -24,7 +24,12 @@
 
     const nextLines = pendingLines;
     pendingLines = [];
-    lines = [...lines, ...nextLines].slice(-MAX_LINES);
+    lines.push(...nextLines);
+    if (lines.length > MAX_LINES) {
+      lines = lines.slice(-MAX_LINES);
+    } else {
+      lines = lines;
+    }
     if (stickToBottom) {
       void tick().then(() => {
         scrollToBottom();
@@ -33,7 +38,7 @@
   }
 
   function appendLine(entry) {
-    pendingLines = [...pendingLines, entry];
+    pendingLines.push(entry);
     if (flushFrame !== null) return;
     flushFrame = window.requestAnimationFrame(flushPendingLines);
   }

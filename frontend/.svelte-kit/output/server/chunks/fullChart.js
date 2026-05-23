@@ -1,6 +1,5 @@
-import { f as fallback, j as attr_style, d as bind_props, af as stringify } from "./index2.js";
-import { o as onDestroy } from "./index-server.js";
-import "echarts";
+import { i as attr_style, d as bind_props, a9 as stringify } from "./index2.js";
+import { f as fallback } from "./equality.js";
 const LIGHT_CHART_THEME = {
   background: "#ffffff",
   text: "#1e293b",
@@ -34,21 +33,6 @@ function ECharts($$renderer, $$props) {
       null
       // (chart) => void
     );
-    let resizeFrame = null;
-    onDestroy(() => {
-      window.removeEventListener("resize", scheduleResize);
-      if (resizeFrame !== null) {
-        window.cancelAnimationFrame(resizeFrame);
-        resizeFrame = null;
-      }
-      window.__ECHARTS_HOVER_COORDS__ = null;
-    });
-    function scheduleResize() {
-      if (resizeFrame !== null) return;
-      resizeFrame = window.requestAnimationFrame(() => {
-        resizeFrame = null;
-      });
-    }
     $$renderer2.push(`<div class="chart-container echart-host"${attr_style(`height: ${stringify(height)};`)}></div>`);
     bind_props($$props, { option, height, on, onChartReady });
   });
@@ -123,6 +107,18 @@ const DEFAULT_GRAPH_CONFIG = {
   graph_y_axis_label: "Pressure",
   graph_y_axis_unit: "Pa"
 };
+const SERIES_GRAPH_LABEL_TUNING = {
+  startDistanceFraction: 0.18,
+  startDistanceMinimum: 40,
+  startDistanceMaximum: 120,
+  highLineNormalOffset: 0,
+  lowLineNormalOffset: 0,
+  highLineVerticalNudge: 0,
+  lowLineVerticalNudge: 0
+};
+const SERIES_GRAPH_LABEL_FONT_SIZE = 16;
+const SERIES_GRAPH_LABEL_Y_OFFSET = 1;
+const SERIES_GRAPH_POINT_SIZE = 3;
 function clamp(value, minimum, maximum) {
   return Math.max(minimum, Math.min(maximum, value));
 }
@@ -200,10 +196,6 @@ function invertHexColor(color) {
     b: 255 - rgb.b
   });
 }
-function getOppositeGlowColor(color) {
-  const normalizedColor = normalizeOptionalColor(color);
-  return normalizedColor ? invertHexColor(normalizedColor) : null;
-}
 function toRgbaColor(color, alpha = 1) {
   const normalizedColor = normalizeOptionalColor(color);
   if (!normalizedColor) return null;
@@ -259,6 +251,128 @@ function interpolateYAtX(lineData, x) {
     }
   }
   return null;
+}
+function findNearestPointOnPolyline(lineData, targetPoint) {
+  if (!lineData.length) return null;
+  if (lineData.length === 1) return lineData[0];
+  let nearestPoint = lineData[0];
+  let nearestDistanceSquared = Number.POSITIVE_INFINITY;
+  for (let index = 0; index < lineData.length - 1; index += 1) {
+    const [x1, y1] = lineData[index];
+    const [x2, y2] = lineData[index + 1];
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const segmentLengthSquared = dx * dx + dy * dy;
+    const projection = segmentLengthSquared > 0 ? ((targetPoint[0] - x1) * dx + (targetPoint[1] - y1) * dy) / segmentLengthSquared : 0;
+    const t = clamp(projection, 0, 1);
+    const candidate = [x1 + dx * t, y1 + dy * t];
+    const candidateDistanceSquared = (candidate[0] - targetPoint[0]) ** 2 + (candidate[1] - targetPoint[1]) ** 2;
+    if (candidateDistanceSquared < nearestDistanceSquared) {
+      nearestDistanceSquared = candidateDistanceSquared;
+      nearestPoint = candidate;
+    }
+  }
+  return nearestPoint;
+}
+const TEXT_MEASUREMENT_CANVAS = typeof document !== "undefined" ? document.createElement("canvas") : null;
+TEXT_MEASUREMENT_CANVAS?.getContext("2d") ?? null;
+function getScreenPolylinePointAtDistanceMeta(pixelLineData, distanceFromStart) {
+  if (!pixelLineData.length) return null;
+  if (pixelLineData.length === 1) {
+    return {
+      point: pixelLineData[0],
+      segmentIndex: 0,
+      leftIndex: 0,
+      rightIndex: 0
+    };
+  }
+  const safeDistance = Number.isFinite(Number(distanceFromStart)) && Number(distanceFromStart) >= 0 ? Number(distanceFromStart) : 0;
+  let accumulated = 0;
+  for (let index = 0; index < pixelLineData.length - 1; index += 1) {
+    const [x1, y1] = pixelLineData[index];
+    const [x2, y2] = pixelLineData[index + 1];
+    const segmentLength = Math.hypot(x2 - x1, y2 - y1);
+    if (segmentLength <= 0) continue;
+    const nextAccumulated = accumulated + segmentLength;
+    if (safeDistance <= nextAccumulated || index === pixelLineData.length - 2) {
+      const segmentFraction = clamp((safeDistance - accumulated) / segmentLength, 0, 1);
+      return {
+        point: [x1 + (x2 - x1) * segmentFraction, y1 + (y2 - y1) * segmentFraction],
+        segmentIndex: index,
+        leftIndex: index,
+        rightIndex: index + 1
+      };
+    }
+    accumulated = nextAccumulated;
+  }
+  return {
+    point: pixelLineData[pixelLineData.length - 1],
+    segmentIndex: pixelLineData.length - 2,
+    leftIndex: pixelLineData.length - 2,
+    rightIndex: pixelLineData.length - 1
+  };
+}
+function getPolylinePointAndAngleAtDistance(pixelLineData, distanceFromStart) {
+  const pointMeta = getScreenPolylinePointAtDistanceMeta(pixelLineData, distanceFromStart);
+  if (!pointMeta) {
+    return {
+      point: null,
+      angle: 0,
+      safeDistance: 0,
+      lookDistance: 18,
+      startPoint: null,
+      endPoint: null,
+      startLeftIndex: 0,
+      startRightIndex: 0,
+      endLeftIndex: 0,
+      endRightIndex: 0
+    };
+  }
+  const safeDistance = Number.isFinite(Number(distanceFromStart)) && Number(distanceFromStart) >= 0 ? Number(distanceFromStart) : 0;
+  const lookDistance = 18;
+  const startMeta = getScreenPolylinePointAtDistanceMeta(pixelLineData, Math.max(0, safeDistance - lookDistance)) ?? pointMeta;
+  const endMeta = getScreenPolylinePointAtDistanceMeta(pixelLineData, safeDistance + lookDistance) ?? pointMeta;
+  const angle = Math.atan2(endMeta.point[1] - startMeta.point[1], endMeta.point[0] - startMeta.point[0]);
+  return {
+    point: pointMeta.point,
+    angle: Number.isFinite(angle) ? angle : 0,
+    safeDistance,
+    lookDistance,
+    startPoint: startMeta.point,
+    endPoint: endMeta.point,
+    startLeftIndex: startMeta.leftIndex,
+    startRightIndex: startMeta.rightIndex,
+    endLeftIndex: endMeta.leftIndex,
+    endRightIndex: endMeta.rightIndex
+  };
+}
+function getPolylineTotalLength(pixelLineData) {
+  if (!Array.isArray(pixelLineData) || pixelLineData.length < 2) return 0;
+  let total = 0;
+  for (let index = 0; index < pixelLineData.length - 1; index += 1) {
+    const [x1, y1] = pixelLineData[index];
+    const [x2, y2] = pixelLineData[index + 1];
+    total += Math.hypot(x2 - x1, y2 - y1);
+  }
+  return total;
+}
+function getSeriesGraphLabelDistance(pixelLineData, resolvedLabelTextScale) {
+  const safeScale = Number.isFinite(Number(resolvedLabelTextScale)) && Number(resolvedLabelTextScale) > 0 ? Number(resolvedLabelTextScale) : 1;
+  const totalLength = getPolylineTotalLength(pixelLineData);
+  if (totalLength <= 0) {
+    return 36 * safeScale;
+  }
+  const preferred = totalLength * SERIES_GRAPH_LABEL_TUNING.startDistanceFraction;
+  const minimum = SERIES_GRAPH_LABEL_TUNING.startDistanceMinimum * safeScale;
+  const maximum = SERIES_GRAPH_LABEL_TUNING.startDistanceMaximum * safeScale;
+  return Math.max(minimum, Math.min(preferred, maximum));
+}
+function getSeriesGraphLabelPadding(rpmLine, resolvedLabelTextScale) {
+  const safeScale = Number.isFinite(Number(resolvedLabelTextScale)) && Number(resolvedLabelTextScale) > 0 ? Number(resolvedLabelTextScale) : 1;
+  const paddingY = 3 * safeScale;
+  const paddingLeft = (rpmLine?.line_role === "high" ? 13 : 8) * safeScale;
+  const paddingRight = (rpmLine?.line_role === "high" ? 8 : 13) * safeScale;
+  return { paddingY, paddingLeft, paddingRight };
 }
 function buildSmoothedCurveSamples(lineData, samplesPerSegment = 14) {
   if (lineData.length <= 2) return lineData.slice();
@@ -877,6 +991,9 @@ function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, per
     const pointsAtRpm = byRpm[String(rpm)] ?? [];
     const hasMultiplePoints = pointsAtRpm.length > 1;
     const bandColor = resolveBandColor(rpmLine, idx);
+    const isSeriesGraphLine = Boolean(rpmLine?.line_role);
+    const lineColor = isSeriesGraphLine ? bandColor : CHART_STYLE.rpmLineColor;
+    const lineShadowColor = isSeriesGraphLine ? "rgba(255, 255, 255, 1)" : void 0;
     const rawLineData = pointsAtRpm.map((point) => [point.value[0], point.value[1]]).sort((a, b) => a[0] - b[0]);
     const displayLineData = !includeDragHandles && hasMultiplePoints ? buildSmoothedCurveSamples(rawLineData) : rawLineData;
     rpmCurveEntries.push([rpm, displayLineData]);
@@ -888,15 +1005,20 @@ function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, per
       label: { show: false },
       showSymbol: !includeDragHandles,
       symbol: "circle",
-      symbolSize: !includeDragHandles ? 4 : 0,
+      symbolSize: !includeDragHandles ? SERIES_GRAPH_POINT_SIZE : 0,
       lineStyle: {
         width: hasMultiplePoints ? 2 : includeDragHandles ? 0 : 1,
-        color: CHART_STYLE.rpmLineColor
+        color: lineColor,
+        type: isSeriesGraphLine && rpmLine?.line_role === "low" ? "dashed" : "solid",
+        shadowColor: lineShadowColor,
+        shadowBlur: isSeriesGraphLine ? 9 * resolvedLabelTextScale : 0,
+        shadowOffsetX: 0,
+        shadowOffsetY: 0
       },
       itemStyle: {
-        color: bandColor
+        color: lineColor
       },
-      color: bandColor,
+      color: lineColor,
       areaStyle: void 0,
       emphasis: {
         focus: "series",
@@ -908,39 +1030,120 @@ function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, per
       z: includeDragHandles ? idx * 2 : rpms.length - idx
     });
     if (!includeDragHandles && displayLineData.length) {
-      const labelUsesBandStyling = showRpmBandShading;
-      const reversedLineData = displayLineData.slice().reverse();
-      labelUsesBandStyling ? buildBandLabelAnchorData(reversedLineData) : reversedLineData;
-      const labelColor = labelUsesBandStyling ? rpmBandLabelColor ?? chartTheme.text : chartTheme.text;
-      const labelGlowColor = toRgbaColor(getOppositeGlowColor(labelColor), 0.95);
-      series.push({
-        name: `${formatGraphLineValue(rpm, graphConfig, rpmLine)} label`,
-        type: "line",
-        smooth: false,
-        data: labelUsesBandStyling ? buildBandLabelAnchorData(reversedLineData) : reversedLineData,
-        showSymbol: false,
-        silent: true,
-        tooltip: { show: false },
-        lineStyle: { width: 0, opacity: 0 },
-        endLabel: {
-          show: true,
-          formatter: () => formatGraphLineValue(rpm, graphConfig, rpmLine),
-          color: labelColor,
-          fontFamily: chartFontFamily,
-          distance: 6,
-          offset: [1, 25],
-          textBorderColor: labelGlowColor ?? void 0,
-          textBorderWidth: 4.5 * resolvedLabelTextScale,
-          shadowBlur: 8 * resolvedLabelTextScale,
-          shadowColor: labelGlowColor ?? void 0,
-          shadowOffsetX: 0,
-          shadowOffsetY: 0,
-          fontSize: CHART_STYLE.dragHandleFontSize * resolvedLabelTextScale,
-          fontWeight: "normal"
-        },
-        z: 5e3,
-        zlevel: 10
-      });
+      if (isSeriesGraphLine) {
+        const labelText = formatGraphLineValue(rpm, graphConfig, rpmLine);
+        series.push({
+          name: `${labelText} label`,
+          type: "custom",
+          coordinateSystem: "cartesian2d",
+          silent: true,
+          tooltip: { show: false },
+          emphasis: { disabled: true },
+          data: [{ value: [0] }],
+          renderItem(params, api) {
+            const linePixels = displayLineData.map(([x, y]) => api.coord([x, y]));
+            const labelDistance = getSeriesGraphLabelDistance(linePixels, resolvedLabelTextScale);
+            const labelPlacement = getPolylinePointAndAngleAtDistance(linePixels, labelDistance);
+            const labelPoint = labelPlacement.point ?? linePixels[0] ?? [0, 0];
+            const lineAngle = labelPlacement.angle ?? 0;
+            const rotation = -lineAngle;
+            const normalAngle = lineAngle - Math.PI / 2;
+            const normalOffset = (rpmLine?.line_role === "high" ? SERIES_GRAPH_LABEL_TUNING.highLineNormalOffset : SERIES_GRAPH_LABEL_TUNING.lowLineNormalOffset) * resolvedLabelTextScale;
+            const verticalNudge = (rpmLine?.line_role === "high" ? SERIES_GRAPH_LABEL_TUNING.highLineVerticalNudge : SERIES_GRAPH_LABEL_TUNING.lowLineVerticalNudge) * resolvedLabelTextScale;
+            const finalLabelPoint = [
+              labelPoint[0] + Math.cos(normalAngle) * normalOffset,
+              labelPoint[1] + Math.sin(normalAngle) * normalOffset + verticalNudge
+            ];
+            const { paddingY, paddingLeft, paddingRight } = getSeriesGraphLabelPadding(rpmLine, resolvedLabelTextScale);
+            return {
+              type: "text",
+              style: {
+                text: labelText,
+                x: finalLabelPoint[0],
+                y: finalLabelPoint[1] + SERIES_GRAPH_LABEL_Y_OFFSET,
+                fill: lineColor,
+                font: `${SERIES_GRAPH_LABEL_FONT_SIZE * resolvedLabelTextScale}px ${chartFontFamily}`,
+                textAlign: "center",
+                textVerticalAlign: "middle",
+                backgroundColor: "rgba(255, 255, 255, 0.96)",
+                padding: [paddingY, paddingRight, paddingY, paddingLeft],
+                borderRadius: 4
+              },
+              rotation,
+              origin: [finalLabelPoint[0], finalLabelPoint[1]],
+              silent: true
+            };
+          },
+          z: 2e4,
+          zlevel: 20
+        });
+      } else {
+        const labelUsesBandStyling = showRpmBandShading;
+        const reversedLineData = displayLineData.slice().reverse();
+        const labelAnchorData = labelUsesBandStyling ? buildBandLabelAnchorData(reversedLineData) : reversedLineData;
+        const labelColor = labelUsesBandStyling ? rpmBandLabelColor ?? chartTheme.text : chartTheme.text;
+        const leaderColor = toRgbaColor(labelColor, 0.82) ?? labelColor;
+        const leaderStrokeWidth = Math.max(2.25, 2.4 * resolvedLabelTextScale);
+        series.push({
+          name: `${formatGraphLineValue(rpm, graphConfig, rpmLine)} label`,
+          type: "custom",
+          coordinateSystem: "cartesian2d",
+          silent: true,
+          tooltip: { show: false },
+          lineStyle: { width: 0, opacity: 0 },
+          data: [{ value: labelAnchorData[labelAnchorData.length - 1] ?? reversedLineData[0] ?? [0, 0] }],
+          renderItem(params, api) {
+            const anchorX = api.value(0);
+            const anchorY = api.value(1);
+            const anchorPoint = api.coord([anchorX, anchorY]);
+            const textOffsetX = 41;
+            const textOffsetY = 25;
+            const textPoint = [anchorPoint[0] + textOffsetX, anchorPoint[1] + textOffsetY];
+            const linePoints = reversedLineData.map(([x, y]) => api.coord([x, y]));
+            const leaderStartPoint = findNearestPointOnPolyline(linePoints, textPoint) ?? anchorPoint;
+            return {
+              type: "group",
+              children: [
+                {
+                  type: "line",
+                  shape: {
+                    x1: leaderStartPoint[0],
+                    y1: leaderStartPoint[1],
+                    x2: textPoint[0],
+                    y2: textPoint[1] - 10
+                  },
+                  style: {
+                    stroke: leaderColor,
+                    lineWidth: leaderStrokeWidth,
+                    opacity: 0.9,
+                    lineDash: [4, 4],
+                    lineCap: "round"
+                  },
+                  silent: true
+                },
+                {
+                  type: "text",
+                  style: {
+                    text: formatGraphLineValue(rpm, graphConfig, rpmLine),
+                    x: textPoint[0],
+                    y: textPoint[1],
+                    fill: labelColor,
+                    font: `${CHART_STYLE.dragHandleFontSize * resolvedLabelTextScale}px ${chartFontFamily}`,
+                    textAlign: "center",
+                    textVerticalAlign: "middle",
+                    backgroundColor: "rgba(255, 255, 255, 0.92)",
+                    padding: [3 * resolvedLabelTextScale, 6 * resolvedLabelTextScale],
+                    borderRadius: 4
+                  },
+                  silent: true
+                }
+              ]
+            };
+          },
+          z: 2e4,
+          zlevel: 20
+        });
+      }
     }
     if (showRpmBandShading && !includeDragHandles && !clipRpmAreaToPermissibleUse && hasMultiplePoints) {
       series.push({
@@ -1104,7 +1307,6 @@ function buildEfficiencyAndPermissibleSeries(points, chartTheme, includeDragHand
       if (!anchorPoint) {
         continue;
       }
-      const labelGlowColor = toRgbaColor(getOppositeGlowColor(permissibleLabelColor ?? chartTheme.text), 0.95);
       series.push({
         name: "Permissible Use Label",
         type: "custom",
@@ -1130,12 +1332,9 @@ function buildEfficiencyAndPermissibleSeries(points, chartTheme, includeDragHand
             style: {
               text: "⬇️ Permissible Use",
               fill: permissibleLabelColor ?? chartTheme.text,
-              stroke: labelGlowColor ?? void 0,
-              lineWidth: 3.5 * resolvedLabelTextScale,
-              shadowBlur: 8 * resolvedLabelTextScale,
-              shadowColor: labelGlowColor ?? void 0,
-              shadowOffsetX: 0,
-              shadowOffsetY: 0,
+              backgroundColor: "rgba(255, 255, 255, 0.92)",
+              padding: [3 * resolvedLabelTextScale, 6 * resolvedLabelTextScale],
+              borderRadius: 4,
               font: `${CHART_STYLE.permissibleLabelFontSize * resolvedLabelTextScale}px ${chartTheme.fontFamily ?? "sans-serif"}`,
               textAlign: "center",
               textVerticalAlign: "middle"

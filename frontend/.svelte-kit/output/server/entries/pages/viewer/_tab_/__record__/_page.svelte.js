@@ -1,15 +1,12 @@
-import { f as fallback, s as store_get, h as head, b as attr_class, a as attr, i as ensure_array_like, e as escape_html, u as unsubscribe_stores, d as bind_props } from "../../../../../chunks/index2.js";
+import { s as store_get, h as head, c as attr_class, b as attr, f as ensure_array_like, e as escape_html, u as unsubscribe_stores, d as bind_props } from "../../../../../chunks/index2.js";
 import { o as onDestroy } from "../../../../../chunks/index-server.js";
-import { e as getProductChartData, f as getSeries, h as getProducts, i as getProduct } from "../../../../../chunks/api.js";
-import { g as getChartTheme, b as buildFullChartOption, E as ECharts } from "../../../../../chunks/fullChart.js";
+import { j as getProductChartData, k as getSeries, m as getSeriesById, n as getProducts, o as getProduct } from "../../../../../chunks/api.js";
+import { E as ECharts, g as getChartTheme, b as buildFullChartOption } from "../../../../../chunks/fullChart.js";
 import { t as theme } from "../../../../../chunks/config.js";
 import { J as JobProgressPanel } from "../../../../../chunks/JobProgressPanel.js";
 import { S as SeriesNamesBadgeList } from "../../../../../chunks/SeriesNamesBadgeList.js";
-function html(value) {
-  var html2 = String(value ?? "");
-  var open = "<!---->";
-  return open + html2 + "<!---->";
-}
+import { f as fallback } from "../../../../../chunks/equality.js";
+import { h as html } from "../../../../../chunks/html.js";
 function _page($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
     var $$store_subs;
@@ -59,6 +56,11 @@ function _page($$renderer, $$props) {
     let seriesTabSeriesId = normalizeViewerStringId(data?.series);
     let seriesTabOptions = [];
     let selectedSeriesRecord = null;
+    let selectedSeriesGraphRecord = null;
+    let seriesChartOption = {};
+    let loadingSeriesGraph = false;
+    let seriesGraphRequestToken = 0;
+    let previousSelectedSeriesGraphId = null;
     let refreshingProductGraphId = null;
     let refreshingProductPdfJob = null;
     let refreshingProductTypePdfJob = null;
@@ -178,6 +180,25 @@ function _page($$renderer, $$props) {
     function productHasFanAcousticTable(product) {
       return product?.product_type_key === "fan";
     }
+    function flattenSeriesGraphPayload(seriesGraphPayload) {
+      const rpmLines2 = Array.isArray(seriesGraphPayload?.rpmLines) ? seriesGraphPayload.rpmLines : [];
+      const rpmPoints2 = [];
+      for (const line of rpmLines2) {
+        const rpmLineId = line?.id != null ? line.id : rpmPoints2.length + 1;
+        const rpmValue = line?.rpm != null ? line.rpm : rpmLineId;
+        const points = Array.isArray(line?.points) ? line.points : [];
+        points.forEach((point, pointIndex) => {
+          rpmPoints2.push({
+            id: point?.id ?? `${rpmLineId}-${pointIndex}`,
+            airflow: point?.airflow,
+            pressure: point?.pressure,
+            rpm_line_id: rpmLineId,
+            rpm: rpmValue
+          });
+        });
+      }
+      return { rpmLines: rpmLines2, rpmPoints: rpmPoints2 };
+    }
     function buildChartOptions() {
       const currentProduct = selectedProduct;
       const chartTheme = getChartTheme(store_get($$store_subs ??= {}, "$theme", theme));
@@ -205,6 +226,29 @@ function _page($$renderer, $$props) {
           band_graph_faded_opacity: currentProduct.band_graph_faded_opacity,
           band_graph_permissible_label_color: currentProduct.band_graph_permissible_label_color
         } : null
+      });
+    }
+    function buildSeriesChartOptions() {
+      const seriesGraphPayload = selectedSeriesGraphRecord?.series_graph_payload;
+      if (!seriesGraphPayload?.hasGraphData) {
+        seriesChartOption = {};
+        return;
+      }
+      const rpmLines2 = Array.isArray(seriesGraphPayload.rpmLines) ? seriesGraphPayload.rpmLines : [];
+      const rpmPoints2 = Array.isArray(seriesGraphPayload.rpmPoints) && seriesGraphPayload.rpmPoints.length ? seriesGraphPayload.rpmPoints : flattenSeriesGraphPayload(seriesGraphPayload).rpmPoints;
+      const chartTheme = getChartTheme(store_get($$store_subs ??= {}, "$theme", theme));
+      const seriesName = String(selectedSeriesGraphRecord?.name || "Series Graph").trim();
+      const title = String(seriesGraphPayload.graphTitle || seriesGraphPayload.title || `${seriesName} performance graph`).trim();
+      seriesChartOption = buildFullChartOption({
+        rpmLines: rpmLines2,
+        rpmPoints: rpmPoints2,
+        efficiencyPoints: Array.isArray(seriesGraphPayload.efficiencyPoints) ? seriesGraphPayload.efficiencyPoints : [],
+        chartTheme,
+        title,
+        graphConfig: seriesGraphPayload.graphConfig,
+        showRpmBandShading: Boolean(seriesGraphPayload.showRpmBandShading),
+        graphStyle: seriesGraphPayload.graphStyle ?? null,
+        adaptGraphBackgroundToTheme: true
       });
     }
     async function loadChartData() {
@@ -238,6 +282,36 @@ function _page($$renderer, $$props) {
       }
       if (seriesTabSeriesId && !seriesTabOptions.some((series) => Number(series.id) === Number(seriesTabSeriesId))) {
         seriesTabSeriesId = "";
+      }
+    }
+    async function loadSelectedSeriesGraph() {
+      const selectedSeriesId = selectedSeriesRecord?.id != null ? Number(selectedSeriesRecord.id) : null;
+      if (!selectedSeriesId) {
+        selectedSeriesGraphRecord = null;
+        seriesChartOption = {};
+        loadingSeriesGraph = false;
+        previousSelectedSeriesGraphId = null;
+        return;
+      }
+      if (selectedSeriesId === previousSelectedSeriesGraphId && selectedSeriesGraphRecord) {
+        return;
+      }
+      previousSelectedSeriesGraphId = selectedSeriesId;
+      const requestToken = ++seriesGraphRequestToken;
+      loadingSeriesGraph = true;
+      try {
+        const seriesDetail = await getSeriesById(selectedSeriesId);
+        if (requestToken !== seriesGraphRequestToken) return;
+        selectedSeriesGraphRecord = seriesDetail;
+        buildSeriesChartOptions();
+      } catch {
+        if (requestToken !== seriesGraphRequestToken) return;
+        selectedSeriesGraphRecord = null;
+        seriesChartOption = {};
+      } finally {
+        if (requestToken === seriesGraphRequestToken) {
+          loadingSeriesGraph = false;
+        }
       }
     }
     async function loadFilteredProducts() {
@@ -314,6 +388,9 @@ function _page($$renderer, $$props) {
       loadChartData();
     }
     selectedSeriesRecord = seriesTabOptions.find((series) => Number(series.id) === Number(seriesTabSeriesId)) || null;
+    if (selectedSeriesRecord?.id !== previousSelectedSeriesGraphId) {
+      loadSelectedSeriesGraph();
+    }
     if (productTypes.length > 0 && selectedProductTypeId) {
       const normalizedProductType = productTypes.find((productType) => String(productType.id) === String(selectedProductTypeId) || String(productType.key) === String(selectedProductTypeId));
       if (normalizedProductType && String(selectedProductTypeId) !== String(normalizedProductType.id)) {
@@ -323,6 +400,11 @@ function _page($$renderer, $$props) {
     selectedProductTypeRecord = productTypes.find((productType) => String(productType.id) === String(selectedProductTypeId) || String(productType.key) === String(selectedProductTypeId)) || null;
     selectedProductTypeContextMissingSeries = selectedProductTypeContext?.series?.filter((series) => Number(series.page_count || 0) === 0) || [];
     selectedProductTypeContextWarning = selectedProductTypeContextMissingSeries.length ? "One or more linked series PDFs are missing or not generated yet, so this PDF context is incomplete." : "";
+    if (selectedSeriesGraphRecord && store_get($$store_subs ??= {}, "$theme", theme)) {
+      buildSeriesChartOptions();
+    } else if (!selectedSeriesGraphRecord) {
+      seriesChartOption = {};
+    }
     head("36khdd", $$renderer2, ($$renderer3) => {
       $$renderer3.title(($$renderer4) => {
         $$renderer4.push(`<title>Viewer — Internal Facing</title>`);
@@ -751,13 +833,6 @@ function _page($$renderer, $$props) {
       if (selectedSeriesRecord) {
         $$renderer2.push("<!--[0-->");
         $$renderer2.push(`<div class="card shadow-sm"><div class="card-body"><h3 class="h5">Series Data</h3> <div class="text-body-secondary small mb-3">${escape_html(selectedSeriesRecord.name)} · ${escape_html(selectedSeriesRecord.product_count)} products</div> <div class="d-flex flex-wrap align-items-start gap-2 mb-3"><div class="me-auto"></div> <a class="btn btn-outline-primary btn-sm"${attr("href", seriesEditorUrl(selectedSeriesRecord.id))}>Open in Editor</a> <button class="btn btn-outline-secondary btn-sm"${attr("disabled", refreshingSeriesGraphId === selectedSeriesRecord.id, true)}>${escape_html(refreshingSeriesGraphId === selectedSeriesRecord.id ? "Generating Graph..." : "Generate Series Graph")}</button> <button class="btn btn-outline-secondary btn-sm"${attr("disabled", refreshingSeriesPdfJob?.status === "running", true)}>${escape_html("Generate Series PDFs")}</button> `);
-        if (selectedSeriesRecord.series_graph_image_url) {
-          $$renderer2.push("<!--[0-->");
-          $$renderer2.push(`<a class="btn btn-outline-secondary btn-sm"${attr("href", selectedSeriesRecord.series_graph_image_url)} target="_blank" rel="noreferrer">Open Series Graph</a>`);
-        } else {
-          $$renderer2.push("<!--[-1-->");
-        }
-        $$renderer2.push(`<!--]--> `);
         if (selectedSeriesRecord.series_printed_pdf_url) {
           $$renderer2.push("<!--[0-->");
           $$renderer2.push(`<a class="btn btn-outline-secondary btn-sm"${attr("href", selectedSeriesRecord.series_printed_pdf_url)} target="_blank" rel="noreferrer">Open Printed PDF</a>`);
@@ -776,7 +851,25 @@ function _page($$renderer, $$props) {
         }
         $$renderer2.push(`<!--]--></div> <div class="small text-body-secondary mb-3">Printed template: ${escape_html(seriesPdfTemplateLabels(selectedSeriesRecord).printed)} · Online template: ${escape_html(seriesPdfTemplateLabels(selectedSeriesRecord).online)}</div> `);
         JobProgressPanel($$renderer2, { job: refreshingSeriesPdfJob, label: "Series PDF generation" });
-        $$renderer2.push(`<!----> <div class="row g-3"><div class="col-12 col-lg-6"><h4 class="h6">Description1</h4> <div class="viewer-html svelte-36khdd">${html(selectedSeriesRecord.description1_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div> <div class="col-12 col-lg-6"><h4 class="h6">Description2</h4> <div class="viewer-html svelte-36khdd">${html(selectedSeriesRecord.description2_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div> <div class="col-12 col-lg-6"><h4 class="h6">Description3</h4> <div class="viewer-html svelte-36khdd">${html(selectedSeriesRecord.description3_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div> <div class="col-12 col-lg-6"><h4 class="h6">Description4</h4> <div class="viewer-html svelte-36khdd">${html(selectedSeriesRecord.description4_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div></div> <div class="card shadow-sm"><div class="card-body"><h3 class="h5">Series PDFs</h3> `);
+        $$renderer2.push(`<!----> <div class="card series-graph-card shadow-sm mb-3 svelte-36khdd"><div class="card-body"><div class="d-flex flex-wrap align-items-center gap-2 mb-2"><h4 class="h6 mb-0">Series Graph</h4> <div class="ms-auto">`);
+        if (selectedSeriesRecord.series_graph_image_url) {
+          $$renderer2.push("<!--[0-->");
+          $$renderer2.push(`<a class="btn btn-outline-secondary btn-sm"${attr("href", selectedSeriesRecord.series_graph_image_url)} target="_blank" rel="noreferrer">Open Series Graph</a>`);
+        } else {
+          $$renderer2.push("<!--[-1-->");
+        }
+        $$renderer2.push(`<!--]--></div></div> `);
+        if (loadingSeriesGraph) {
+          $$renderer2.push("<!--[0-->");
+          $$renderer2.push(`<p class="text-body-secondary mb-0">Loading live series graph...</p>`);
+        } else if (Object.keys(seriesChartOption).length > 0) {
+          $$renderer2.push("<!--[1-->");
+          ECharts($$renderer2, { option: seriesChartOption, height: "700px" });
+        } else {
+          $$renderer2.push("<!--[-1-->");
+          $$renderer2.push(`<p class="text-body-secondary mb-0">No series graph data is available yet.</p>`);
+        }
+        $$renderer2.push(`<!--]--></div></div> <div class="row g-3"><div class="col-12 col-lg-6"><h4 class="h6">Description1</h4> <div class="viewer-html svelte-36khdd">${html(selectedSeriesRecord.description1_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div> <div class="col-12 col-lg-6"><h4 class="h6">Description2</h4> <div class="viewer-html svelte-36khdd">${html(selectedSeriesRecord.description2_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div> <div class="col-12 col-lg-6"><h4 class="h6">Description3</h4> <div class="viewer-html svelte-36khdd">${html(selectedSeriesRecord.description3_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div> <div class="col-12 col-lg-6"><h4 class="h6">Description4</h4> <div class="viewer-html svelte-36khdd">${html(selectedSeriesRecord.description4_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div></div> <div class="card shadow-sm"><div class="card-body"><h3 class="h5">Series PDFs</h3> `);
         if (selectedSeriesRecord.series_printed_pdf_url || selectedSeriesRecord.series_online_pdf_url) {
           $$renderer2.push("<!--[0-->");
           $$renderer2.push(`<div class="vstack gap-3 mt-3">`);

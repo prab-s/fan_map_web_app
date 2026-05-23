@@ -23,7 +23,11 @@ export const nodes = [
 	() => import('./nodes/19'),
 	() => import('./nodes/20'),
 	() => import('./nodes/21'),
-	() => import('./nodes/22')
+	() => import('./nodes/22'),
+	() => import('./nodes/23'),
+	() => import('./nodes/24'),
+	() => import('./nodes/25'),
+	() => import('./nodes/26')
 ];
 
 export const server_loads = [];
@@ -45,11 +49,15 @@ export const dictionary = {
 		"/editor/series/edit/[series]": [15],
 		"/entry": [16],
 		"/map": [17],
-		"/setup": [18],
-		"/template-builder-v2": [20],
-		"/template-builder": [19],
-		"/viewer": [21],
-		"/viewer/[tab]/[[record]]": [22]
+		"/products": [18],
+		"/products/type/[product_type]": [20],
+		"/products/[product]": [19],
+		"/series/[series]": [21],
+		"/setup": [22],
+		"/template-builder-v2": [24],
+		"/template-builder": [23],
+		"/viewer": [25],
+		"/viewer/[tab]/[[record]]": [26]
 	};
 
 export const hooks = {

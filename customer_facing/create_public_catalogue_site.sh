@@ -111,6 +111,8 @@ EOF
 cat > "$ROOT_DIR/app/api_client.py" <<'EOF'
 import json
 import httpx
+import hashlib
+import colorsys
 from app.config import settings
 
 
@@ -128,7 +130,7 @@ class CatalogueApi:
             return response.json()
 
     async def product_types(self):
-        return await self._get("/api/cms/product-types")
+        return await self._get("/api/public/product-types")
 
     async def products(self, **filters):
         params = {k: v for k, v in filters.items() if v not in (None, "")}
@@ -136,17 +138,17 @@ class CatalogueApi:
         if isinstance(params.get("parameter_filters"), dict):
             params["parameter_filters"] = json.dumps(params["parameter_filters"])
 
-        return await self._get("/api/cms/products", params=params)
+        return await self._get("/api/public/products", params=params)
 
     async def product(self, product_id):
-        return await self._get(f"/api/cms/products/{product_id}")
+        return await self._get(f"/api/public/products/{product_id}")
 
     async def series_list(self, product_type_key=None):
         params = {"product_type_key": product_type_key} if product_type_key else None
-        return await self._get("/api/cms/series", params=params)
+        return await self._get("/api/public/series", params=params)
 
     async def series(self, series_id):
-        return await self._get(f"/api/cms/series/{series_id}")
+        return await self._get(f"/api/public/series/{series_id}")
 
     def media_url(self, relative_url):
         if not relative_url:
@@ -154,6 +156,9 @@ class CatalogueApi:
 
         if relative_url.startswith("http://") or relative_url.startswith("https://"):
             return relative_url
+
+        if relative_url.startswith("/api/cms/media/"):
+            relative_url = relative_url.replace("/api/cms/media/", "/api/public/media/", 1)
 
         return f"{self.base_url}{relative_url}"
 
@@ -322,11 +327,22 @@ def build_series_graph_payload(series: dict, product_type: dict | None, series_p
     synthetic_lines: list[dict] = []
     next_line_id = 1
 
+    def product_color_for_identity(identity):
+        if identity in (None, ""):
+            return "#64748b"
+        digest = hashlib.sha1(str(identity).encode("utf-8")).digest()
+        hue = int.from_bytes(digest[:2], "big") / 65535.0
+        saturation = 0.62 + (digest[2] / 255.0) * 0.18
+        lightness = 0.44 + (digest[3] / 255.0) * 0.08
+        red, green, blue = colorsys.hls_to_rgb(hue, lightness, saturation)
+        return "#{:02x}{:02x}{:02x}".format(int(red * 255 * 0.72), int(green * 255 * 0.72), int(blue * 255 * 0.72))
+
     ordered_products = sorted(series_products or [], key=lambda item: str(item.get("model") or "").casefold())
     for product in ordered_products:
         ordered_lines = sorted(product.get("rpm_lines", []) or [], key=lambda item: (item.get("rpm", 0), item.get("id", 0)))
         if not ordered_lines:
             continue
+        product_color = product_color_for_identity(product.get("id"))
 
         selected_lines = [ordered_lines[0]]
         if len(ordered_lines) > 1 and ordered_lines[-1] != ordered_lines[0]:
@@ -346,7 +362,8 @@ def build_series_graph_payload(series: dict, product_type: dict | None, series_p
                 "id": synthetic_line_id,
                 "rpm": synthetic_line_id,
                 "display_label": display_label,
-                "band_color": line.get("band_color"),
+                "band_color": product_color,
+                "line_role": "low" if len(selected_lines) > 1 and index == 0 else "high",
                 "points": [],
             })
             for point in sorted(line.get("points", []) or [], key=lambda item: (item.get("airflow", 0), item.get("id", 0))):

@@ -208,6 +208,19 @@ body.series-template--compact {
   object-fit: contain;
 }
 
+.series-graph--live {
+  width: 100%;
+}
+
+.series-graph__mount {
+  width: 100%;
+  height: var(--series-graph-height, 73mm);
+}
+
+.series-graph--live.is-hydrated .series-graph__fallback {
+  display: none;
+}
+
 .notes-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

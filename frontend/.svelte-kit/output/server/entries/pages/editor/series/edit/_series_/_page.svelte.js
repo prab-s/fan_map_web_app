@@ -1,6 +1,7 @@
-import { f as fallback, h as head, d as bind_props } from "../../../../../../chunks/index2.js";
+import { h as head, d as bind_props } from "../../../../../../chunks/index2.js";
 import { M as ManagePageShell } from "../../../../../../chunks/ManagePageShell.js";
 import { S as SeriesWorkspace } from "../../../../../../chunks/SeriesWorkspace.js";
+import { f as fallback } from "../../../../../../chunks/equality.js";
 function _page($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
     let data = fallback($$props["data"], () => ({}), true);

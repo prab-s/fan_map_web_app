@@ -1,8 +1,9 @@
-import { f as fallback, a as attr, e as escape_html, c as slot, d as bind_props, s as store_get, u as unsubscribe_stores, i as ensure_array_like, b as attr_class, j as attr_style } from "./index2.js";
+import { b as attr, e as escape_html, a as slot, d as bind_props, s as store_get, u as unsubscribe_stores, f as ensure_array_like, c as attr_class, i as attr_style } from "./index2.js";
 import { o as onDestroy } from "./index-server.js";
 import "@sveltejs/kit/internal";
 import "./exports.js";
 import "./utils.js";
+import { f as fallback } from "./equality.js";
 import "@sveltejs/kit/internal/server";
 import "./root.js";
 import "./state.svelte.js";

@@ -1,4 +1,4 @@
-import { g as getContext, s as store_get, a as attr, e as escape_html, b as attr_class, c as slot, u as unsubscribe_stores } from "../../chunks/index2.js";
+import { g as getContext, s as store_get, a as slot, b as attr, e as escape_html, c as attr_class, u as unsubscribe_stores } from "../../chunks/index2.js";
 import "clsx";
 import "@sveltejs/kit/internal";
 import "../../chunks/exports.js";
@@ -34,16 +34,24 @@ function _layout($$renderer, $$props) {
     var $$store_subs;
     let username = "";
     let password = "";
+    let isPublicRoute = false;
+    const PUBLIC_ROUTE_PREFIXES = ["/series", "/products"];
     function isActive(path) {
       if (path === "/") return store_get($$store_subs ??= {}, "$page", page).url.pathname === "/";
       return store_get($$store_subs ??= {}, "$page", page).url.pathname.startsWith(path);
     }
+    isPublicRoute = PUBLIC_ROUTE_PREFIXES.some((prefix) => store_get($$store_subs ??= {}, "$page", page).url.pathname === prefix || store_get($$store_subs ??= {}, "$page", page).url.pathname.startsWith(`${prefix}/`));
     $$renderer2.push(`<div class="app-shell">`);
-    if (!store_get($$store_subs ??= {}, "$auth", auth).ready) {
+    if (isPublicRoute) {
       $$renderer2.push("<!--[0-->");
+      $$renderer2.push(`<main class="app-frame py-0"><!--[-->`);
+      slot($$renderer2, $$props, "default", {});
+      $$renderer2.push(`<!--]--></main>`);
+    } else if (!store_get($$store_subs ??= {}, "$auth", auth).ready) {
+      $$renderer2.push("<!--[1-->");
       $$renderer2.push(`<main class="app-frame py-5"><div class="d-flex justify-content-center"><div class="card shadow-sm" style="max-width: 420px; width: 100%;"><div class="card-body p-4 text-center"><h1 class="h4 mb-2">Internal Facing</h1> <p class="text-body-secondary mb-0">Checking your session...</p></div></div></div></main>`);
     } else if (!store_get($$store_subs ??= {}, "$auth", auth).authenticated) {
-      $$renderer2.push("<!--[1-->");
+      $$renderer2.push("<!--[2-->");
       $$renderer2.push(`<main class="app-frame py-5"><div class="d-flex justify-content-center"><div class="card shadow-sm" style="max-width: 420px; width: 100%;"><div class="card-body p-4"><div class="text-center mb-4"><h1 class="h4 mb-2">Internal Facing</h1> <p class="text-body-secondary mb-0">Enter the application password to continue.</p></div> <form class="vstack gap-3"><div><label class="form-label" for="app-username">Username</label> <input id="app-username" class="form-control" type="text"${attr("value", username)} autocomplete="username"/></div> <div><label class="form-label" for="app-password">Password</label> <input id="app-password" class="form-control" type="password"${attr("value", password)} autocomplete="current-password"/></div> `);
       if (store_get($$store_subs ??= {}, "$auth", auth).error) {
         $$renderer2.push("<!--[0-->");

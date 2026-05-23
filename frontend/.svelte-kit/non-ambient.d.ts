@@ -29,11 +29,14 @@ declare module "$app/types" {
 	type MatcherParam<M> = M extends (param : string) => param is (infer U extends string) ? U : string;
 
 	export interface AppTypes {
-		RouteId(): "/" | "/catalogue" | "/editor" | "/editor/create" | "/editor/edit" | "/editor/edit/[product]" | "/editor/product-types" | "/editor/product-types/create" | "/editor/product-types/edit" | "/editor/product-types/edit/[product_type]" | "/editor/product" | "/editor/product/create" | "/editor/product/edit" | "/editor/series" | "/editor/series/create" | "/editor/series/edit" | "/editor/series/edit/[series]" | "/entry" | "/map" | "/setup" | "/template-builder-v2" | "/template-builder" | "/viewer" | "/viewer/[tab]" | "/viewer/[tab]/[[record]]";
+		RouteId(): "/" | "/catalogue" | "/editor" | "/editor/create" | "/editor/edit" | "/editor/edit/[product]" | "/editor/product-types" | "/editor/product-types/create" | "/editor/product-types/edit" | "/editor/product-types/edit/[product_type]" | "/editor/product" | "/editor/product/create" | "/editor/product/edit" | "/editor/series" | "/editor/series/create" | "/editor/series/edit" | "/editor/series/edit/[series]" | "/entry" | "/map" | "/products" | "/products/type" | "/products/type/[product_type]" | "/products/[product]" | "/series" | "/series/[series]" | "/setup" | "/template-builder-v2" | "/template-builder" | "/viewer" | "/viewer/[tab]" | "/viewer/[tab]/[[record]]";
 		RouteParams(): {
 			"/editor/edit/[product]": { product: string };
 			"/editor/product-types/edit/[product_type]": { product_type: string };
 			"/editor/series/edit/[series]": { series: string };
+			"/products/type/[product_type]": { product_type: string };
+			"/products/[product]": { product: string };
+			"/series/[series]": { series: string };
 			"/viewer/[tab]": { tab: string };
 			"/viewer/[tab]/[[record]]": { tab: string; record?: string }
 		};
@@ -57,6 +60,12 @@ declare module "$app/types" {
 			"/editor/series/edit/[series]": { series: string };
 			"/entry": Record<string, never>;
 			"/map": Record<string, never>;
+			"/products": { product_type?: string; product?: string };
+			"/products/type": { product_type?: string };
+			"/products/type/[product_type]": { product_type: string };
+			"/products/[product]": { product: string };
+			"/series": { series?: string };
+			"/series/[series]": { series: string };
 			"/setup": Record<string, never>;
 			"/template-builder-v2": Record<string, never>;
 			"/template-builder": Record<string, never>;
@@ -64,7 +73,7 @@ declare module "$app/types" {
 			"/viewer/[tab]": { tab: string; record?: string };
 			"/viewer/[tab]/[[record]]": { tab: string; record?: string }
 		};
-		Pathname(): "/" | "/catalogue" | "/editor" | "/editor/create" | "/editor/edit" | `/editor/edit/${string}` & {} | "/editor/product-types" | "/editor/product-types/create" | "/editor/product-types/edit" | `/editor/product-types/edit/${string}` & {} | "/editor/series" | "/editor/series/create" | "/editor/series/edit" | `/editor/series/edit/${string}` & {} | "/entry" | "/map" | "/setup" | "/template-builder-v2" | "/template-builder" | "/viewer" | `/viewer/${string}${string}` & {};
+		Pathname(): "/" | "/catalogue" | "/editor" | "/editor/create" | "/editor/edit" | `/editor/edit/${string}` & {} | "/editor/product-types" | "/editor/product-types/create" | "/editor/product-types/edit" | `/editor/product-types/edit/${string}` & {} | "/editor/series" | "/editor/series/create" | "/editor/series/edit" | `/editor/series/edit/${string}` & {} | "/entry" | "/map" | "/products" | `/products/type/${string}` & {} | `/products/${string}` & {} | `/series/${string}` & {} | "/setup" | "/template-builder-v2" | "/template-builder" | "/viewer" | `/viewer/${string}${string}` & {};
 		ResolvedPathname(): `${"" | `/${string}`}${ReturnType<AppTypes['Pathname']>}`;
 		Asset(): "/favicon.png" | string & {};
 	}

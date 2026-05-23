@@ -58,7 +58,11 @@
           </section>
 
           <section class="graph-panel">
-            <img src="{{series.graph_image_url}}" alt="{{series.name}} series graph" class="graph-image" />
+            <div class="series-graph series-graph--live" data-series-graph style="--series-graph-height: 80mm;">
+              <script type="application/json" class="series-graph__payload">{{series.graph_payload_json}}</script>
+              <div class="series-graph__mount"></div>
+              <img src="{{series.graph_image_url}}" alt="{{series.name}} series graph" class="graph-image series-graph__fallback" />
+            </div>
           </section>
         </aside>
       </section>
@@ -118,6 +122,7 @@
       </footer>
     </section>
   </main>
-</body>
+  <script defer src="/series-graph-hydrator.js"></script>
+  </body>
 
 </html>

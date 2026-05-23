@@ -98,7 +98,13 @@ export function buildTemplateBlocks() {
     },
     { id: 'spec-table', label: 'Specs Table', category: 'Data', content: '<div>{{product.grouped_specs_table}}</div>' },
     { id: 'product-graph', label: 'Product Graph', category: 'Data', content: '<div>{{product.graph_image_tag}}</div>' },
-    { id: 'series-graph', label: 'Series Graph', category: 'Data', content: '<div>{{series.graph_image_tag}}</div>' },
+    {
+      id: 'series-graph',
+      label: 'Series Graph',
+      category: 'Data',
+      content:
+        '<div class="series-graph series-graph--live" data-series-graph><script type="application/json" class="series-graph__payload">{{series.graph_payload_json}}</script><div class="series-graph__mount"></div><img src="{{series.graph_image_url}}" alt="{{series.name}} series graph" class="series-graph__fallback" /></div>'
+    },
     { id: 'product-pdf-title', label: 'Product Title', category: 'Data', content: '<h1>{{product.model}}</h1>' },
     { id: 'series-title', label: 'Series Title', category: 'Data', content: '<h1>{{series.name}}</h1>' },
     { id: 'pdf-page-break', label: 'Page Break', category: 'PDF', content: '<div class="pdf-page-break">Page break</div>' },

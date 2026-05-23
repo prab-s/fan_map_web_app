@@ -1,4 +1,5 @@
-import { f as fallback, a as attr, i as ensure_array_like, e as escape_html, d as bind_props, h as head } from "./index2.js";
+import { b as attr, f as ensure_array_like, e as escape_html, d as bind_props, h as head } from "./index2.js";
+import { f as fallback } from "./equality.js";
 import { g as goto } from "./client.js";
 import { d as deleteSeriesImage, r as reorderSeriesImages, u as uploadSeriesImages } from "./api.js";
 function SeriesMediaPanel($$renderer, $$props) {

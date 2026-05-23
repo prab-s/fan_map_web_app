@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from urllib.parse import urlparse
@@ -20,6 +21,24 @@ class CatalogueApi:
         self.base_url = settings.backend_api_base_url
         self.timeout = settings.request_timeout_seconds
         self.cms_api_token = settings.cms_api_token
+        self._client: httpx.AsyncClient | None = None
+        self._client_lock = asyncio.Lock()
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        if self._client is not None:
+            return self._client
+
+        async with self._client_lock:
+            if self._client is None:
+                self._client = httpx.AsyncClient(timeout=self.timeout)
+        return self._client
+
+    async def aclose(self):
+        if self._client is None:
+            return
+
+        await self._client.aclose()
+        self._client = None
 
     async def _get(self, path, params=None):
         url = f"{self.base_url}{path}"
@@ -30,21 +49,21 @@ class CatalogueApi:
 
         logger.debug("catalogue api request url=%s params=%s", url, params or {})
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            try:
-                response = await client.get(url, params=params, headers=headers)
-                response.raise_for_status()
-            except httpx.HTTPStatusError as exc:
-                detail = exc.response.text.strip() or f"Catalogue API request failed with status {exc.response.status_code}."
-                raise ApiClientError(exc.response.status_code, detail) from exc
-            except httpx.HTTPError as exc:
-                raise ApiClientError(502, "Catalogue API is unavailable right now.") from exc
+        client = await self._get_client()
+        try:
+            response = await client.get(url, params=params, headers=headers)
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            detail = exc.response.text.strip() or f"Catalogue API request failed with status {exc.response.status_code}."
+            raise ApiClientError(exc.response.status_code, detail) from exc
+        except httpx.HTTPError as exc:
+            raise ApiClientError(502, "Catalogue API is unavailable right now.") from exc
 
-            logger.debug("catalogue api response url=%s status=%s bytes=%s", url, response.status_code, len(response.content))
-            return response.json()
+        logger.debug("catalogue api response url=%s status=%s bytes=%s", url, response.status_code, len(response.content))
+        return response.json()
 
     async def product_types(self):
-        return await self._get("/api/cms/product-types")
+        return await self._get("/api/public/product-types")
 
     async def products(self, **filters):
         params = {k: v for k, v in filters.items() if v not in (None, "")}
@@ -52,7 +71,7 @@ class CatalogueApi:
         if isinstance(params.get("parameter_filters"), dict):
             params["parameter_filters"] = json.dumps(params["parameter_filters"])
 
-        return await self._get("/api/cms/products", params=params)
+        return await self._get("/api/public/products", params=params)
 
     async def product_graph_values(self, **filters):
         params = {k: v for k, v in filters.items() if v not in (None, "")}
@@ -60,20 +79,17 @@ class CatalogueApi:
         if isinstance(params.get("parameter_filters"), dict):
             params["parameter_filters"] = json.dumps(params["parameter_filters"])
 
-        return await self._get("/api/cms/product-graph-values", params=params)
+        return await self._get("/api/public/product-graph-values", params=params)
 
     async def product(self, product_id):
-        return await self._get(f"/api/cms/products/{product_id}")
+        return await self._get(f"/api/public/products/{product_id}")
 
     async def series_list(self, product_type_key=None):
         params = {"product_type_key": product_type_key} if product_type_key else None
-        return await self._get("/api/cms/series", params=params)
+        return await self._get("/api/public/series", params=params)
 
     async def series(self, series_id):
-        return await self._get(f"/api/cms/series/{series_id}")
-
-    async def catalogue_index(self):
-        return await self._get("/api/cms/catalogue-index")
+        return await self._get(f"/api/public/series/{series_id}")
 
     def media_url(self, relative_url):
         if not relative_url:
@@ -91,6 +107,9 @@ class CatalogueApi:
                     relative_url = f"{relative_url}?{parsed.query}"
             else:
                 return relative_url
+
+        if relative_url.startswith("/api/cms/media/"):
+            relative_url = relative_url.replace("/api/cms/media/", "/api/public/media/", 1)
 
         if not relative_url.startswith("/"):
             return f"/{relative_url}"
