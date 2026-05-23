@@ -1590,6 +1590,7 @@ cat > "$ROOT_DIR/app/static/js/product-graph.js" <<'EOF'
   const efficiencyPoints = Array.isArray(payload.efficiencyPoints) ? payload.efficiencyPoints : [];
   const showRpmBandShading = payload.showRpmBandShading !== false;
   const supportsOverlays = graphConfig.supports_graph_overlays !== false;
+  const supportsBandGraphStyle = graphConfig.supports_band_graph_style !== false;
 
   function normalizeOptionalColor(value) {
     const normalized = String(value ?? '').trim();
@@ -1727,10 +1728,19 @@ cat > "$ROOT_DIR/app/static/js/product-graph.js" <<'EOF'
   const chart = window.echarts.init(host, null, { renderer: 'canvas' });
   const xAxisMax = niceAxisMax(airflowValues, 100);
   const yAxisMax = niceAxisMax(pressureValues, 100);
-  const bandLabelColor = normalizeOptionalColor(graphConfig.band_graph_label_text_color) || chartTheme.text;
-  const permissibleLabelColor = normalizeOptionalColor(graphConfig.band_graph_permissible_label_color) || bandLabelColor;
+  const bandLabelColor =
+    showRpmBandShading && supportsBandGraphStyle
+      ? normalizeOptionalColor(graphConfig.band_graph_label_text_color)
+      : null;
+  const permissibleLabelColor =
+    supportsBandGraphStyle
+      ? normalizeOptionalColor(graphConfig.band_graph_permissible_label_color) || bandLabelColor || chartTheme.text
+      : chartTheme.text;
   const chartFontFamily = chartTheme.fontFamily;
-  const chartBackgroundColor = '#d9d9d9';
+  const chartBackgroundColor =
+    showRpmBandShading && supportsBandGraphStyle
+      ? normalizeOptionalColor(graphConfig.band_graph_background_color) || chartTheme.background
+      : chartTheme.background;
   host.style.background = chartBackgroundColor;
   const hostWidth = host.getBoundingClientRect?.().width || host.clientWidth || 0;
   const titleWidth = Math.max(280, Math.floor(hostWidth * 0.9));
@@ -2008,6 +2018,11 @@ podman run -d \
 
 echo "Vent-tech catalogue is running on http://localhost:8004"
 EOF
+
+(
+  cd "$ROOT_DIR/../frontend"
+  node scripts/build_public_product_graph_renderer.mjs
+)
 
 chmod +x "$ROOT_DIR/run_container.sh"
 
