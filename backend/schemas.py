@@ -253,6 +253,16 @@ class FileManagerDeleteRequest(BaseModel):
     recursive: bool = True
 
 
+class FileManagerContentResponse(BaseModel):
+    name: str
+    path: str
+    content: str
+
+
+class FileManagerContentUpdateRequest(BaseModel):
+    content: str
+
+
 class SeriesBase(BaseModel):
     name: str
     product_type_key: str

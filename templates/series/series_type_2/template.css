@@ -186,7 +186,7 @@ body.series-template--type-2 {
   flex-direction: column;
   width: 100%;
   min-height: 297mm;
-  padding: 16mm 12mm 16mm;
+  padding: 6mm 12mm 5mm;
   margin: 0 auto;
   background: var(--page-bg);
 }
@@ -571,8 +571,9 @@ body.series-template--type-2 {
   align-items: center;
   justify-content: flex-end;
   justify-self: end;
-  min-width: 58mm;
+  min-width: 20mm;
   padding: 1.0mm 3.0mm;
+  margin-right: 5mm;
   background: var(--series-accent);
   color: var(--white);
   -webkit-text-stroke: 0.15mm var(--black);

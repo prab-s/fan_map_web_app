@@ -580,8 +580,9 @@ body.vt-sheet-body {
   align-items: center;
   justify-content: flex-end;
   justify-self: end;
-  min-width: 58mm;
+  min-width: 20mm;
   padding: 1.0mm 3.0mm;
+  margin-right: 5mm;
   background: var(--deep-red);
   color: var(--white);
   font-size: 5mm;

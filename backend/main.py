@@ -110,6 +110,8 @@ from backend.schemas import (
     TemplateFileUpdateRequest,
     TemplateRegistryResponse,
     FileManagerCreateFolderRequest,
+    FileManagerContentResponse,
+    FileManagerContentUpdateRequest,
     FileManagerDeleteRequest,
     FileManagerEntryResponse,
     FileManagerListingResponse,
@@ -651,6 +653,56 @@ def file_manager_list_directory(root_name: str, relative_path: str | None = None
         parent_path=parent_path,
         entries=[file_manager_entry_to_response(root_name, entry) for entry in entries],
     )
+
+
+def file_manager_read_text_file(root_name: str, relative_path: str) -> FileManagerContentResponse:
+    target_path = file_manager_resolve_path(root_name, relative_path)
+    if not target_path.exists():
+        raise HTTPException(status_code=404, detail="File not found.")
+    if not target_path.is_file():
+        raise HTTPException(status_code=400, detail="Path is not a file.")
+
+    try:
+        content = target_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="This file is not UTF-8 text and cannot be edited here.")
+
+    return FileManagerContentResponse(
+        name=target_path.name,
+        path=file_manager_relative_path(root_name, target_path),
+        content=content,
+    )
+
+
+def file_manager_write_text_file(root_name: str, relative_path: str, content: str) -> FileManagerContentResponse:
+    target_path = file_manager_resolve_path(root_name, relative_path)
+    if not target_path.exists():
+        raise HTTPException(status_code=404, detail="File not found.")
+    if not target_path.is_file():
+        raise HTTPException(status_code=400, detail="Path is not a file.")
+
+    if file_manager_normalize_relative_path(relative_path).name == "registry.json" and root_name.strip().lower() == "templates":
+        try:
+            parsed_registry = json.loads(content)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail="registry.json must contain valid JSON.") from exc
+        if not isinstance(parsed_registry, dict):
+            raise HTTPException(status_code=400, detail="registry.json must contain a JSON object.")
+
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=str(target_path.parent), delete=False) as handle:
+        handle.write(content)
+        temp_path = Path(handle.name)
+
+    try:
+        temp_path.replace(target_path)
+    finally:
+        if temp_path.exists():
+            temp_path.unlink(missing_ok=True)
+
+    if root_name.strip().lower() == "templates":
+        sync_templates_after_file_change()
+
+    return file_manager_read_text_file(root_name, relative_path)
 
 
 def sync_templates_after_file_change():
@@ -4564,6 +4616,16 @@ def download_file_manager_entry(root_name: str, path: str):
     if not target_path.is_file():
         raise HTTPException(status_code=404, detail="File not found.")
     return FileResponse(target_path, filename=target_path.name)
+
+
+@app.get("/api/file-manager/{root_name}/content", response_model=FileManagerContentResponse, dependencies=[Depends(require_admin_user)], tags=["Maintenance"], summary="Read a file manager file")
+def get_file_manager_entry_content(root_name: str, path: str):
+    return file_manager_read_text_file(root_name, path)
+
+
+@app.put("/api/file-manager/{root_name}/content", response_model=FileManagerContentResponse, dependencies=[Depends(require_admin_user)], tags=["Maintenance"], summary="Update a file manager file")
+def update_file_manager_entry_content(root_name: str, path: str, body: FileManagerContentUpdateRequest):
+    return file_manager_write_text_file(root_name, path, body.content)
 
 
 @app.post("/api/file-manager/{root_name}/folders", response_model=FileManagerListingResponse, dependencies=[Depends(require_admin_user)], tags=["Maintenance"], summary="Create a file manager folder")

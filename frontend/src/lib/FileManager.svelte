@@ -4,10 +4,13 @@
     createFileManagerFolder,
     deleteFileManagerEntry,
     downloadFileManagerEntry,
+    getFileManagerEntryContent,
     listFileManagerEntries,
     renameFileManagerEntry,
+    updateFileManagerEntryContent,
     uploadFileManagerEntries
   } from '$lib/api.js';
+  import TextEditor from '$lib/TextEditor.svelte';
 
   export let rootName = '';
   export let title = '';
@@ -22,6 +25,40 @@
   let replaceExisting = false;
   let createInput = null;
   let uploadInput = null;
+  let editorOpen = false;
+  let editorEntry = null;
+  let editorValue = '';
+  let editorOriginalValue = '';
+  let editorLoading = false;
+  let editorSaving = false;
+  let editorError = '';
+  let editorStatus = '';
+
+  const editableExactNames = new Set(['registry.json', '.env', '.gitignore', '.npmrc']);
+  const editableExtensions = new Set([
+    '.css',
+    '.csv',
+    '.html',
+    '.htm',
+    '.ini',
+    '.js',
+    '.json',
+    '.jsonl',
+    '.jsx',
+    '.log',
+    '.md',
+    '.mjs',
+    '.py',
+    '.sh',
+    '.svg',
+    '.toml',
+    '.ts',
+    '.tsx',
+    '.txt',
+    '.xml',
+    '.yaml',
+    '.yml'
+  ]);
 
   onMount(() => {
     loadEntries();
@@ -140,6 +177,115 @@
       window.URL.revokeObjectURL(downloadUrl);
     } catch (err) {
       error = err?.message || 'Unable to download file.';
+    }
+  }
+
+  function isEditableTextFile(entry) {
+    if (!entry || entry.type !== 'file') return false;
+    const lowerName = String(entry.name || '').toLowerCase();
+    if (editableExactNames.has(lowerName)) return true;
+    const suffixIndex = lowerName.lastIndexOf('.');
+    if (suffixIndex <= 0) return false;
+    return editableExtensions.has(lowerName.slice(suffixIndex));
+  }
+
+  function editorLanguageForEntry(entry) {
+    const lowerName = String(entry?.name || '').toLowerCase();
+    if (!lowerName) return 'text';
+    if (lowerName === 'registry.json' || lowerName.endsWith('.json') || lowerName.endsWith('.jsonl')) return 'json';
+    if (lowerName.endsWith('.css')) return 'css';
+    if (lowerName.endsWith('.html') || lowerName.endsWith('.htm') || lowerName.endsWith('.svg')) return 'html';
+    if (
+      lowerName.endsWith('.js') ||
+      lowerName.endsWith('.mjs') ||
+      lowerName.endsWith('.cjs') ||
+      lowerName.endsWith('.jsx') ||
+      lowerName.endsWith('.ts') ||
+      lowerName.endsWith('.tsx')
+    ) {
+      return 'javascript';
+    }
+    return 'text';
+  }
+
+  function editorLabelForEntry(entry) {
+    switch (editorLanguageForEntry(entry)) {
+      case 'json':
+        return 'JSON editor';
+      case 'css':
+        return 'CSS editor';
+      case 'html':
+        return 'HTML editor';
+      case 'javascript':
+        return 'Code editor';
+      default:
+        return 'Plain text editor';
+    }
+  }
+
+  function resetEditorState() {
+    editorEntry = null;
+    editorValue = '';
+    editorOriginalValue = '';
+    editorLoading = false;
+    editorSaving = false;
+    editorError = '';
+    editorStatus = '';
+  }
+
+  function closeEditor(force = false) {
+    if (editorSaving) return;
+    if (!force && editorEntry && editorValue !== editorOriginalValue) {
+      const confirmed = window.confirm(`Discard changes to "${editorEntry.name}"?`);
+      if (!confirmed) return;
+    }
+    editorOpen = false;
+    resetEditorState();
+  }
+
+  async function handleEdit(entry) {
+    if (!isEditableTextFile(entry)) return;
+    if (editorEntry && editorValue !== editorOriginalValue) {
+      const confirmed = window.confirm(`Discard changes to "${editorEntry.name}" and open "${entry.name}" instead?`);
+      if (!confirmed) return;
+    }
+
+    editorOpen = true;
+    editorEntry = entry;
+    editorValue = '';
+    editorOriginalValue = '';
+    editorLoading = true;
+    editorSaving = false;
+    editorError = '';
+    editorStatus = '';
+
+    try {
+      const file = await getFileManagerEntryContent(rootName, entry.path);
+      editorEntry = { ...entry, name: file.name, path: file.path };
+      editorValue = file.content || '';
+      editorOriginalValue = file.content || '';
+    } catch (err) {
+      editorError = err?.message || 'Unable to load file contents.';
+    } finally {
+      editorLoading = false;
+    }
+  }
+
+  async function saveEditor() {
+    if (!editorEntry || editorSaving || editorLoading) return;
+    editorSaving = true;
+    editorError = '';
+    try {
+      const updated = await updateFileManagerEntryContent(rootName, editorEntry.path, editorValue);
+      status = `Saved ${updated.name}.`;
+      editorStatus = `Saved ${updated.name}.`;
+      editorOpen = false;
+      resetEditorState();
+      await loadEntries(currentPath);
+    } catch (err) {
+      editorError = err?.message || 'Unable to save file.';
+    } finally {
+      editorSaving = false;
     }
   }
 
@@ -264,6 +410,11 @@
                 <div class="d-flex justify-content-end gap-2 flex-wrap">
                   {#if entry.type === 'file'}
                     <button class="btn btn-outline-secondary btn-sm" type="button" on:click={() => handleDownload(entry)}>Download</button>
+                    {#if isEditableTextFile(entry)}
+                      <button class="btn btn-outline-secondary btn-sm" type="button" on:click={() => handleEdit(entry)} disabled={loading}>
+                        Edit
+                      </button>
+                    {/if}
                   {/if}
                   <button class="btn btn-outline-primary btn-sm" type="button" on:click={() => handleRename(entry)} disabled={entry.protected}>
                     Rename
@@ -285,3 +436,103 @@
     </div>
   </div>
 </div>
+
+{#if editorOpen}
+  <div
+    class="file-editor-backdrop"
+    role="button"
+    tabindex="0"
+    aria-label="Close file editor"
+    on:click={() => closeEditor()}
+    on:keydown={(event) => {
+      if (event.key === 'Escape' || event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        closeEditor();
+      }
+    }}
+  >
+    <div
+      class="file-editor-dialog"
+      role="dialog"
+      tabindex="-1"
+      aria-modal="true"
+      aria-labelledby={`file-editor-title-${rootName}`}
+      on:click|stopPropagation
+      on:keydown|stopPropagation
+    >
+      <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
+        <div>
+          <p class="small text-uppercase text-body-secondary fw-semibold mb-1">Edit file</p>
+          <h4 class="h5 mb-1" id={`file-editor-title-${rootName}`}>{editorEntry?.name || 'File'}</h4>
+          <p class="text-body-secondary mb-0">{rootName}/{editorEntry?.path || ''}</p>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <button class="btn btn-outline-secondary btn-sm" type="button" on:click={() => closeEditor()} disabled={editorSaving}>Close</button>
+          <button class="btn btn-primary btn-sm" type="button" on:click={saveEditor} disabled={editorSaving || editorLoading || editorValue === editorOriginalValue}>
+            {editorSaving ? 'Saving...' : 'Save changes'}
+          </button>
+        </div>
+      </div>
+
+      {#if editorError}
+        <div class="alert alert-danger py-2 mb-3">{editorError}</div>
+      {/if}
+      {#if editorStatus}
+        <div class="alert alert-success py-2 mb-3">{editorStatus}</div>
+      {/if}
+
+      {#if editorLoading}
+        <div class="file-editor-loading">Loading file contents...</div>
+      {:else}
+        <TextEditor
+          label={editorLabelForEntry(editorEntry)}
+          language={editorLanguageForEntry(editorEntry)}
+          value={editorValue}
+          onChange={(nextValue) => {
+            editorValue = nextValue;
+          }}
+        />
+      {/if}
+
+      <div class="text-body-secondary small mt-3">
+        Changes are written back to disk as UTF-8 text.
+      </div>
+    </div>
+  </div>
+{/if}
+
+<style>
+  .file-editor-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1060;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: color-mix(in srgb, var(--bs-body-bg) 18%, rgba(0, 0, 0, 0.7));
+    backdrop-filter: blur(10px);
+  }
+
+  .file-editor-dialog {
+    width: min(1100px, 100%);
+    max-height: min(92vh, 980px);
+    overflow: auto;
+    padding: 1.25rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 1rem;
+    background: var(--bs-body-bg);
+    box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, 0.35);
+  }
+
+  .file-editor-loading {
+    min-height: 28rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--bs-secondary-color);
+    background: var(--bs-tertiary-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.75rem;
+  }
+</style>

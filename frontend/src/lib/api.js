@@ -721,6 +721,22 @@ export async function downloadFileManagerEntry(rootName, path) {
   };
 }
 
+export async function getFileManagerEntryContent(rootName, path) {
+  const sp = new URLSearchParams({ path });
+  const r = await apiFetch(`/file-manager/${rootName}/content?${sp.toString()}`);
+  return r.json();
+}
+
+export async function updateFileManagerEntryContent(rootName, path, content) {
+  const sp = new URLSearchParams({ path });
+  const r = await apiFetch(`/file-manager/${rootName}/content?${sp.toString()}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content })
+  });
+  return r.json();
+}
+
 export async function createFileManagerFolder(rootName, path, folderName) {
   const sp = new URLSearchParams();
   if (path) sp.set('path', path);

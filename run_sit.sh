@@ -168,6 +168,26 @@ rebuild_public_graph_bundle() {
   run_if_fingerprint_changed "public_graph_bundle" "$fingerprint" "customer-facing graph bundle" rebuild_public_graph_bundle_now
 }
 
+rebuild_setup_frontend_now() {
+  if [[ ! -d frontend/node_modules ]]; then
+    echo
+    echo "SIT startup aborted:"
+    echo "  The setup-page frontend bundle must be rebuilt, but frontend/node_modules is missing."
+    echo "  Install the frontend dependencies, then rerun ./run_sit.sh."
+    echo
+    exit 1
+  fi
+
+  echo "Rebuilding setup-page frontend bundle..."
+  (cd frontend && npm run build)
+}
+
+rebuild_setup_frontend() {
+  local fingerprint
+  fingerprint="$(compute_rebuild_fingerprint setup_frontend_bundle)"
+  run_if_fingerprint_changed "setup_frontend_bundle" "$fingerprint" "setup-page frontend bundle" rebuild_setup_frontend_now
+}
+
 if [[ "${DATABASE_URL:-}" == postgresql* ]]; then
   if ! "$PYTHON_BIN" -c "import psycopg" >/dev/null 2>&1; then
     echo
@@ -193,6 +213,7 @@ if ! "$PYTHON_BIN" -c "from alembic import command" >/dev/null 2>&1; then
 fi
 
 rebuild_public_graph_bundle
+rebuild_setup_frontend
 
 find_browser_binary() {
   local candidate

@@ -151,6 +151,23 @@ def compute_public_graph_bundle_fingerprint() -> str:
     )
 
 
+def compute_setup_frontend_bundle_fingerprint() -> str:
+    return _hash_bytes(
+        _hash_text(hash_file_tree([
+            "frontend/src",
+        ], include_suffixes={".css", ".js", ".svelte", ".ts"})),
+        _hash_text(hash_file_tree([
+            "frontend/static",
+        ])),
+        _hash_text(hash_file_tree([
+            "frontend/package.json",
+            "frontend/package-lock.json",
+            "frontend/svelte.config.js",
+            "frontend/vite.config.js",
+        ], include_suffixes={".js", ".json"})),
+    )
+
+
 def compute_generated_assets_fingerprint() -> str:
     return _hash_bytes(
         _hash_text(hash_file_tree([
@@ -175,6 +192,7 @@ def compute_template_files_fingerprint() -> str:
 
 TARGETS = {
     "public_graph_bundle": compute_public_graph_bundle_fingerprint,
+    "setup_frontend_bundle": compute_setup_frontend_bundle_fingerprint,
     "generated_assets": compute_generated_assets_fingerprint,
     "template_files": compute_template_files_fingerprint,
 }

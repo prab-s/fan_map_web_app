@@ -15,6 +15,31 @@ function FileManager($$renderer, $$props) {
     let createFolderName = "";
     let uploadFiles = [];
     let replaceExisting = false;
+    const editableExactNames = /* @__PURE__ */ new Set(["registry.json", ".env", ".gitignore", ".npmrc"]);
+    const editableExtensions = /* @__PURE__ */ new Set([
+      ".css",
+      ".csv",
+      ".html",
+      ".htm",
+      ".ini",
+      ".js",
+      ".json",
+      ".jsonl",
+      ".jsx",
+      ".log",
+      ".md",
+      ".mjs",
+      ".py",
+      ".sh",
+      ".svg",
+      ".toml",
+      ".ts",
+      ".tsx",
+      ".txt",
+      ".xml",
+      ".yaml",
+      ".yml"
+    ]);
     function formatBytes(value) {
       if (value == null) return "";
       const units = ["B", "KB", "MB", "GB", "TB"];
@@ -31,6 +56,14 @@ function FileManager($$renderer, $$props) {
       if (!value) return "";
       const date = new Date(value);
       return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+    }
+    function isEditableTextFile(entry) {
+      if (!entry || entry.type !== "file") return false;
+      const lowerName = String(entry.name || "").toLowerCase();
+      if (editableExactNames.has(lowerName)) return true;
+      const suffixIndex = lowerName.lastIndexOf(".");
+      if (suffixIndex <= 0) return false;
+      return editableExtensions.has(lowerName.slice(suffixIndex));
     }
     currentPath = "";
     pathSegments = currentPath ? currentPath.split("/") : [];
@@ -79,7 +112,14 @@ function FileManager($$renderer, $$props) {
       $$renderer2.push(`<!--]--></div></td><td class="text-body-secondary text-capitalize">${escape_html(entry.type)}</td><td class="text-body-secondary">${escape_html(entry.type === "file" ? formatBytes(entry.size_bytes) : "—")}</td><td class="text-body-secondary">${escape_html(formatDate(entry.modified_at))}</td><td class="text-end"><div class="d-flex justify-content-end gap-2 flex-wrap">`);
       if (entry.type === "file") {
         $$renderer2.push("<!--[0-->");
-        $$renderer2.push(`<button class="btn btn-outline-secondary btn-sm" type="button">Download</button>`);
+        $$renderer2.push(`<button class="btn btn-outline-secondary btn-sm" type="button">Download</button> `);
+        if (isEditableTextFile(entry)) {
+          $$renderer2.push("<!--[0-->");
+          $$renderer2.push(`<button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", loading, true)}>Edit</button>`);
+        } else {
+          $$renderer2.push("<!--[-1-->");
+        }
+        $$renderer2.push(`<!--]-->`);
       } else {
         $$renderer2.push("<!--[-1-->");
       }
@@ -92,7 +132,11 @@ function FileManager($$renderer, $$props) {
     } else {
       $$renderer2.push("<!--[-1-->");
     }
-    $$renderer2.push(`<!--]--></tbody></table></div></div></div>`);
+    $$renderer2.push(`<!--]--></tbody></table></div></div></div> `);
+    {
+      $$renderer2.push("<!--[-1-->");
+    }
+    $$renderer2.push(`<!--]-->`);
     bind_props($$props, { rootName, title, description });
   });
 }
