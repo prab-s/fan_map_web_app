@@ -259,6 +259,75 @@ body {
   object-fit: contain;
 }
 
+.series-performance-card .card-body {
+  overflow-x: auto;
+}
+
+.performance-table {
+  min-width: 100%;
+}
+
+.performance-table__wrap {
+  background: var(--catalogue-surface-strong);
+  border: 1px solid rgba(142, 154, 172, 0.7);
+  border-radius: 0.5rem;
+}
+
+.performance-table__table {
+  width: max-content;
+  min-width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 0.84rem;
+  line-height: 1.1;
+}
+
+.performance-table__col--model {
+  width: 15%;
+}
+
+.performance-table__col--spec {
+  width: 10.5%;
+}
+
+.performance-table__col--range {
+  width: 13.5%;
+}
+
+.performance-table__table th,
+.performance-table__table td {
+  border: 1px solid var(--catalogue-border);
+  padding: 0.35rem 0.45rem;
+  text-align: center;
+  vertical-align: middle;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.performance-table__table thead th {
+  background: rgba(208, 225, 253, 0.8);
+  font-weight: 700;
+}
+
+.performance-table__table tbody tr:nth-child(even) td {
+  background: rgba(208, 225, 253, 0.35);
+}
+
+.performance-table__empty {
+  margin: 0;
+}
+
+@media (max-width: 575.98px) {
+  .performance-table__table {
+    font-size: 0.74rem;
+  }
+
+  .performance-table__table th,
+  .performance-table__table td {
+    padding: 0.25rem 0.3rem;
+  }
+}
+
 .product-graph-card .card-body {
   padding: 1rem;
 }

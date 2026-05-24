@@ -324,6 +324,15 @@ export async function updateProduct(id, body) {
   return r.json();
 }
 
+export async function replaceProductGraphData(productId, body) {
+  const r = await apiFetch(`/products/${productId}/graph-data`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  return r.json();
+}
+
 export async function deleteProduct(id) {
   const r = await apiFetch(`/products/${id}`, { method: 'DELETE' });
   return r.json();

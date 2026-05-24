@@ -216,6 +216,7 @@ function _page($$renderer, $$props) {
         chartTheme,
         title: chartTitle || (currentProduct ? currentProduct.model : "Product Graph"),
         graphConfig: getCurrentGraphConfig(),
+        graphMode: "product",
         clipRpmAreaToPermissibleUse: true,
         showRpmBandShading: supportsBandGraphStyle() ? currentProduct?.show_rpm_band_shading ?? true : false,
         showSecondaryAxis: supportsGraphOverlays(),
@@ -246,6 +247,7 @@ function _page($$renderer, $$props) {
         chartTheme,
         title,
         graphConfig: seriesGraphPayload.graphConfig,
+        graphMode: "series",
         showRpmBandShading: Boolean(seriesGraphPayload.showRpmBandShading),
         graphStyle: seriesGraphPayload.graphStyle ?? null,
         adaptGraphBackgroundToTheme: true
@@ -869,7 +871,14 @@ function _page($$renderer, $$props) {
           $$renderer2.push("<!--[-1-->");
           $$renderer2.push(`<p class="text-body-secondary mb-0">No series graph data is available yet.</p>`);
         }
-        $$renderer2.push(`<!--]--></div></div> <div class="row g-3"><div class="col-12 col-lg-6"><h4 class="h6">Description1</h4> <div class="viewer-html svelte-36khdd">${html(selectedSeriesRecord.description1_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div> <div class="col-12 col-lg-6"><h4 class="h6">Description2</h4> <div class="viewer-html svelte-36khdd">${html(selectedSeriesRecord.description2_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div> <div class="col-12 col-lg-6"><h4 class="h6">Description3</h4> <div class="viewer-html svelte-36khdd">${html(selectedSeriesRecord.description3_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div> <div class="col-12 col-lg-6"><h4 class="h6">Description4</h4> <div class="viewer-html svelte-36khdd">${html(selectedSeriesRecord.description4_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div></div> <div class="card shadow-sm"><div class="card-body"><h3 class="h5">Series PDFs</h3> `);
+        $$renderer2.push(`<!--]--></div></div> `);
+        if (selectedSeriesGraphRecord?.performance_table_html) {
+          $$renderer2.push("<!--[0-->");
+          $$renderer2.push(`<div class="card shadow-sm series-performance-card mb-3 svelte-36khdd"><div class="card-body"><div class="d-flex flex-wrap align-items-center gap-2 mb-3"><div><h4 class="h6 mb-1">Performance Table</h4> <div class="small text-body-secondary">Model variants, key specification columns, and performance ranges for this series.</div></div></div> <div class="performance-table-host svelte-36khdd">${html(selectedSeriesGraphRecord.performance_table_html)}</div></div></div>`);
+        } else {
+          $$renderer2.push("<!--[-1-->");
+        }
+        $$renderer2.push(`<!--]--> <div class="row g-3"><div class="col-12 col-lg-6"><h4 class="h6">Description1</h4> <div class="viewer-html svelte-36khdd">${html(selectedSeriesRecord.description1_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div> <div class="col-12 col-lg-6"><h4 class="h6">Description2</h4> <div class="viewer-html svelte-36khdd">${html(selectedSeriesRecord.description2_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div> <div class="col-12 col-lg-6"><h4 class="h6">Description3</h4> <div class="viewer-html svelte-36khdd">${html(selectedSeriesRecord.description3_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div> <div class="col-12 col-lg-6"><h4 class="h6">Description4</h4> <div class="viewer-html svelte-36khdd">${html(selectedSeriesRecord.description4_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div></div> <div class="card shadow-sm"><div class="card-body"><h3 class="h5">Series PDFs</h3> `);
         if (selectedSeriesRecord.series_printed_pdf_url || selectedSeriesRecord.series_online_pdf_url) {
           $$renderer2.push("<!--[0-->");
           $$renderer2.push(`<div class="vstack gap-3 mt-3">`);

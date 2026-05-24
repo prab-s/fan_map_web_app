@@ -36,9 +36,12 @@ function _layout($$renderer, $$props) {
     let password = "";
     let isPublicRoute = false;
     const PUBLIC_ROUTE_PREFIXES = ["/series", "/products"];
+    function pathMatches(pathname, path) {
+      if (path === "/") return pathname === "/";
+      return pathname === path || pathname.startsWith(`${path}/`);
+    }
     function isActive(path) {
-      if (path === "/") return store_get($$store_subs ??= {}, "$page", page).url.pathname === "/";
-      return store_get($$store_subs ??= {}, "$page", page).url.pathname.startsWith(path);
+      return pathMatches(store_get($$store_subs ??= {}, "$page", page).url.pathname, path);
     }
     isPublicRoute = PUBLIC_ROUTE_PREFIXES.some((prefix) => store_get($$store_subs ??= {}, "$page", page).url.pathname === prefix || store_get($$store_subs ??= {}, "$page", page).url.pathname.startsWith(`${prefix}/`));
     $$renderer2.push(`<div class="app-shell">`);

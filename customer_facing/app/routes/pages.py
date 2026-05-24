@@ -2,6 +2,7 @@ import logging
 import time
 import hashlib
 import colorsys
+import html
 
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import RedirectResponse
@@ -55,6 +56,241 @@ def series_downloads(series: dict) -> list[dict]:
         {"label": "Online PDF", "url": series.get("series_online_pdf_url"), "note": "Web-ready version"},
     ]
     return [item for item in items if item["url"]]
+
+
+SERIES_PERFORMANCE_COLUMN_LIMIT = 3
+SERIES_PERFORMANCE_EXCLUDED_GROUP_NAMES = {"__graph__"}
+
+
+def format_parameter_value(parameter: dict, default_unit: str | None = None) -> str:
+    if parameter.get("value_string") not in (None, ""):
+        return str(parameter.get("value_string")).strip()
+
+    value_number = parameter.get("value_number")
+    if value_number in (None, ""):
+        return ""
+
+    try:
+        numeric_value = float(value_number)
+    except (TypeError, ValueError):
+        return str(value_number)
+
+    unit = str(parameter.get("unit") or default_unit or "").strip()
+    return f"{numeric_value:g}{f' {unit}' if unit else ''}"
+
+
+def _template_token_slug(value: str) -> str:
+    return "".join(ch if ch.isalnum() else "-" for ch in str(value or "").strip().casefold()).strip("-")
+
+
+def _series_performance_candidate_columns(series_products: list[dict]) -> list[tuple[str, str, str]]:
+    candidate_columns: list[tuple[str, str, str]] = []
+    seen_columns: set[tuple[str, str]] = set()
+
+    for product in series_products or []:
+        for group in sorted(product.get("parameter_groups", []) or [], key=lambda item: (item.get("sort_order", 0), item.get("id", 0))):
+            group_name = str(group.get("group_name") or "").strip()
+            if not group_name or group_name.casefold() in SERIES_PERFORMANCE_EXCLUDED_GROUP_NAMES:
+                continue
+            for parameter in sorted(group.get("parameters", []) or [], key=lambda item: (item.get("sort_order", 0), item.get("id", 0))):
+                parameter_name = str(parameter.get("parameter_name") or "").strip()
+                if not parameter_name:
+                    continue
+
+                key = (group_name, parameter_name)
+                if key in seen_columns:
+                    continue
+
+                seen_columns.add(key)
+                candidate_columns.append((group_name, parameter_name, f"{group_name}: {parameter_name}"))
+                if len(candidate_columns) >= SERIES_PERFORMANCE_COLUMN_LIMIT:
+                    return candidate_columns
+
+    return candidate_columns
+
+
+def _series_type_2_performance_columns(series_products: list[dict]) -> list[tuple[str, str, str]]:
+    selected_columns: list[tuple[str, str, str]] = []
+    seen_columns: set[tuple[str, str]] = set()
+    main_parameter_count = 0
+    impeller_size_selected = False
+
+    for product in series_products or []:
+        for group in sorted(product.get("parameter_groups", []) or [], key=lambda item: (item.get("sort_order", 0), item.get("id", 0))):
+            group_name = str(group.get("group_name") or "").strip()
+            if not group_name or group_name.casefold() in SERIES_PERFORMANCE_EXCLUDED_GROUP_NAMES:
+                continue
+
+            group_slug = _template_token_slug(group_name)
+            for parameter in sorted(group.get("parameters", []) or [], key=lambda item: (item.get("sort_order", 0), item.get("id", 0))):
+                parameter_name = str(parameter.get("parameter_name") or "").strip()
+                if not parameter_name:
+                    continue
+
+                key = (group_name, parameter_name)
+                if key in seen_columns:
+                    continue
+
+                if group_slug == "main" and main_parameter_count < 2:
+                    selected_columns.append((group_name, parameter_name, parameter_name))
+                    seen_columns.add(key)
+                    main_parameter_count += 1
+                    if len(selected_columns) >= SERIES_PERFORMANCE_COLUMN_LIMIT:
+                        return selected_columns
+                    continue
+
+                if group_slug == "impeller" and parameter_name.casefold() == "size" and not impeller_size_selected:
+                    selected_columns.append((group_name, parameter_name, "Impeller size"))
+                    seen_columns.add(key)
+                    impeller_size_selected = True
+                    if len(selected_columns) >= SERIES_PERFORMANCE_COLUMN_LIMIT:
+                        return selected_columns
+
+        if len(selected_columns) >= SERIES_PERFORMANCE_COLUMN_LIMIT:
+            return selected_columns
+
+    if len(selected_columns) < SERIES_PERFORMANCE_COLUMN_LIMIT:
+        for column in _series_performance_candidate_columns(series_products):
+            key = (column[0], column[1])
+            if key in seen_columns:
+                continue
+            selected_columns.append((column[0], column[1], column[2]))
+            seen_columns.add(key)
+            if len(selected_columns) >= SERIES_PERFORMANCE_COLUMN_LIMIT:
+                break
+
+    return selected_columns[:SERIES_PERFORMANCE_COLUMN_LIMIT]
+
+
+def _series_performance_value_map(product: dict) -> dict[tuple[str, str], str]:
+    values: dict[tuple[str, str], str] = {}
+    for group in product.get("parameter_groups", []) or []:
+        group_name = str(group.get("group_name") or "").strip()
+        if not group_name or group_name.casefold() in SERIES_PERFORMANCE_EXCLUDED_GROUP_NAMES:
+            continue
+        for parameter in group.get("parameters", []) or []:
+            parameter_name = str(parameter.get("parameter_name") or "").strip()
+            if not parameter_name:
+                continue
+            default_unit = "mm" if _template_token_slug(group_name) == "impeller" and parameter_name.casefold() == "size" else None
+            values[(group_name, parameter_name)] = format_parameter_value(parameter, default_unit=default_unit) or "—"
+    return values
+
+
+def _format_range(values: list[float], unit: str = "", precision: int = 0) -> str:
+    if not values:
+        return "—"
+    minimum = min(values)
+    maximum = max(values)
+    if precision > 0:
+        minimum_text = f"{minimum:.{precision}f}".rstrip("0").rstrip(".")
+        maximum_text = f"{maximum:.{precision}f}".rstrip("0").rstrip(".")
+    else:
+        minimum_text = f"{minimum:g}"
+        maximum_text = f"{maximum:g}"
+    unit_text = f" {unit}" if unit else ""
+    if minimum_text == maximum_text:
+        return f"{minimum_text}{unit_text}"
+    return f"{minimum_text} - {maximum_text}{unit_text}"
+
+
+def _product_performance_ranges(product: dict) -> dict[str, str]:
+    airflow_values: list[float] = []
+    pressure_values: list[float] = []
+    power_values: list[float] = []
+    swl_values: list[float] = []
+
+    for line in sorted(product.get("rpm_lines", []) or [], key=lambda item: item.get("rpm", 0)):
+        for point in line.get("points", []) or []:
+            if point.get("airflow") is not None:
+                airflow_values.append(float(point.get("airflow")))
+            if point.get("pressure") is not None:
+                pressure_values.append(float(point.get("pressure")))
+
+    fan_table = product.get("fan_acoustic_table") or {}
+    for row in fan_table.get("rows") or []:
+        if not isinstance(row, dict):
+            continue
+        if row.get("peak_power_kw") not in {None, ""}:
+            try:
+                power_values.append(float(row.get("peak_power_kw")))
+            except (TypeError, ValueError):
+                pass
+        sound_power_levels = row.get("sound_power_levels") or {}
+        if isinstance(sound_power_levels, dict):
+            for value in sound_power_levels.values():
+                if value in {None, ""}:
+                    continue
+                try:
+                    swl_values.append(float(value))
+                except (TypeError, ValueError):
+                    continue
+
+    return {
+        "pressure_range": _format_range(pressure_values, "Pa"),
+        "airflow_range": _format_range(airflow_values, "L/s"),
+        "swl_range": _format_range(swl_values, "dB"),
+        "power_range": _format_range(power_values, "kW", precision=2),
+    }
+
+
+def render_series_performance_table_html(series: dict, series_products: list[dict]) -> str:
+    ordered_products = sorted(series_products or [], key=lambda item: str(item.get("model") or "").casefold())
+    if not ordered_products:
+        return '<p class="performance-table__empty text-muted mb-0">No products are linked to this series yet.</p>'
+
+    template_id = series.get("printed_template_id") or series.get("online_template_id") or series.get("template_id")
+    if template_id == "series-series_type_2":
+        performance_columns = _series_type_2_performance_columns(ordered_products)
+    else:
+        performance_columns = _series_performance_candidate_columns(ordered_products)
+
+    performance_columns = list(performance_columns[:SERIES_PERFORMANCE_COLUMN_LIMIT])
+    while len(performance_columns) < SERIES_PERFORMANCE_COLUMN_LIMIT:
+        performance_columns.append(("", "", "—"))
+
+    performance_column_labels = [column[2] for column in performance_columns]
+
+    rows: list[str] = []
+    for product in ordered_products:
+        values = _series_performance_value_map(product)
+        ranges = _product_performance_ranges(product)
+        cells = [
+            f"<td>{html.escape(str(product.get('model') or '—'))}</td>",
+            *[
+                f"<td>{html.escape(values.get((group_name, parameter_name), '—'))}</td>"
+                for group_name, parameter_name, _ in performance_columns
+            ],
+            f"<td>{html.escape(ranges['pressure_range'])}</td>",
+            f"<td>{html.escape(ranges['airflow_range'])}</td>",
+            f"<td>{html.escape(ranges['swl_range'])}</td>",
+            f"<td>{html.escape(ranges['power_range'])}</td>",
+        ]
+        rows.append("<tr>" + "".join(cells) + "</tr>")
+
+    return (
+        '<div class="performance-table">'
+        '<div class="table-responsive performance-table__wrap">'
+        '<table class="table table-sm align-middle mb-0 performance-table__table">'
+        '<colgroup>'
+        '<col class="performance-table__col performance-table__col--model" />'
+        + "".join('<col class="performance-table__col performance-table__col--spec" />' for _ in performance_column_labels)
+        + '<col class="performance-table__col performance-table__col--range" />'
+        + '<col class="performance-table__col performance-table__col--range" />'
+        + '<col class="performance-table__col performance-table__col--range" />'
+        + '<col class="performance-table__col performance-table__col--range" />'
+        + '</colgroup>'
+        '<thead><tr>'
+        '<th scope="col">Model</th>'
+        + "".join(f"<th scope=\"col\">{html.escape(label)}</th>" for label in performance_column_labels)
+        + '<th scope="col">Pressure Range</th>'
+        + '<th scope="col">Airflow Range</th>'
+        + '<th scope="col">SWL Range</th>'
+        + '<th scope="col">Power Range</th>'
+        + '</tr></thead><tbody>'
+        + "".join(rows)
+        + '</tbody></table></div></div>'
+    )
 
 
 def product_downloads(product: dict) -> list[dict]:
@@ -431,6 +667,7 @@ async def series_page(request: Request, series_slug: str):
         "product_type_downloads": product_type_downloads(product_type) if product_type else [],
         "request_quote_url": request_quote_url(),
         "series_graph": build_series_graph_payload(series, product_type, cached_products),
+        "series_performance_table_html": render_series_performance_table_html(series, cached_products),
         "series_sections": optional_sections(
             ("Overview", series.get("description1_html")),
             ("Features", series.get("description2_html")),

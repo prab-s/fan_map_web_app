@@ -2231,6 +2231,7 @@ export function buildFullChartOption({
     graphMode
   );
   const chartFontFamily = chartTheme.fontFamily ?? 'sans-serif';
+  const chartTitleFontSize = CHART_STYLE.titleFontSize - 6;
 
   return {
     backgroundColor: resolvedBandGraphBackgroundColor ?? chartTheme.background,
@@ -2243,12 +2244,12 @@ export function buildFullChartOption({
       left: 'center',
       width: 820,
       textStyle: {
-        color: chartTheme.text,
-        fontSize: CHART_STYLE.titleFontSize - 4,
+        color: '#1565c0',
+        fontSize: chartTitleFontSize,
         fontFamily: chartFontFamily,
         width: 820,
         overflow: 'break',
-        lineHeight: CHART_STYLE.titleFontSize
+        lineHeight: chartTitleFontSize
       }
     },
     tooltip: tooltip ?? {

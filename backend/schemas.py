@@ -302,6 +302,7 @@ class SeriesResponse(BaseModel):
     series_online_pdf_url: Optional[str] = None
     series_tab_color: Optional[str] = None
     series_images: list["SeriesImageResponse"] = Field(default_factory=list)
+    performance_table_html: Optional[str] = None
     series_graph_payload: Optional[dict] = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -413,6 +414,11 @@ class ProductUpdate(BaseModel):
     band_graph_permissible_label_color: Optional[str] = None
     parameter_groups: Optional[list[ProductParameterGroupInput]] = None
     fan_acoustic_table: Optional[FanAcousticTable] = None
+
+
+class ProductGraphDataReplace(BaseModel):
+    rpm_lines: list["ProductRpmLineInput"] = Field(default_factory=list)
+    efficiency_points: list["ProductEfficiencyPointInput"] = Field(default_factory=list)
 
 
 class ProductResponse(ProductBase):
@@ -674,6 +680,7 @@ class CmsSeriesResponse(BaseModel):
     secondary_series_image_url: Optional[str] = None
     series_images: list[SeriesImageResponse] = Field(default_factory=list)
     products: list[CmsSeriesProductSummary] = Field(default_factory=list)
+    performance_table_html: Optional[str] = None
     series_graph_payload: Optional[dict] = None
 
     model_config = ConfigDict(from_attributes=True)

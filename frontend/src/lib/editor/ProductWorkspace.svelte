@@ -13,6 +13,7 @@
     createProduct,
     deleteProduct,
     updateProduct,
+    replaceProductGraphData,
     updateProductType,
     getRpmLines,
     createRpmLine,
@@ -1086,6 +1087,21 @@
       }));
   }
 
+  function serializeGraphLinesForReplace() {
+    return rpmLines
+      .filter((line) => !line._pending_delete)
+      .map((line) => ({
+        rpm: parseOptionalInteger(line.rpm),
+        band_color: normalizeOptionalColor(line.band_color) || null,
+        points: rpmPoints
+          .filter((point) => Number(point.rpm_line_id) === Number(line.id) && !point._pending_delete)
+          .map((point) => ({
+            airflow: parseOptionalInteger(point.airflow),
+            pressure: parseOptionalInteger(point.pressure)
+          }))
+      }));
+  }
+
   function serializeCreateEfficiencyPoints() {
     return efficiencyPoints
       .filter((point) => !point._pending_delete)
@@ -1094,7 +1110,19 @@
         efficiency_centre: parseOptionalNumber(point.efficiency_centre),
         efficiency_lower_end: parseOptionalNumber(point.efficiency_lower_end),
         efficiency_higher_end: parseOptionalNumber(point.efficiency_higher_end),
-        permissible_use: parseOptionalNumber(point.permissible_use)
+          permissible_use: parseOptionalNumber(point.permissible_use)
+      }));
+  }
+
+  function serializeEfficiencyPointsForReplace() {
+    return efficiencyPoints
+      .filter((point) => !point._pending_delete)
+      .map((point) => ({
+        airflow: parseOptionalInteger(point.airflow),
+        efficiency_centre: parseOptionalInteger(point.efficiency_centre),
+        efficiency_lower_end: parseOptionalInteger(point.efficiency_lower_end),
+        efficiency_higher_end: parseOptionalInteger(point.efficiency_higher_end),
+        permissible_use: parseOptionalInteger(point.permissible_use)
       }));
   }
 
@@ -1414,6 +1442,10 @@
 
   function finishMapPointSave() {
     savingMapPoints = false;
+  }
+
+  function isGraphCsvImportSave() {
+    return graphCsvImportSource.text && graphCsvImportSource.productId === selectedProductId;
   }
 
   function compareMapPointValues(a, b, column, direction) {
@@ -1942,20 +1974,14 @@
 
       const nextRpmLines = pressureColumns.map((column, index) => {
         const existingLine = (rpmLines ?? []).find((line) => Number(line?.rpm) === Number(column.rpm));
-        return existingLine
-          ? {
-              ...existingLine,
-              rpm: column.rpm,
-              band_color:
-                normalizeOptionalColor(existingLine.band_color) ||
-                RPM_BAND_FALLBACK_COLORS[index % RPM_BAND_FALLBACK_COLORS.length]
-            }
-          : {
-              id: createTempRpmLineId(),
-              product_id: selectedProductId,
-              rpm: column.rpm,
-              band_color: RPM_BAND_FALLBACK_COLORS[index % RPM_BAND_FALLBACK_COLORS.length]
-            };
+        return {
+          id: createTempRpmLineId(),
+          product_id: selectedProductId,
+          rpm: column.rpm,
+          band_color:
+            normalizeOptionalColor(existingLine?.band_color) ||
+            RPM_BAND_FALLBACK_COLORS[index % RPM_BAND_FALLBACK_COLORS.length]
+        };
       });
       const nextRpmLineByKey = new Map(
         nextRpmLines.map((line) => [formatGraphCsvLineToken(line.rpm), line])
@@ -3163,178 +3189,26 @@
     }
     if (savingMapPoints) return;
     try {
-      const tempRpmLines = rpmLines.filter((line) => !isPersistedRpmLineId(line.id));
-      const currentPersistedRpmLineIds = new Set(
-        rpmLines.filter((line) => isPersistedRpmLineId(line.id)).map((line) => Number(line.id))
-      );
-      const deletedRpmLineIds = [...originalRpmLineSnapshots.keys()].filter((lineId) => !currentPersistedRpmLineIds.has(Number(lineId)));
-      const updatedPersistedRpmLines = rpmLines.filter((line) => {
-        if (!isPersistedRpmLineId(line.id)) return false;
-        const original = originalRpmLineSnapshots.get(Number(line.id));
-        if (!original) return false;
-        return Number(line.rpm) !== Number(original.rpm) || normalizeOptionalColor(line.band_color) !== original.band_color;
+      const saveLabel = isGraphCsvImportSave() ? 'Replacing imported graph data...' : 'Saving graph changes...';
+      await beginMapPointSave(2);
+      mapPointSaveProgress = {
+        ...mapPointSaveProgress,
+        label: saveLabel
+      };
+      mapPointSaveProgressMessage = `Saving map points: 0 / 2 - ${saveLabel}`;
+      await waitForProgressPaint();
+      await replaceProductGraphData(selectedProductId, {
+        rpm_lines: serializeGraphLinesForReplace(),
+        efficiency_points: serializeEfficiencyPointsForReplace()
       });
-      const lineCreationOperations = tempRpmLines.map((line) => ({
-        label: `Created ${formatGraphLineValue(line.rpm)} line`,
-        run: async () => {
-          const created = await createRpmLine(
-            selectedProductId,
-            {
-              rpm: Number(line.rpm),
-              band_color: normalizeOptionalColor(line.band_color) || null
-            }
-          );
-
-          rpmLines = rpmLines.map((item) => (item.id === line.id ? created : item));
-          rpmPoints = applyRpmPointSort(
-            rpmPoints.map((point) =>
-              point.rpm_line_id === line.id
-                ? {
-                    ...point,
-                    rpm_line_id: created.id,
-                    rpm: created.rpm
-                  }
-                : point
-              )
-          );
-        }
-      }));
-      const lineUpdateOperations = updatedPersistedRpmLines.map((line) => ({
-        label: `Updated ${formatGraphLineValue(line.rpm)} line`,
-        run: async () => {
-          const updated = await updateRpmLine(
-            selectedProductId,
-            line.id,
-            {
-              rpm: parseOptionalInteger(line.rpm),
-              band_color: normalizeOptionalColor(line.band_color) || null
-            },
-            { regenerateGraph: false }
-          );
-          rpmLines = rpmLines.map((item) =>
-            item.id === line.id
-              ? normalizeGraphLineDraft({
-                  ...updated,
-                  band_color: normalizeOptionalColor(updated.band_color) || null
-                })
-              : item
-          );
-        }
-      }));
-      const lineDeleteOperations = deletedRpmLineIds.map((lineId) => ({
-        label: `Deleted ${formatGraphLineValue(originalRpmLineSnapshots.get(Number(lineId))?.rpm)} line`,
-        run: () => deleteRpmLine(selectedProductId, lineId, { regenerateGraph: false })
-      }));
-
-      const deletedLineIdSet = new Set(deletedRpmLineIds.map((lineId) => Number(lineId)));
-      const currentRpmIds = new Set(rpmPoints.filter((point) => isPersistedPointId(point.id)).map((point) => point.id));
-      const currentEfficiencyIds = new Set(
-        efficiencyPoints.filter((point) => isPersistedPointId(point.id)).map((point) => point.id)
-      );
-      const rpmDeletes = originalRpmPointIds.filter((pointId) => {
-        if (currentRpmIds.has(pointId)) return false;
-        const originalLineId = originalRpmPointSnapshots.get(Number(pointId));
-        return !deletedLineIdSet.has(Number(originalLineId));
-      });
-      const efficiencyDeletes = originalEfficiencyPointIds.filter((pointId) => !currentEfficiencyIds.has(pointId));
-      const totalOperations =
-        lineCreationOperations.length +
-        lineUpdateOperations.length +
-        lineDeleteOperations.length +
-        rpmDeletes.length +
-        rpmPoints.length +
-        efficiencyDeletes.length +
-        efficiencyPoints.length +
-        1;
-
-      const rpmDeleteOperations = rpmDeletes.map((pointId) => ({
-        label: `Deleted graph point ${pointId}`,
-        run: () => deleteRpmPoint(selectedProductId, pointId, { regenerateGraph: false })
-      }));
-
-      const rpmSaveOperations = rpmPoints.map((p) => ({
-        label: isPersistedPointId(p.id) ? `Updated graph point ${p.id}` : 'Created new graph point',
-        run: () =>
-          isPersistedPointId(p.id)
-            ? updateRpmPoint(
-                selectedProductId,
-                p.id,
-                {
-                  rpm_line_id: resolveRpmLineIdForPoint(p),
-                  airflow: parseOptionalInteger(p.airflow),
-                  pressure: parseOptionalInteger(p.pressure)
-                },
-                { regenerateGraph: false }
-              )
-            : createRpmPoint(
-                selectedProductId,
-                {
-                  rpm_line_id: resolveRpmLineIdForPoint(p),
-                  airflow: parseOptionalInteger(p.airflow),
-                  pressure: parseOptionalInteger(p.pressure)
-                },
-                { regenerateGraph: false }
-              )
-      }));
-
-      const efficiencyDeleteOperations = efficiencyDeletes.map((pointId) => ({
-        label: `Deleted efficiency point ${pointId}`,
-        run: () => deleteEfficiencyPoint(selectedProductId, pointId, { regenerateGraph: false })
-      }));
-
-      const efficiencySaveOperations = efficiencyPoints.map((p) => ({
-        label: isPersistedPointId(p.id) ? `Updated efficiency point ${p.id}` : 'Created new efficiency point',
-        run: () =>
-          isPersistedPointId(p.id)
-            ? updateEfficiencyPoint(
-                selectedProductId,
-                p.id,
-                {
-                  airflow: parseOptionalInteger(p.airflow),
-                  efficiency_centre: parseOptionalInteger(p.efficiency_centre),
-                  efficiency_lower_end: parseOptionalInteger(p.efficiency_lower_end),
-                  efficiency_higher_end: parseOptionalInteger(p.efficiency_higher_end),
-                  permissible_use: parseOptionalInteger(p.permissible_use)
-                },
-                { regenerateGraph: false }
-              )
-            : createEfficiencyPoint(
-                selectedProductId,
-                {
-                  airflow: parseOptionalInteger(p.airflow),
-                  efficiency_centre: parseOptionalInteger(p.efficiency_centre),
-                  efficiency_lower_end: parseOptionalInteger(p.efficiency_lower_end),
-                  efficiency_higher_end: parseOptionalInteger(p.efficiency_higher_end),
-                  permissible_use: parseOptionalInteger(p.permissible_use)
-                },
-                { regenerateGraph: false }
-              )
-      }));
-      const pointOperations = [
-        ...lineUpdateOperations,
-        ...lineDeleteOperations,
-        ...rpmDeleteOperations,
-        ...rpmSaveOperations,
-        ...efficiencyDeleteOperations,
-        ...efficiencySaveOperations
-      ];
-
-      await beginMapPointSave(totalOperations);
-
-      for (const operation of lineCreationOperations) {
-        await operation.run();
-        await advanceMapPointSave(operation.label);
-      }
-
-      await processBatchedOperations(pointOperations);
-
+      await advanceMapPointSave(isGraphCsvImportSave() ? 'Imported graph data replaced' : 'Graph data replaced');
       await refreshGraphImage(selectedProductId);
       await advanceMapPointSave('Regenerated graph image');
       if (reloadAfterSave) {
         await loadProductData();
       }
       if (showSuccess) {
-        addSuccess('All map points saved.');
+        addSuccess(isGraphCsvImportSave() ? 'Imported graph data replaced and graph image regenerated.' : 'All map points saved.');
       }
     } catch (e) {
       error = e.message;

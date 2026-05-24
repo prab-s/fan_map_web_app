@@ -119,6 +119,21 @@ const SERIES_GRAPH_LABEL_TUNING = {
 const SERIES_GRAPH_LABEL_FONT_SIZE = 16;
 const SERIES_GRAPH_LABEL_Y_OFFSET = 1;
 const SERIES_GRAPH_POINT_SIZE = 3;
+const FULL_CHART_LABEL_LAYOUT = {
+  seriesGraphLine: {
+    textOffsetX: 41,
+    textOffsetY: 25,
+    leaderTailOffsetY: 10
+  },
+  productGraphLine: {
+    textOffsetX: 80,
+    textOffsetY: 30
+  },
+  permissibleUse: {
+    rightOffsetPixels: 70,
+    verticalOffsetPixels: -15
+  }
+};
 function clamp(value, minimum, maximum) {
   return Math.max(minimum, Math.min(maximum, value));
 }
@@ -370,8 +385,8 @@ function getSeriesGraphLabelDistance(pixelLineData, resolvedLabelTextScale) {
 function getSeriesGraphLabelPadding(rpmLine, resolvedLabelTextScale) {
   const safeScale = Number.isFinite(Number(resolvedLabelTextScale)) && Number(resolvedLabelTextScale) > 0 ? Number(resolvedLabelTextScale) : 1;
   const paddingY = 3 * safeScale;
-  const paddingLeft = (rpmLine?.line_role === "high" ? 13 : 8) * safeScale;
-  const paddingRight = (rpmLine?.line_role === "high" ? 8 : 13) * safeScale;
+  const paddingLeft = (rpmLine?.line_role === "high" ? 5 : 2) * safeScale;
+  const paddingRight = (rpmLine?.line_role === "high" ? 2 : 5) * safeScale;
   return { paddingY, paddingLeft, paddingRight };
 }
 function buildSmoothedCurveSamples(lineData, samplesPerSegment = 14) {
@@ -944,8 +959,9 @@ function buildRpmBandPolygonSeries(rpmCurveEntries, rpmLines, chartTheme, permis
     return series;
   });
 }
-function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, permissibleBoundaryData, clipRpmAreaToPermissibleUse, showRpmBandShading, maximumVisibleFlow = null, pressureAxisMax = null, rpmBandLabelColor = null, fadedBandOpacity = CHART_STYLE.rpmBandFadedOpacity, graphConfig = DEFAULT_GRAPH_CONFIG, labelTextScale = 1) {
+function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, permissibleBoundaryData, clipRpmAreaToPermissibleUse, showRpmBandShading, maximumVisibleFlow = null, pressureAxisMax = null, rpmBandLabelColor = null, fadedBandOpacity = CHART_STYLE.rpmBandFadedOpacity, graphConfig = DEFAULT_GRAPH_CONFIG, labelTextScale = 1, graphMode = "product") {
   const resolvedLabelTextScale = Number.isFinite(Number(labelTextScale)) && Number(labelTextScale) > 0 ? Number(labelTextScale) : 1;
+  const normalizedGraphMode = String(graphMode || "").trim().toLowerCase();
   function buildBandLabelAnchorData(lineData) {
     if (lineData.length < 2) return lineData;
     let anchorEndIndex = lineData.length - 1;
@@ -1077,7 +1093,7 @@ function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, per
           z: 2e4,
           zlevel: 20
         });
-      } else {
+      } else if (normalizedGraphMode === "series") {
         const labelUsesBandStyling = showRpmBandShading;
         const reversedLineData = displayLineData.slice().reverse();
         const labelAnchorData = labelUsesBandStyling ? buildBandLabelAnchorData(reversedLineData) : reversedLineData;
@@ -1096,8 +1112,7 @@ function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, per
             const anchorX = api.value(0);
             const anchorY = api.value(1);
             const anchorPoint = api.coord([anchorX, anchorY]);
-            const textOffsetX = 41;
-            const textOffsetY = 25;
+            const { textOffsetX, textOffsetY, leaderTailOffsetY } = FULL_CHART_LABEL_LAYOUT.seriesGraphLine;
             const textPoint = [anchorPoint[0] + textOffsetX, anchorPoint[1] + textOffsetY];
             const linePoints = reversedLineData.map(([x, y]) => api.coord([x, y]));
             const leaderStartPoint = findNearestPointOnPolyline(linePoints, textPoint) ?? anchorPoint;
@@ -1110,7 +1125,7 @@ function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, per
                     x1: leaderStartPoint[0],
                     y1: leaderStartPoint[1],
                     x2: textPoint[0],
-                    y2: textPoint[1] - 10
+                    y2: textPoint[1] - leaderTailOffsetY
                   },
                   style: {
                     stroke: leaderColor,
@@ -1138,6 +1153,43 @@ function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, per
                   silent: true
                 }
               ]
+            };
+          },
+          z: 2e4,
+          zlevel: 20
+        });
+      } else {
+        const reversedLineData = displayLineData.slice().reverse();
+        const labelAnchorData = buildBandLabelAnchorData(reversedLineData);
+        const labelPoint = labelAnchorData[labelAnchorData.length - 1] ?? reversedLineData[0] ?? [0, 0];
+        series.push({
+          name: `${formatGraphLineValue(rpm, graphConfig, rpmLine)} label`,
+          type: "custom",
+          coordinateSystem: "cartesian2d",
+          silent: true,
+          tooltip: { show: false },
+          emphasis: { disabled: true },
+          data: [{ value: labelPoint }],
+          renderItem(params, api) {
+            const anchorX = api.value(0);
+            const anchorY = api.value(1);
+            const anchorPoint = api.coord([anchorX, anchorY]);
+            const { textOffsetX, textOffsetY } = FULL_CHART_LABEL_LAYOUT.productGraphLine;
+            return {
+              type: "text",
+              style: {
+                text: formatGraphLineValue(rpm, graphConfig, rpmLine),
+                x: anchorPoint[0] + textOffsetX,
+                y: anchorPoint[1] + textOffsetY,
+                fill: "#000000",
+                font: `${CHART_STYLE.dragHandleFontSize * resolvedLabelTextScale}px ${chartFontFamily}`,
+                textAlign: "center",
+                textVerticalAlign: "middle",
+                backgroundColor: "rgba(255, 255, 255, 0.96)",
+                padding: [3 * resolvedLabelTextScale, 6 * resolvedLabelTextScale],
+                borderRadius: 4
+              },
+              silent: true
             };
           },
           z: 2e4,
@@ -1321,8 +1373,8 @@ function buildEfficiencyAndPermissibleSeries(points, chartTheme, includeDragHand
           const x = api.value(0);
           const y = api.value(1);
           const anchor = api.coord([x, y]);
-          const rightOffsetPixels = 70 + resolvedPermissibleLabelOffset.x;
-          const verticalOffsetPixels = -15 + resolvedPermissibleLabelOffset.y;
+          const rightOffsetPixels = FULL_CHART_LABEL_LAYOUT.permissibleUse.rightOffsetPixels + resolvedPermissibleLabelOffset.x;
+          const verticalOffsetPixels = FULL_CHART_LABEL_LAYOUT.permissibleUse.verticalOffsetPixels + resolvedPermissibleLabelOffset.y;
           const rotation = 0;
           return {
             type: "text",
@@ -1392,7 +1444,8 @@ function buildFullChartOption({
   graphStyle = null,
   adaptGraphBackgroundToTheme = false,
   labelTextScale = 1,
-  permissibleLabelOffset = null
+  permissibleLabelOffset = null,
+  graphMode = "product"
 }) {
   const resolvedLabelTextScale = Number.isFinite(Number(labelTextScale)) && Number(labelTextScale) > 0 ? Number(labelTextScale) : 1;
   const resolvedGraphConfig = resolveGraphConfig(graphConfig);
@@ -1437,9 +1490,11 @@ function buildFullChartOption({
     bandGraphLabelTextColor,
     bandGraphFadedOpacity,
     resolvedGraphConfig,
-    resolvedLabelTextScale
+    resolvedLabelTextScale,
+    graphMode
   );
   const chartFontFamily = chartTheme.fontFamily ?? "sans-serif";
+  const chartTitleFontSize = CHART_STYLE.titleFontSize - 6;
   return {
     backgroundColor: resolvedBandGraphBackgroundColor ?? chartTheme.background,
     textStyle: {
@@ -1451,12 +1506,12 @@ function buildFullChartOption({
       left: "center",
       width: 820,
       textStyle: {
-        color: chartTheme.text,
-        fontSize: CHART_STYLE.titleFontSize - 4,
+        color: "#1565c0",
+        fontSize: chartTitleFontSize,
         fontFamily: chartFontFamily,
         width: 820,
         overflow: "break",
-        lineHeight: CHART_STYLE.titleFontSize
+        lineHeight: chartTitleFontSize
       }
     },
     tooltip: tooltip ?? {

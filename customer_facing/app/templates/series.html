@@ -76,6 +76,14 @@
       </div>
     {% endif %}
 
+    <section class="card my-4 series-performance-card">
+      <div class="card-header fw-semibold">Performance table</div>
+      <div class="card-body">
+        <p class="text-muted mb-3">Model variants, key specification columns, and performance ranges for this series.</p>
+        {{ series_performance_table_html | safe }}
+      </div>
+    </section>
+
     <h2 class="h4 mt-4">Products in this series</h2>
 
     <div class="row g-3">

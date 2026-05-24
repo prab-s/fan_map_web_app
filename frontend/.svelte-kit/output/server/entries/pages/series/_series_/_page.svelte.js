@@ -24,6 +24,7 @@ function _page($$renderer, $$props) {
       chartTheme,
       title: seriesGraphPayload.title || `${series?.name || "Series"} Series Graph`,
       graphConfig: seriesGraphPayload.graphConfig || null,
+      graphMode: "series",
       showRpmBandShading: Boolean(seriesGraphPayload.showRpmBandShading),
       graphStyle: seriesGraphPayload.graphStyle || null,
       adaptGraphBackgroundToTheme: true
@@ -81,6 +82,14 @@ function _page($$renderer, $$props) {
     } else {
       $$renderer2.push("<!--[-1-->");
       $$renderer2.push(`<div class="empty-state svelte-a8na6i"><p class="mb-0">No graph data is available for this series yet.</p></div>`);
+    }
+    $$renderer2.push(`<!--]--></div></section> <section class="card shadow-sm border-0 table-panel mb-4 svelte-a8na6i"><div class="card-body p-3 p-lg-4"><div class="d-flex flex-wrap align-items-center gap-2 mb-3"><div><h2 class="h4 mb-1">Performance Table</h2> <p class="text-body-secondary mb-0">Model variants, key specification columns, and performance ranges for this series.</p></div></div> `);
+    if (series?.performance_table_html) {
+      $$renderer2.push("<!--[0-->");
+      $$renderer2.push(`<div class="performance-table-host svelte-a8na6i">${html(series.performance_table_html)}</div>`);
+    } else {
+      $$renderer2.push("<!--[-1-->");
+      $$renderer2.push(`<div class="performance-table-host performance-table-host--empty svelte-a8na6i"><p class="performance-table__empty text-body-secondary mb-0">No performance table is available for this series yet.</p></div>`);
     }
     $$renderer2.push(`<!--]--></div></section> <section class="row g-4"><div class="col-12 col-lg-6"><div class="card shadow-sm h-100 border-0"><div class="card-body p-4"><p class="section-label mb-2 svelte-a8na6i">Description 1</p> <div class="public-html svelte-a8na6i">${html(series?.description1_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div> <div class="col-12 col-lg-6"><div class="card shadow-sm h-100 border-0"><div class="card-body p-4"><p class="section-label mb-2 svelte-a8na6i">Description 2</p> <div class="public-html svelte-a8na6i">${html(series?.description2_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div> <div class="col-12 col-lg-6"><div class="card shadow-sm h-100 border-0"><div class="card-body p-4"><p class="section-label mb-2 svelte-a8na6i">Description 3</p> <div class="public-html svelte-a8na6i">${html(series?.description3_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div> <div class="col-12 col-lg-6"><div class="card shadow-sm h-100 border-0"><div class="card-body p-4"><p class="section-label mb-2 svelte-a8na6i">Comments</p> <div class="public-html svelte-a8na6i">${html(series?.comments_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div></section></div>`);
     if ($$store_subs) unsubscribe_stores($$store_subs);

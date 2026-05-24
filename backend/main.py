@@ -69,6 +69,7 @@ from backend.schemas import (
     BandGraphStyleSettings,
     ProductCreate,
     ProductUpdate,
+    ProductGraphDataReplace,
     ProductResponse,
     GraphImageMaintenanceResponse,
     MaintenanceJobResponse,
@@ -1415,6 +1416,7 @@ def load_series_graph_ready_series(db: Session, series_id: int) -> Series:
             joinedload(Series.product_type),
             selectinload(Series.series_images),
             selectinload(Series.products).selectinload(Product.rpm_lines).selectinload(RpmLine.points),
+            selectinload(Series.products).selectinload(Product.parameter_groups).selectinload(ProductParameterGroup.parameters),
             selectinload(Series.products).selectinload(Product.efficiency_points),
         )
         .filter(Series.id == series_id)
@@ -1428,7 +1430,12 @@ def load_series_graph_ready_series(db: Session, series_id: int) -> Series:
 
 def series_response_with_graph_payload(series: Series) -> SeriesResponse:
     response = SeriesResponse.model_validate(series, from_attributes=True)
-    return response.model_copy(update={"series_graph_payload": build_series_graph_payload(series)})
+    return response.model_copy(
+        update={
+            "performance_table_html": render_series_performance_table_html(series),
+            "series_graph_payload": build_series_graph_payload(series),
+        }
+    )
 
 
 def sync_product_series(product: Product, series: Series | None) -> None:
@@ -2271,6 +2278,51 @@ def render_series_products_summary_table(series: Series) -> str:
         + "</tr></thead><tbody>"
         + "".join(body_rows)
         + "</tbody></table>"
+    )
+
+
+def render_series_performance_table_html(series: Series) -> str:
+    ordered_products = sorted(series.products or [], key=lambda product: (product.model or "").lower())
+    if not ordered_products:
+        return '<p class="performance-table__empty placeholder">No products are linked to this series yet.</p>'
+
+    template_id = series.printed_template_id or series.online_template_id or series.template_id
+    template_definition = get_template_definition(template_id or "series-default", "series")
+    if template_definition and template_definition.get("id") == "series-series_type_2":
+        performance_columns = _series_type_2_performance_columns(series)
+    else:
+        performance_columns = _series_performance_candidate_columns(series)
+
+    performance_column_labels = [column[2] for column in performance_columns]
+    while len(performance_column_labels) < SERIES_PERFORMANCE_COLUMN_LIMIT:
+        performance_column_labels.append("—")
+
+    table_rows = render_series_performance_table_rows(series, performance_columns)
+    return (
+        '<div class="performance-table">'
+        '<table class="performance-table__table">'
+        '<colgroup>'
+        '<col class="performance-table__col performance-table__col--model" />'
+        + "".join(
+            '<col class="performance-table__col performance-table__col--spec" />'
+            for _ in performance_column_labels
+        )
+        + '<col class="performance-table__col performance-table__col--range" />'
+        + '<col class="performance-table__col performance-table__col--range" />'
+        + '<col class="performance-table__col performance-table__col--range" />'
+        + '<col class="performance-table__col performance-table__col--range" />'
+        + '</colgroup>'
+        "<thead><tr>"
+        "<th>Model</th>"
+        + "".join(f"<th>{html.escape(label)}</th>" for label in performance_column_labels)
+        + "<th>Pressure Range</th>"
+        + "<th>Airflow Range</th>"
+        + "<th>SWL Range</th>"
+        + "<th>Power Range</th>"
+        + "</tr></thead>"
+        + "<tbody>"
+        + table_rows
+        + "</tbody></table></div>"
     )
 
 
@@ -5093,6 +5145,7 @@ def get_public_series(series_identifier: str, db: Session = Depends(get_db)):
             joinedload(Series.product_type),
             selectinload(Series.series_images),
             selectinload(Series.products).selectinload(Product.rpm_lines).selectinload(RpmLine.points),
+            selectinload(Series.products).selectinload(Product.parameter_groups).selectinload(ProductParameterGroup.parameters),
         )
         .filter(Series.id == matched_series.id)
         .first()
@@ -5102,7 +5155,12 @@ def get_public_series(series_identifier: str, db: Session = Depends(get_db)):
 
     assign_series_product_counts([series], load_series_product_counts(db, [series.id]))
     response = CmsSeriesResponse.model_validate(series, from_attributes=True)
-    return response.model_copy(update={"series_graph_payload": build_series_graph_payload(series)})
+    return response.model_copy(
+        update={
+            "performance_table_html": render_series_performance_table_html(series),
+            "series_graph_payload": build_series_graph_payload(series),
+        }
+    )
 
 
 # --- Products CRUD ---
@@ -5314,6 +5372,54 @@ def update_product(product_id: int, body: ProductUpdate, db: Session = Depends(g
     return product
 
 
+def replace_product_graph_data(
+    db: Session,
+    product: Product,
+    rpm_line_presets: list[dict] | None = None,
+    efficiency_point_presets: list[dict] | None = None,
+):
+    product.rpm_lines.clear()
+    product.efficiency_points.clear()
+    db.flush()
+
+    created_rpm_lines: list[RpmLine] = []
+    for line in rpm_line_presets or []:
+        line_model = RpmLine(
+            product_id=product.id,
+            rpm=line.get("rpm"),
+            band_color=normalize_color_value(line.get("band_color")) or None,
+        )
+        db.add(line_model)
+        db.flush()
+        created_rpm_lines.append(line_model)
+
+        for point in line.get("points") or []:
+            db.add(
+                RpmPoint(
+                    product_id=product.id,
+                    rpm_line_id=line_model.id,
+                    airflow=point.get("airflow"),
+                    pressure=point.get("pressure"),
+                )
+            )
+
+    for point in efficiency_point_presets or []:
+        db.add(
+            EfficiencyPoint(
+                product_id=product.id,
+                airflow=point.get("airflow"),
+                efficiency_centre=point.get("efficiency_centre"),
+                efficiency_lower_end=point.get("efficiency_lower_end"),
+                efficiency_higher_end=point.get("efficiency_higher_end"),
+                permissible_use=point.get("permissible_use"),
+            )
+        )
+
+    db.flush()
+    sync_fan_acoustic_table_for_product(db, product)
+    return created_rpm_lines
+
+
 @app.patch("/api/fans/{product_id}", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Products"], include_in_schema=False)
 @app.patch("/api/products/{product_id}", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Products"], summary="Partially update a product")
 def patch_product(product_id: int, body: ProductUpdate, db: Session = Depends(get_db)):
@@ -5329,6 +5435,16 @@ def delete_product(product_id: int, db: Session = Depends(get_db)):
     db.commit()
     notify_public_catalogue_cache_refresh()
     return {"deleted": product_id}
+
+
+@app.put("/api/products/{product_id}/graph-data", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"], summary="Replace the product graph data")
+def replace_product_graph_data_endpoint(product_id: int, body: ProductGraphDataReplace, db: Session = Depends(get_db)):
+    product = require_product(db, product_id)
+    replace_product_graph_data(db, product, body.rpm_lines, body.efficiency_points)
+    db.commit()
+    db.refresh(product)
+    notify_public_catalogue_cache_refresh()
+    return product
 
 
 # --- RPM lines / points ---

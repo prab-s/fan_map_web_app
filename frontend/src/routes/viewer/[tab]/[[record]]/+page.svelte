@@ -1477,6 +1477,20 @@
               </div>
             </div>
 
+            {#if selectedSeriesGraphRecord?.performance_table_html}
+              <div class="card shadow-sm series-performance-card mb-3">
+                <div class="card-body">
+                  <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                    <div>
+                      <h4 class="h6 mb-1">Performance Table</h4>
+                      <div class="small text-body-secondary">Model variants, key specification columns, and performance ranges for this series.</div>
+                    </div>
+                  </div>
+                  <div class="performance-table-host">{@html selectedSeriesGraphRecord.performance_table_html}</div>
+                </div>
+              </div>
+            {/if}
+
             <div class="row g-3">
               <div class="col-12 col-lg-6">
                 <h4 class="h6">Description1</h4>
@@ -1605,6 +1619,78 @@
   .series-graph-card {
     border: 1px solid var(--bs-border-color);
     border-radius: 0.85rem;
+  }
+
+  .series-performance-card {
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.85rem;
+  }
+
+  .performance-table-host {
+    overflow-x: auto;
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.9rem;
+  }
+
+  .performance-table-host :global(.performance-table) {
+    min-width: 100%;
+  }
+
+  .performance-table-host :global(.performance-table__table) {
+    width: max-content;
+    min-width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font-size: 0.84rem;
+    line-height: 1.1;
+  }
+
+  .performance-table-host :global(.performance-table__col--model) {
+    width: 15%;
+  }
+
+  .performance-table-host :global(.performance-table__col--spec) {
+    width: 10.5%;
+  }
+
+  .performance-table-host :global(.performance-table__col--range) {
+    width: 13.5%;
+  }
+
+  .performance-table-host :global(.performance-table__table th),
+  .performance-table-host :global(.performance-table__table td) {
+    border: 1px solid #c7d3e6;
+    padding: 0.3rem 0.4rem;
+    text-align: center;
+    vertical-align: middle;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .performance-table-host :global(.performance-table__table thead th) {
+    background: rgba(208, 225, 253, 0.8);
+    font-weight: 700;
+  }
+
+  .performance-table-host :global(.performance-table__table tbody tr:nth-child(even) td) {
+    background: rgba(208, 225, 253, 0.35);
+  }
+
+  .performance-table-host :global(.performance-table__empty) {
+    margin: 0;
+    padding: 1rem;
+  }
+
+  @media (max-width: 575.98px) {
+    .performance-table-host :global(.performance-table__table) {
+      font-size: 0.75rem;
+    }
+
+    .performance-table-host :global(.performance-table__table th),
+    .performance-table-host :global(.performance-table__table td) {
+      padding: 0.22rem 0.3rem;
+    }
   }
 
   .fan-acoustic-viewer-table {
