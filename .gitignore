@@ -21,3 +21,6 @@ node_modules/
 
 # Logs
 *.log
+
+# Local rebuild fingerprints
+.rebuild-state/

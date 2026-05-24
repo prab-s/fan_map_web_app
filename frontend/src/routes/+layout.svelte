@@ -18,9 +18,13 @@
     auth.refresh();
   });
 
+  function pathMatches(pathname, path) {
+    if (path === '/') return pathname === '/';
+    return pathname === path || pathname.startsWith(`${path}/`);
+  }
+
   function isActive(path) {
-    if (path === '/') return $page.url.pathname === '/';
-    return $page.url.pathname.startsWith(path);
+    return pathMatches($page.url.pathname, path);
   }
 
   async function submitLogin() {

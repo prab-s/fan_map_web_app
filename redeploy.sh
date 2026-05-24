@@ -24,6 +24,12 @@ ALPINE_IMAGE="${ALPINE_IMAGE:-docker.io/library/alpine:3.20}"
 COMPOSE_ARGS=(-f "${COMPOSE_FILE}")
 LEGACY_PUBLIC_SERVICE_NAME="${LEGACY_PUBLIC_SERVICE_NAME:-vent-tech-catalogue.service}"
 LEGACY_PUBLIC_CONTAINER_NAME="${LEGACY_PUBLIC_CONTAINER_NAME:-vent-tech-catalogue}"
+REBUILD_STATE_DIR="${REBUILD_STATE_DIR:-.rebuild-state/redeploy}"
+DEFAULT_PYTHON_BIN="python3"
+if [[ -d .venv ]]; then
+  DEFAULT_PYTHON_BIN=".venv/bin/python"
+fi
+PYTHON_BIN="${PYTHON_BIN:-$DEFAULT_PYTHON_BIN}"
 
 timestamp() {
   date +"%Y-%m-%d %H:%M:%S"
@@ -60,6 +66,52 @@ fail_if_placeholder() {
 fail_if_placeholder "POSTGRES_PASSWORD" "${POSTGRES_PASSWORD:-}"
 fail_if_placeholder "SESSION_SECRET" "${SESSION_SECRET:-}"
 fail_if_placeholder "CMS_API_TOKEN" "${CMS_API_TOKEN:-}"
+
+rebuild_public_graph_bundle_now() {
+  if [[ ! -d frontend/node_modules ]]; then
+    echo "[$(timestamp)] Skipping local customer-facing graph bundle rebuild because frontend/node_modules is missing."
+    echo "[$(timestamp)] The container build will still rebuild it inside the public site image."
+    return 0
+  fi
+
+  echo "[$(timestamp)] Rebuilding customer-facing graph bundle from shared chart source..."
+  (cd frontend && node scripts/build_public_product_graph_renderer.mjs)
+}
+
+compute_rebuild_fingerprint() {
+  "$PYTHON_BIN" scripts/rebuild_fingerprints.py "$1"
+}
+
+load_saved_fingerprint() {
+  local state_file="$1"
+  local previous=""
+  if [[ -f "$state_file" ]]; then
+    previous="$(<"$state_file")"
+  fi
+  printf '%s' "$previous"
+}
+
+rebuild_public_graph_bundle() {
+  local fingerprint
+  local state_file="${REBUILD_STATE_DIR}/public_graph_bundle.sha256"
+  local previous=""
+
+  fingerprint="$(compute_rebuild_fingerprint public_graph_bundle)"
+  mkdir -p "$REBUILD_STATE_DIR"
+  previous="$(load_saved_fingerprint "$state_file")"
+
+  if [[ "$previous" == "$fingerprint" ]]; then
+    echo "[$(timestamp)] Skipping local customer-facing graph bundle rebuild (unchanged)"
+    return 0
+  fi
+
+  rebuild_public_graph_bundle_now
+  printf '%s\n' "$fingerprint" > "$state_file"
+}
+
+log_step "Rebuilding the customer-facing graph bundle"
+rebuild_public_graph_bundle
+log_step_done
 
 seed_app_data_volume_if_needed() {
   local source_has_data=0
@@ -135,15 +187,74 @@ wait_for_url() {
     fi
     if (( elapsed >= timeout )); then
       echo
-      echo "[$(timestamp)] ${label} did not become ready within ${timeout}s."
-      echo
-      ${COMPOSE_BIN} "${COMPOSE_ARGS[@]}" ps || true
+  echo "[$(timestamp)] ${label} did not become ready within ${timeout}s."
+  echo
+  ${COMPOSE_BIN} "${COMPOSE_ARGS[@]}" ps || true
       echo
       echo "Recent app logs:"
       ${COMPOSE_BIN} "${COMPOSE_ARGS[@]}" logs --tail=80 app || true
       echo
       echo "Recent customer-facing logs:"
       ${COMPOSE_BIN} "${COMPOSE_ARGS[@]}" logs --tail=80 customer_facing || true
+      exit 1
+    fi
+  done
+}
+
+wait_for_container_health() {
+  local container_name="$1"
+  local timeout="${2:-120}"
+  local elapsed=0
+
+  echo "[$(timestamp)] Waiting for ${container_name} to become healthy ..."
+  until status="$(${PODMAN_BIN} inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}running{{end}}' "$container_name" 2>/dev/null || true)"; [[ "$status" == "healthy" || "$status" == "running" ]]; do
+    sleep 1
+    elapsed=$((elapsed + 1))
+    if (( elapsed % 5 == 0 )); then
+      echo "[$(timestamp)]   still waiting after ${elapsed}s..."
+    fi
+    if (( elapsed >= timeout )); then
+      echo
+      echo "[$(timestamp)] ${container_name} did not become healthy within ${timeout}s."
+      echo
+      ${PODMAN_BIN} inspect "$container_name" || true
+      exit 1
+    fi
+  done
+}
+
+wait_for_maintenance_job() {
+  local job_id="$1"
+  local cookie_jar="$2"
+  local timeout="${3:-600}"
+  local elapsed=0
+  local status=""
+  local job_json=""
+  local progress_message=""
+
+  echo "[$(timestamp)] Waiting for maintenance job ${job_id} ..."
+  while true; do
+    job_json="$(curl -fsS -b "$cookie_jar" "${HEALTH_URL%/api/health}/api/maintenance/jobs/${job_id}")"
+    status="$(python3 -c 'import json,sys; print(json.loads(sys.stdin.read()).get("status",""))' <<<"$job_json")"
+    progress_message="$(python3 -c 'import json,sys; print(json.loads(sys.stdin.read()).get("progress_message") or "")' <<<"$job_json")"
+    if [[ -n "$progress_message" ]]; then
+      echo "[$(timestamp)]   ${progress_message}"
+    fi
+
+    if [[ "$status" == "completed" ]]; then
+      return 0
+    fi
+    if [[ "$status" == "failed" ]]; then
+      echo
+      echo "[$(timestamp)] Maintenance job ${job_id} failed."
+      exit 1
+    fi
+
+    sleep 1
+    elapsed=$((elapsed + 1))
+    if (( elapsed >= timeout )); then
+      echo
+      echo "[$(timestamp)] Maintenance job ${job_id} did not complete within ${timeout}s."
       exit 1
     fi
   done
@@ -269,6 +380,15 @@ log_step_done
 
 log_step "Pruning dangling images"
 podman image prune -f >/dev/null 2>&1 || true
+log_step_done
+
+log_step "Starting the database service"
+${COMPOSE_BIN} "${COMPOSE_ARGS[@]}" "${COMPOSE_VERBOSE_ARGS[@]}" up -d postgres
+wait_for_container_health fan-graphs-postgres "${HEALTH_TIMEOUT_SECONDS}"
+log_step_done
+
+log_step "Preparing the deployment database schema"
+./migrate_db.sh --deploy
 log_step_done
 
 log_step "Starting the new stack"

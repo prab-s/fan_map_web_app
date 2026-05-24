@@ -2879,6 +2879,7 @@
       chartTheme,
       title: `${graphXAxisLabel()} vs ${graphYAxisLabel()} (drag points to edit)`,
       graphConfig: getCurrentGraphConfig(),
+      graphMode: 'product',
       includeDragHandles: true,
       showRpmBandShading: productSupportsBandGraphStyle() ? (productForm.show_rpm_band_shading ?? true) : false,
       showSecondaryAxis: productSupportsGraphOverlays(),

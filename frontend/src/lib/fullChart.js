@@ -76,6 +76,24 @@ const SERIES_GRAPH_LABEL_FONT_SIZE = 16;
 const SERIES_GRAPH_LABEL_Y_OFFSET = 1;
 const SERIES_GRAPH_POINT_SIZE = 3;
 
+// Central place for label-position tuning. If you need to move any text label,
+// change the values here instead of hunting through the render code.
+export const FULL_CHART_LABEL_LAYOUT = {
+  seriesGraphLine: {
+    textOffsetX: 41,
+    textOffsetY: 25,
+    leaderTailOffsetY: 10
+  },
+  productGraphLine: {
+    textOffsetX: 80,
+    textOffsetY: 30
+  },
+  permissibleUse: {
+    rightOffsetPixels: 70,
+    verticalOffsetPixels: -15
+  }
+};
+
 // ---------------------------------------------------------------------------
 // General helpers
 // ---------------------------------------------------------------------------
@@ -671,8 +689,8 @@ function getSeriesGraphLabelPadding(rpmLine, resolvedLabelTextScale) {
     ? Number(resolvedLabelTextScale)
     : 1;
   const paddingY = 3 * safeScale;
-  const paddingLeft = (rpmLine?.line_role === 'high' ? 13 : 8) * safeScale;
-  const paddingRight = (rpmLine?.line_role === 'high' ? 8 : 13) * safeScale;
+  const paddingLeft = (rpmLine?.line_role === 'high' ? 5 : 2) * safeScale;
+  const paddingRight = (rpmLine?.line_role === 'high' ? 2 : 5) * safeScale;
   return { paddingY, paddingLeft, paddingRight };
 }
 
@@ -1548,11 +1566,13 @@ function buildRpmSeries(
   rpmBandLabelColor = null,
   fadedBandOpacity = CHART_STYLE.rpmBandFadedOpacity,
   graphConfig = DEFAULT_GRAPH_CONFIG,
-  labelTextScale = 1
+  labelTextScale = 1,
+  graphMode = 'product'
 ) {
   const resolvedLabelTextScale = Number.isFinite(Number(labelTextScale)) && Number(labelTextScale) > 0
     ? Number(labelTextScale)
     : 1;
+  const normalizedGraphMode = String(graphMode || '').trim().toLowerCase();
 
   function buildBandLabelAnchorData(lineData) {
     if (lineData.length < 2) return lineData;
@@ -1709,7 +1729,7 @@ function buildRpmSeries(
           z: 20000,
           zlevel: 20
         });
-      } else {
+      } else if (normalizedGraphMode === 'series') {
         const labelUsesBandStyling = showRpmBandShading;
         const reversedLineData = displayLineData.slice().reverse();
         const labelAnchorData = labelUsesBandStyling
@@ -1731,8 +1751,7 @@ function buildRpmSeries(
             const anchorX = api.value(0);
             const anchorY = api.value(1);
             const anchorPoint = api.coord([anchorX, anchorY]);
-            const textOffsetX = 41;
-            const textOffsetY = 25;
+            const { textOffsetX, textOffsetY, leaderTailOffsetY } = FULL_CHART_LABEL_LAYOUT.seriesGraphLine;
             const textPoint = [anchorPoint[0] + textOffsetX, anchorPoint[1] + textOffsetY];
             const linePoints = reversedLineData.map(([x, y]) => api.coord([x, y]));
             const leaderStartPoint = findNearestPointOnPolyline(linePoints, textPoint) ?? anchorPoint;
@@ -1746,7 +1765,7 @@ function buildRpmSeries(
                     x1: leaderStartPoint[0],
                     y1: leaderStartPoint[1],
                     x2: textPoint[0],
-                    y2: textPoint[1] - 10
+                    y2: textPoint[1] - leaderTailOffsetY
                   },
                   style: {
                     stroke: leaderColor,
@@ -1774,6 +1793,44 @@ function buildRpmSeries(
                   silent: true
                 }
               ]
+            };
+          },
+          z: 20000,
+          zlevel: 20
+        });
+      } else {
+        const reversedLineData = displayLineData.slice().reverse();
+        const labelAnchorData = buildBandLabelAnchorData(reversedLineData);
+        const labelPoint = labelAnchorData[labelAnchorData.length - 1] ?? reversedLineData[0] ?? [0, 0];
+
+        series.push({
+          name: `${formatGraphLineValue(rpm, graphConfig, rpmLine)} label`,
+          type: 'custom',
+          coordinateSystem: 'cartesian2d',
+          silent: true,
+          tooltip: { show: false },
+          emphasis: { disabled: true },
+          data: [{ value: labelPoint }],
+          renderItem(params, api) {
+            const anchorX = api.value(0);
+            const anchorY = api.value(1);
+            const anchorPoint = api.coord([anchorX, anchorY]);
+            const { textOffsetX, textOffsetY } = FULL_CHART_LABEL_LAYOUT.productGraphLine;
+            return {
+              type: 'text',
+              style: {
+                text: formatGraphLineValue(rpm, graphConfig, rpmLine),
+                x: anchorPoint[0] + textOffsetX,
+                y: anchorPoint[1] + textOffsetY,
+                fill: '#000000',
+                font: `${CHART_STYLE.dragHandleFontSize * resolvedLabelTextScale}px ${chartFontFamily}`,
+                textAlign: 'center',
+                textVerticalAlign: 'middle',
+                backgroundColor: 'rgba(255, 255, 255, 0.96)',
+                padding: [3 * resolvedLabelTextScale, 6 * resolvedLabelTextScale],
+                borderRadius: 4
+              },
+              silent: true
             };
           },
           z: 20000,
@@ -2004,8 +2061,8 @@ function buildEfficiencyAndPermissibleSeries(
           // Pixel offsets after anchoring the label:
           // rightOffsetPixels: negative = left, positive = right
           // verticalOffsetPixels: negative = up, positive = down
-          const rightOffsetPixels = 70 + resolvedPermissibleLabelOffset.x;
-          const verticalOffsetPixels = -15 + resolvedPermissibleLabelOffset.y;
+          const rightOffsetPixels = FULL_CHART_LABEL_LAYOUT.permissibleUse.rightOffsetPixels + resolvedPermissibleLabelOffset.x;
+          const verticalOffsetPixels = FULL_CHART_LABEL_LAYOUT.permissibleUse.verticalOffsetPixels + resolvedPermissibleLabelOffset.y;
           const rotation = 0;
 
           return {
@@ -2094,7 +2151,8 @@ export function buildFullChartOption({
   graphStyle = null,
   adaptGraphBackgroundToTheme = false,
   labelTextScale = 1,
-  permissibleLabelOffset = null
+  permissibleLabelOffset = null,
+  graphMode = 'product'
 }) {
   const resolvedLabelTextScale = Number.isFinite(Number(labelTextScale)) && Number(labelTextScale) > 0
     ? Number(labelTextScale)
@@ -2169,7 +2227,8 @@ export function buildFullChartOption({
     bandGraphLabelTextColor,
     bandGraphFadedOpacity,
     resolvedGraphConfig,
-    resolvedLabelTextScale
+    resolvedLabelTextScale,
+    graphMode
   );
   const chartFontFamily = chartTheme.fontFamily ?? 'sans-serif';
 

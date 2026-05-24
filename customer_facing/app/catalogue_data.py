@@ -326,10 +326,13 @@ def build_series_summary_from_products(products: list[dict]) -> list[dict]:
             {
                 "id": series_key,
                 "name": product.get("series_name") or "Series",
+                "product_type_key": product.get("product_type_key"),
                 "product_type_label": product.get("product_type_label"),
                 "product_count": 0,
             },
         )
+        if series_entry.get("product_type_key") in (None, "") and product.get("product_type_key") not in (None, ""):
+            series_entry["product_type_key"] = product.get("product_type_key")
         series_entry["product_count"] += 1
 
     return sorted(series_map.values(), key=lambda item: str(item.get("name") or "").casefold())

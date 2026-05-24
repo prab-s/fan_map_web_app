@@ -31,6 +31,13 @@ export function buildPublicProductGraphOption(payload, themeName) {
     ? payload.rpmPoints
     : flattenRpmPoints(rpmLines);
   const chartTheme = getChartTheme(themeName);
+  const graphMode = String(payload?.graphMode || '').trim().toLowerCase();
+  const showRpmBandShading =
+    graphMode === 'series'
+      ? false
+      : graphMode === 'product'
+        ? true
+        : payload?.showRpmBandShading !== false;
 
   return buildFullChartOption({
     rpmLines,
@@ -39,7 +46,8 @@ export function buildPublicProductGraphOption(payload, themeName) {
     chartTheme,
     title: String(payload?.graphTitle || payload?.productModel || 'Performance graph').trim(),
     graphConfig: payload?.graphConfig || null,
-    showRpmBandShading: payload?.showRpmBandShading !== false,
+    graphMode,
+    showRpmBandShading,
     clipRpmAreaToPermissibleUse: true,
     graphStyle: payload?.graphStyle ?? payload?.graphConfig ?? null,
     adaptGraphBackgroundToTheme: true,
@@ -47,10 +55,25 @@ export function buildPublicProductGraphOption(payload, themeName) {
   });
 }
 
+function raiseSolidLinesAboveDashedLines(option) {
+  const series = Array.isArray(option?.series) ? option.series : [];
+  for (const entry of series) {
+    if (!entry || entry.type !== 'line') continue;
+    const lineType = String(entry?.lineStyle?.type || '').trim().toLowerCase();
+    const currentZ = Number.isFinite(Number(entry.z)) ? Number(entry.z) : 0;
+    if (lineType === 'dashed') {
+      entry.z = currentZ - 20;
+    } else {
+      entry.z = currentZ + 20;
+    }
+  }
+}
+
 export function renderPublicProductGraph({ host, payload, echarts, themeName }) {
   if (!host || !payload || !echarts) return null;
 
   const option = buildPublicProductGraphOption(payload, themeName);
+  raiseSolidLinesAboveDashedLines(option);
   option.animation = false;
   option.grid = {
     ...(option.grid || {}),

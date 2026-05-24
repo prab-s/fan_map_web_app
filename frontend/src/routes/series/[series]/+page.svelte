@@ -24,6 +24,7 @@
         chartTheme,
         title: seriesGraphPayload.title || `${series?.name || 'Series'} Series Graph`,
         graphConfig: seriesGraphPayload.graphConfig || null,
+        graphMode: 'series',
         showRpmBandShading: Boolean(seriesGraphPayload.showRpmBandShading),
         graphStyle: seriesGraphPayload.graphStyle || null,
         adaptGraphBackgroundToTheme: true

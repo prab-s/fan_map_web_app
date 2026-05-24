@@ -126,6 +126,7 @@ def build_product_graph_payload(product: dict, product_type: dict | None) -> dic
     return {
         "productModel": product.get("model"),
         "graphTitle": graph_title,
+        "graphMode": "product",
         "hasGraphData": bool(rpm_lines or efficiency_points),
         "graphConfig": {
             "graph_kind": resolve_field("graph_kind"),
@@ -162,6 +163,7 @@ def build_series_graph_payload(series: dict, product_type: dict | None, series_p
         return {
             "productModel": series.get("name"),
             "graphTitle": f"{str(series.get('name') or '').strip()} performance graph".strip(),
+            "graphMode": "series",
             "hasGraphData": False,
             "graphConfig": {
                 "graph_kind": resolve_field("graph_kind"),
@@ -190,13 +192,16 @@ def build_series_graph_payload(series: dict, product_type: dict | None, series_p
             continue
         product_color = product_color_for_identity(product.get("id"))
 
-        selected_lines = [ordered_lines[0]]
-        if len(ordered_lines) > 1 and ordered_lines[-1] != ordered_lines[0]:
-            selected_lines.append(ordered_lines[-1])
+        selected_lines = [line for line in ordered_lines if line.get("points")]
+        if not selected_lines:
+            continue
+        if len(selected_lines) > 1:
+            selected_lines = [selected_lines[0], selected_lines[-1]]
 
         for index, line in enumerate(selected_lines):
             synthetic_line_id = next_line_id
             next_line_id += 1
+            line_rpm = line.get("rpm")
             display_label = (
                 f"{product.get('model')} low"
                 if len(selected_lines) > 1 and index == 0
@@ -222,6 +227,7 @@ def build_series_graph_payload(series: dict, product_type: dict | None, series_p
     return {
         "productModel": series.get("name"),
         "graphTitle": f"{str(series.get('name') or '').strip()} performance graph".strip(),
+        "graphMode": "series",
         "hasGraphData": bool(synthetic_lines),
         "graphConfig": {
             "graph_kind": resolve_field("graph_kind"),

@@ -32,6 +32,7 @@ async function main() {
     chartTheme: LIGHT_CHART_THEME,
     title: payload.title ?? 'Product Graph',
     graphConfig: payload.graphConfig ?? null,
+    graphMode: payload.graphMode ?? 'product',
     showRpmBandShading: payload.showRpmBandShading ?? true,
     clipRpmAreaToPermissibleUse: true,
     showSecondaryAxis: false,

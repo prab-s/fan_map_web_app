@@ -21,6 +21,12 @@ export PUBLIC_CATALOGUE_SITE_URL="${PUBLIC_CATALOGUE_SITE_URL:-$SIT_PUBLIC_URL}"
 export PUBLIC_CATALOGUE_BACKEND_API_BASE_URL="${PUBLIC_CATALOGUE_BACKEND_API_BASE_URL:-$SIT_BACKEND_URL}"
 export PUBLIC_CATALOGUE_SITE_NAME="${PUBLIC_CATALOGUE_SITE_NAME:-$SIT_PUBLIC_SITE_NAME}"
 
+timestamp() {
+  date +"%Y-%m-%d %H:%M:%S"
+}
+
+REBUILD_STATE_DIR="${REBUILD_STATE_DIR:-.rebuild-state/sit}"
+
 if [[ -n "$BASE_ENV_FILE" && -f "$BASE_ENV_FILE" ]]; then
   set -a
   # shellcheck disable=SC1090
@@ -115,6 +121,53 @@ wait_for_url() {
   done
 }
 
+compute_rebuild_fingerprint() {
+  "$PYTHON_BIN" scripts/rebuild_fingerprints.py "$1"
+}
+
+run_if_fingerprint_changed() {
+  local key="$1"
+  local fingerprint="$2"
+  local label="$3"
+  shift 3
+
+  local state_file="${REBUILD_STATE_DIR}/${key}.sha256"
+  local previous=""
+
+  mkdir -p "$REBUILD_STATE_DIR"
+  if [[ -f "$state_file" ]]; then
+    previous="$(<"$state_file")"
+  fi
+
+  if [[ "$previous" == "$fingerprint" ]]; then
+    echo "Skipping ${label} (unchanged)"
+    return 0
+  fi
+
+  "$@"
+  printf '%s\n' "$fingerprint" > "$state_file"
+}
+
+rebuild_public_graph_bundle_now() {
+  if [[ ! -d frontend/node_modules ]]; then
+    echo
+    echo "SIT startup aborted:"
+    echo "  The customer-facing graph bundle must be rebuilt from the shared chart source, but frontend/node_modules is missing."
+    echo "  Install the frontend dependencies, then rerun ./run_sit.sh."
+    echo
+    exit 1
+  fi
+
+  echo "Rebuilding customer-facing graph bundle..."
+  (cd frontend && node scripts/build_public_product_graph_renderer.mjs)
+}
+
+rebuild_public_graph_bundle() {
+  local fingerprint
+  fingerprint="$(compute_rebuild_fingerprint public_graph_bundle)"
+  run_if_fingerprint_changed "public_graph_bundle" "$fingerprint" "customer-facing graph bundle" rebuild_public_graph_bundle_now
+}
+
 if [[ "${DATABASE_URL:-}" == postgresql* ]]; then
   if ! "$PYTHON_BIN" -c "import psycopg" >/dev/null 2>&1; then
     echo
@@ -138,6 +191,8 @@ if ! "$PYTHON_BIN" -c "from alembic import command" >/dev/null 2>&1; then
   echo
   exit 1
 fi
+
+rebuild_public_graph_bundle
 
 find_browser_binary() {
   local candidate

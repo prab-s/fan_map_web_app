@@ -2286,13 +2286,16 @@ def build_series_graph_payload(series: Series) -> dict | None:
 
     ordered_products = sorted(series.products or [], key=lambda product: (product.model or "").lower())
     for product in ordered_products:
-        ordered_lines = sorted(product.rpm_lines or [], key=lambda line: line.rpm)
+        ordered_lines = sorted(product.rpm_lines or [], key=lambda line: (line.rpm, line.id))
         if not ordered_lines:
             continue
         product_color = _darken_hex_color(series_tab_color_for_identity(product.id), 0.72)
-        selected_lines = [ordered_lines[0]]
-        if len(ordered_lines) > 1 and ordered_lines[-1].id != ordered_lines[0].id:
-            selected_lines.append(ordered_lines[-1])
+
+        selected_lines = [line for line in ordered_lines if getattr(line, "points", None)]
+        if not selected_lines:
+            continue
+        if len(selected_lines) > 1:
+            selected_lines = [selected_lines[0], selected_lines[-1]]
 
         for index, line in enumerate(selected_lines):
             display_label = (
@@ -3118,7 +3121,7 @@ def product_matches_parameter_filters(product: Product, parameter_filters: list[
                 filter_key[1],
                 graph_matches,
             )
-            if not all(graph_matches):
+            if not any(graph_matches):
                 trace_product_filter(
                     "product filter trace result: product=%s graph_filter=%s matched=False reason=graph_value_out_of_window",
                     product_label,
@@ -3209,6 +3212,7 @@ def sync_graph_image(product: Product, rpm_lines: list[RpmLine], efficiency_poin
 
     payload = {
         "title": f"{product.product_type_label} | {product.series_name} - {product.model} Performance Graph",
+        "graphMode": "product",
         "showRpmBandShading": product.show_rpm_band_shading,
         "graphConfig": build_graph_config(product.product_type),
         "graphStyle": {

@@ -316,6 +316,7 @@
       chartTheme,
       title: chartTitle || (currentProduct ? currentProduct.model : 'Product Graph'),
       graphConfig: getCurrentGraphConfig(),
+      graphMode: 'product',
       clipRpmAreaToPermissibleUse: true,
       showRpmBandShading: supportsBandGraphStyle() ? (currentProduct?.show_rpm_band_shading ?? true) : false,
       showSecondaryAxis: supportsGraphOverlays(),
@@ -353,6 +354,7 @@
       chartTheme,
       title,
       graphConfig: seriesGraphPayload.graphConfig,
+      graphMode: 'series',
       showRpmBandShading: Boolean(seriesGraphPayload.showRpmBandShading),
       graphStyle: seriesGraphPayload.graphStyle ?? null,
       adaptGraphBackgroundToTheme: true
