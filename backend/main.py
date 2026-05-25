@@ -4289,6 +4289,7 @@ def refresh_product_type_pdf(product_type_id: int, db: Session = Depends(get_db)
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=f"Unable to generate product type PDF: {exc}") from exc
 
+    notify_public_catalogue_cache_refresh()
     return ProductTypePdfResponse(
         id=product_type.id,
         key=product_type.key,
@@ -4357,6 +4358,7 @@ def start_refresh_product_type_pdf_job(product_type_id: int):
             db.commit()
 
         progress(f"Refreshing product type context for {product_type_label}", 4, 4)
+        notify_public_catalogue_cache_refresh()
         return {
             "result_message": f"Generated product type PDF for {product_type_label}.",
             "progress_message": f"Generated product type PDF for {product_type_label}.",
@@ -4888,6 +4890,7 @@ def refresh_series_pdf(series_id: int, db: Session = Depends(get_db)):
         generate_series_pdfs(series)
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=f"Unable to generate series PDF: {exc}") from exc
+    notify_public_catalogue_cache_refresh()
     return series_response_with_graph_payload(series)
 
 
@@ -4946,6 +4949,7 @@ def start_refresh_series_pdf_job(series_id: int):
                 raise_job_phase_error(f"Series {series.name}", "PDF rendering", exc)
             db.commit()
 
+        notify_public_catalogue_cache_refresh()
         return {
             "result_message": f"Generated series PDFs for {series_name}.",
             "progress_message": f"Generated series PDFs for {series_name}.",
@@ -5824,6 +5828,7 @@ def start_refresh_product_pdf_job(product_id: int):
                 raise_job_phase_error(f"Product {product_label}", "PDF rendering", exc)
             db.commit()
 
+        notify_public_catalogue_cache_refresh()
         return {
             "result_message": f"Generated printed and online PDFs for {product_label}.",
             "progress_message": f"Generated printed and online PDFs for {product_label}.",

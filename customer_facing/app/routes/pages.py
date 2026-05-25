@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 async def common_context():
+    await catalogue_cache.refresh_if_stale()
     product_types = catalogue_cache.product_types()
     return {"product_types": product_types}
 

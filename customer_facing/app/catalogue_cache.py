@@ -201,6 +201,30 @@ class CatalogueCache:
         except Exception:
             return
 
+    def _snapshot_age_seconds(self) -> float | None:
+        fetched_at = self._snapshot.fetched_at
+        if not fetched_at:
+            return None
+
+        try:
+            parsed = datetime.fromisoformat(fetched_at.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+
+        return max(0.0, (datetime.now(timezone.utc) - parsed.astimezone(timezone.utc)).total_seconds())
+
+    async def refresh_if_stale(self):
+        age_seconds = self._snapshot_age_seconds()
+        if age_seconds is None:
+            await self.refresh_best_effort()
+            return
+
+        if age_seconds >= self.refresh_interval_seconds:
+            await self.refresh_best_effort()
+
     def _start_background_refresh(self):
         if self._refresh_task and not self._refresh_task.done():
             return
