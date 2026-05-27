@@ -474,7 +474,8 @@ function ProductWorkspace($$renderer, $$props) {
       $$renderer3.push(`<!--]--> `);
       if (mode === "select") {
         $$renderer3.push("<!--[0-->");
-        $$renderer3.push(`<div class="card shadow-sm col-12 col-xl-8 mx-auto"><div class="card-body"><h2 class="h5">Editor Actions</h2> <p>Choose whether you want to create a new product or open an existing one for editing.</p> <div class="d-flex flex-wrap gap-2"><a class="btn btn-primary" href="/editor/create">Create New Product</a> <a class="btn btn-outline-secondary" href="/editor/edit">Edit Existing Product</a></div> <div class="mt-3"><button class="btn btn-outline-secondary btn-sm"${attr("disabled", refreshingTemplates, true)}>${escape_html("Refresh template library")}</button></div></div></div>`);
+        $$renderer3.push(`<div class="card shadow-sm col-12 col-xl-8 mx-auto"><div class="card-body"><h2 class="h5">Editor Actions</h2> <p>Choose whether you want to create a new product or open an existing one
+        for editing.</p> <div class="d-flex flex-wrap gap-2"><a class="btn btn-primary" href="/editor/create">Create New Product</a> <a class="btn btn-outline-secondary" href="/editor/edit">Edit Existing Product</a></div> <div class="mt-3"><button class="btn btn-outline-secondary btn-sm"${attr("disabled", refreshingTemplates, true)}>${escape_html("Refresh template library")}</button></div></div></div>`);
       } else {
         $$renderer3.push("<!--[-1-->");
       }
@@ -690,10 +691,12 @@ function ProductWorkspace($$renderer, $$props) {
                 $$renderer4.push(`<div${attr_class(
                   `border rounded p-3 ${group._pending_delete ? "bg-danger-subtle border-danger-subtle opacity-75" : ""}`,
                   "svelte-py4xdp"
-                )}${attr_style(group._pending_delete ? "" : `background-color: ${specificationGroupBackgroundColor(groupIndex)}; border-color: ${specificationGroupBorderColor(groupIndex)};`)}><div class="d-flex flex-wrap justify-content-between gap-2 align-items-center mb-3"><button class="btn btn-link p-0 text-decoration-none text-reset fw-semibold spec-group-toggle svelte-py4xdp" type="button">${escape_html(specificationGroupOpenState[groupIndex] ?? true ? "Hide" : "Show")} ${escape_html(group.group_name || `Group ${groupIndex + 1}`)}</button> <div class="d-flex flex-wrap gap-2 align-items-center"><button class="btn btn-outline-secondary btn-sm"${attr("disabled", groupIndex === 0, true)}>Up</button> <button class="btn btn-outline-secondary btn-sm"${attr("disabled", groupIndex === parameterGroups.length - 1, true)}>Down</button> <button${attr_class(`btn btn-sm ${group._pending_delete ? "btn-outline-success" : "btn-outline-danger"}`, "svelte-py4xdp")}>${escape_html(group._pending_delete ? "Undo Delete" : "Delete Group")}</button> <button class="btn btn-outline-primary btn-sm"${attr("disabled", group._pending_delete, true)}>Add Parameter</button></div></div> `);
+                )}${attr_style(group._pending_delete ? "" : `background-color: ${specificationGroupBackgroundColor(groupIndex)}; border-color: ${specificationGroupBorderColor(groupIndex)};`)}><div class="d-flex flex-wrap justify-content-between gap-2 align-items-center mb-3"><button class="btn btn-link p-0 text-decoration-none text-reset fw-semibold spec-group-toggle svelte-py4xdp" type="button">${escape_html(specificationGroupOpenState[groupIndex] ?? true ? "Hide" : "Show")}
+                      ${escape_html(group.group_name || `Group ${groupIndex + 1}`)}</button> <div class="d-flex flex-wrap gap-2 align-items-center"><button class="btn btn-outline-secondary btn-sm"${attr("disabled", groupIndex === 0, true)}>Up</button> <button class="btn btn-outline-secondary btn-sm"${attr("disabled", groupIndex === parameterGroups.length - 1, true)}>Down</button> <button${attr_class(`btn btn-sm ${group._pending_delete ? "btn-outline-success" : "btn-outline-danger"}`, "svelte-py4xdp")}>${escape_html(group._pending_delete ? "Undo Delete" : "Delete Group")}</button> <button class="btn btn-outline-primary btn-sm"${attr("disabled", group._pending_delete, true)}>Add Parameter</button></div></div> `);
                 if (group._pending_delete) {
                   $$renderer4.push("<!--[0-->");
-                  $$renderer4.push(`<p class="small text-danger-emphasis mb-3">This group is marked for deletion. Save Changes to apply the deletion.</p>`);
+                  $$renderer4.push(`<p class="small text-danger-emphasis mb-3">This group is marked for deletion. Save Changes to apply
+                      the deletion.</p>`);
                 } else {
                   $$renderer4.push("<!--[-1-->");
                 }
@@ -804,7 +807,8 @@ function ProductWorkspace($$renderer, $$props) {
                     $$renderer4.push(`<!--]--> <div class="col-12 col-lg-2"><div class="d-flex flex-wrap gap-2"><button class="btn btn-outline-secondary btn-sm"${attr("disabled", group._pending_delete || parameter._pending_delete || parameterIndex === 0, true)}>Up</button> <button class="btn btn-outline-secondary btn-sm"${attr("disabled", group._pending_delete || parameter._pending_delete || parameterIndex === group.parameters.length - 1, true)}>Down</button> <button${attr_class(`btn btn-sm ${parameter._pending_delete ? "btn-outline-success" : "btn-outline-danger"}`, "svelte-py4xdp")}${attr("disabled", group._pending_delete, true)}>${escape_html(parameter._pending_delete ? "Undo Delete" : "Delete")}</button></div></div></div> `);
                     if (parameter._pending_delete) {
                       $$renderer4.push("<!--[0-->");
-                      $$renderer4.push(`<p class="small text-danger-emphasis mt-3 mb-0">This parameter is marked for deletion. Save Changes to apply the deletion.</p>`);
+                      $$renderer4.push(`<p class="small text-danger-emphasis mt-3 mb-0">This parameter is marked for deletion. Save
+                              Changes to apply the deletion.</p>`);
                     } else {
                       $$renderer4.push("<!--[-1-->");
                     }
@@ -819,7 +823,8 @@ function ProductWorkspace($$renderer, $$props) {
               $$renderer4.push(`<!--]--></div>`);
             } else {
               $$renderer4.push("<!--[-1-->");
-              $$renderer4.push(`<p class="text-body-secondary mt-3 mb-0">No parameter groups yet. Load type presets or add a group manually.</p>`);
+              $$renderer4.push(`<p class="text-body-secondary mt-3 mb-0">No parameter groups yet. Load type presets or add a group
+              manually.</p>`);
             }
             $$renderer4.push(`<!--]-->`);
           },
@@ -841,7 +846,8 @@ function ProductWorkspace($$renderer, $$props) {
             children: ($$renderer4) => {
               if (fanAcousticTable) {
                 $$renderer4.push("<!--[0-->");
-                $$renderer4.push(`<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"><p class="text-body-secondary mb-0">The speed column is read-only and follows the fan graph line order.</p> <div class="d-flex flex-wrap gap-2"><input class="form-control form-control-sm fan-acoustic-csv-input" type="file" accept=".csv,text/csv"/> <button class="btn btn-outline-secondary btn-sm" type="button">Clear CSV</button> <button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", !fanAcousticTable && rpmLines.length === 0, true)}>Export CSV</button> <button class="btn btn-outline-secondary btn-sm" type="button">Add Column</button></div></div> `);
+                $$renderer4.push(`<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"><p class="text-body-secondary mb-0">The speed column is read-only and follows the fan graph line
+                  order.</p> <div class="d-flex flex-wrap gap-2"><input class="form-control form-control-sm fan-acoustic-csv-input" type="file" accept=".csv,text/csv"/> <button class="btn btn-outline-secondary btn-sm" type="button">Clear CSV</button> <button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", !fanAcousticTable && rpmLines.length === 0, true)}>Export CSV</button> <button class="btn btn-outline-secondary btn-sm" type="button">Add Column</button></div></div> `);
                 {
                   $$renderer4.push("<!--[-1-->");
                 }
@@ -870,7 +876,8 @@ function ProductWorkspace($$renderer, $$props) {
                 $$renderer4.push(`<!--]--></tbody></table></div> `);
                 if (fanAcousticTable.rows.length === 0) {
                   $$renderer4.push("<!--[0-->");
-                  $$renderer4.push(`<p class="text-body-secondary mt-3 mb-0">Save or load RPM lines first so the acoustic table can align itself.</p>`);
+                  $$renderer4.push(`<p class="text-body-secondary mt-3 mb-0">Save or load RPM lines first so the acoustic table can align
+                  itself.</p>`);
                 } else {
                   $$renderer4.push("<!--[-1-->");
                 }
@@ -954,7 +961,8 @@ function ProductWorkspace($$renderer, $$props) {
         } else {
           $$renderer3.push("<!--[-1-->");
         }
-        $$renderer3.push(`<!--]--> <p class="text-body-secondary mt-3 mb-2">Save the product first, then you can upload product images and manage the generated graph file.</p></div></div>`);
+        $$renderer3.push(`<!--]--> <p class="text-body-secondary mt-3 mb-2">Save the product first, then you can upload product images and manage
+        the generated graph file.</p></div></div>`);
       } else {
         $$renderer3.push("<!--[-1-->");
       }

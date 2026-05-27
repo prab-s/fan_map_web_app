@@ -2,10 +2,33 @@
 Pydantic schemas for request/response validation.
 """
 from typing import Annotated, Optional
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, confloat
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, confloat, model_validator
 
 
 # --- Product ---
+class _RichTextAliasMixin(BaseModel):
+    @model_validator(mode="before")
+    @classmethod
+    def _remap_richtext_aliases(cls, data):
+        if not isinstance(data, dict):
+            return data
+
+        data = dict(data)
+        alias_map = {
+            "description1_html": ("description_html",),
+            "description2_html": ("features_html",),
+            "description3_html": ("specifications_html",),
+        }
+        for canonical_name, legacy_names in alias_map.items():
+            if data.get(canonical_name) is not None:
+                continue
+            for legacy_name in legacy_names:
+                if legacy_name in data and data[legacy_name] is not None:
+                    data[canonical_name] = data[legacy_name]
+                    break
+        return data
+
+
 class ProductTypeParameterPresetResponse(BaseModel):
     id: int
     parameter_name: str
@@ -263,13 +286,13 @@ class FileManagerContentUpdateRequest(BaseModel):
     content: str
 
 
-class SeriesBase(BaseModel):
+class SeriesBase(_RichTextAliasMixin):
     name: str
     product_type_key: str
-    description1_html: Annotated[Optional[str], Field(validation_alias=AliasChoices("description1_html", "description_html"))] = None
-    description2_html: Annotated[Optional[str], Field(validation_alias=AliasChoices("description2_html", "features_html"))] = None
-    description3_html: Annotated[Optional[str], Field(validation_alias=AliasChoices("description3_html", "specifications_html"))] = None
-    description4_html: Annotated[Optional[str], Field(validation_alias=AliasChoices("description4_html", "comments_html"))] = None
+    description1_html: Optional[str] = None
+    description2_html: Optional[str] = None
+    description3_html: Optional[str] = None
+    description4_html: Optional[str] = None
     template_id: Optional[str] = None
     printed_template_id: Optional[str] = None
     online_template_id: Optional[str] = None
@@ -279,13 +302,13 @@ class SeriesCreate(SeriesBase):
     pass
 
 
-class SeriesUpdate(BaseModel):
+class SeriesUpdate(_RichTextAliasMixin):
     name: Optional[str] = None
     product_type_key: Optional[str] = None
-    description1_html: Annotated[Optional[str], Field(validation_alias=AliasChoices("description1_html", "description_html"))] = None
-    description2_html: Annotated[Optional[str], Field(validation_alias=AliasChoices("description2_html", "features_html"))] = None
-    description3_html: Annotated[Optional[str], Field(validation_alias=AliasChoices("description3_html", "specifications_html"))] = None
-    description4_html: Annotated[Optional[str], Field(validation_alias=AliasChoices("description4_html", "comments_html"))] = None
+    description1_html: Optional[str] = None
+    description2_html: Optional[str] = None
+    description3_html: Optional[str] = None
+    description4_html: Optional[str] = None
     template_id: Optional[str] = None
     printed_template_id: Optional[str] = None
     online_template_id: Optional[str] = None
@@ -379,7 +402,7 @@ class FanAcousticTable(BaseModel):
     rows: list[FanAcousticTableRow] = Field(default_factory=list)
 
 
-class ProductBase(BaseModel):
+class ProductBase(_RichTextAliasMixin):
     model: str
     product_type_key: Optional[str] = "fan"
     series_id: Optional[int] = None
@@ -387,9 +410,9 @@ class ProductBase(BaseModel):
     template_id: Optional[str] = None
     printed_template_id: Optional[str] = None
     online_template_id: Optional[str] = None
-    description1_html: Annotated[Optional[str], Field(validation_alias=AliasChoices("description1_html", "description_html"))] = None
-    description2_html: Annotated[Optional[str], Field(validation_alias=AliasChoices("description2_html", "features_html"))] = None
-    description3_html: Annotated[Optional[str], Field(validation_alias=AliasChoices("description3_html", "specifications_html"))] = None
+    description1_html: Optional[str] = None
+    description2_html: Optional[str] = None
+    description3_html: Optional[str] = None
     comments_html: Optional[str] = None
     show_rpm_band_shading: bool = True
     band_graph_background_color: Optional[str] = None
@@ -405,7 +428,7 @@ class ProductCreate(ProductBase):
     efficiency_points: list["ProductEfficiencyPointInput"] = Field(default_factory=list)
 
 
-class ProductUpdate(BaseModel):
+class ProductUpdate(_RichTextAliasMixin):
     model: Optional[str] = None
     product_type_key: Optional[str] = None
     series_id: Optional[int] = None
@@ -413,9 +436,9 @@ class ProductUpdate(BaseModel):
     template_id: Optional[str] = None
     printed_template_id: Optional[str] = None
     online_template_id: Optional[str] = None
-    description1_html: Annotated[Optional[str], Field(validation_alias=AliasChoices("description1_html", "description_html"))] = None
-    description2_html: Annotated[Optional[str], Field(validation_alias=AliasChoices("description2_html", "features_html"))] = None
-    description3_html: Annotated[Optional[str], Field(validation_alias=AliasChoices("description3_html", "specifications_html"))] = None
+    description1_html: Optional[str] = None
+    description2_html: Optional[str] = None
+    description3_html: Optional[str] = None
     comments_html: Optional[str] = None
     show_rpm_band_shading: Optional[bool] = None
     band_graph_background_color: Optional[str] = None
@@ -482,13 +505,13 @@ class RpmLineResponse(RpmLineBase):
     id: int
     points: list["RpmPointResponse"] = Field(default_factory=list)
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
-    product_id: Annotated[int, Field(validation_alias=AliasChoices("product_id", "fan_id"), serialization_alias="product_id")]
+    product_id: int = Field(validation_alias=AliasChoices("product_id", "fan_id"), serialization_alias="product_id")
 
 
 class RpmPointBase(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     rpm_line_id: int
-    airflow: Annotated[float, Field(validation_alias=AliasChoices("airflow", "flow"), serialization_alias="airflow")]
+    airflow: float = Field(validation_alias=AliasChoices("airflow", "flow"), serialization_alias="airflow")
     pressure: float
 
 
@@ -498,7 +521,7 @@ class RpmPointCreate(RpmPointBase):
 
 class RpmPointResponse(RpmPointBase):
     id: int
-    product_id: Annotated[int, Field(validation_alias=AliasChoices("product_id", "fan_id"), serialization_alias="product_id")]
+    product_id: int = Field(validation_alias=AliasChoices("product_id", "fan_id"), serialization_alias="product_id")
     rpm: Optional[float] = None
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
@@ -507,7 +530,7 @@ class RpmPointResponse(RpmPointBase):
 # --- Efficiency points ---
 class EfficiencyPointBase(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
-    airflow: Annotated[float, Field(validation_alias=AliasChoices("airflow", "flow"), serialization_alias="airflow")]
+    airflow: float = Field(validation_alias=AliasChoices("airflow", "flow"), serialization_alias="airflow")
     efficiency_centre: Optional[float] = None
     efficiency_lower_end: Optional[float] = None
     efficiency_higher_end: Optional[float] = None
@@ -520,14 +543,14 @@ class EfficiencyPointCreate(EfficiencyPointBase):
 
 class EfficiencyPointResponse(EfficiencyPointBase):
     id: int
-    product_id: Annotated[int, Field(validation_alias=AliasChoices("product_id", "fan_id"), serialization_alias="product_id")]
+    product_id: int = Field(validation_alias=AliasChoices("product_id", "fan_id"), serialization_alias="product_id")
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 class ProductImageResponse(BaseModel):
     id: int
-    product_id: Annotated[int, Field(validation_alias=AliasChoices("product_id", "fan_id"), serialization_alias="product_id")]
+    product_id: int = Field(validation_alias=AliasChoices("product_id", "fan_id"), serialization_alias="product_id")
     file_name: str
     sort_order: int
     url: str

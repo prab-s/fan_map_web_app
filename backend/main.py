@@ -5444,6 +5444,13 @@ def replace_product_graph_data(
     rpm_line_presets: list[dict] | None = None,
     efficiency_point_presets: list[dict] | None = None,
 ):
+    def preset_value(item, key):
+        if item is None:
+            return None
+        if isinstance(item, dict):
+            return item.get(key)
+        return getattr(item, key, None)
+
     product.rpm_lines.clear()
     product.efficiency_points.clear()
     db.flush()
@@ -5452,20 +5459,20 @@ def replace_product_graph_data(
     for line in rpm_line_presets or []:
         line_model = RpmLine(
             product_id=product.id,
-            rpm=line.get("rpm"),
-            band_color=normalize_color_value(line.get("band_color")) or None,
+            rpm=preset_value(line, "rpm"),
+            band_color=normalize_color_value(preset_value(line, "band_color")) or None,
         )
         db.add(line_model)
         db.flush()
         created_rpm_lines.append(line_model)
 
-        for point in line.get("points") or []:
+        for point in preset_value(line, "points") or []:
             db.add(
                 RpmPoint(
                     product_id=product.id,
                     rpm_line_id=line_model.id,
-                    airflow=point.get("airflow"),
-                    pressure=point.get("pressure"),
+                    airflow=preset_value(point, "airflow"),
+                    pressure=preset_value(point, "pressure"),
                 )
             )
 
@@ -5473,11 +5480,11 @@ def replace_product_graph_data(
         db.add(
             EfficiencyPoint(
                 product_id=product.id,
-                airflow=point.get("airflow"),
-                efficiency_centre=point.get("efficiency_centre"),
-                efficiency_lower_end=point.get("efficiency_lower_end"),
-                efficiency_higher_end=point.get("efficiency_higher_end"),
-                permissible_use=point.get("permissible_use"),
+                airflow=preset_value(point, "airflow"),
+                efficiency_centre=preset_value(point, "efficiency_centre"),
+                efficiency_lower_end=preset_value(point, "efficiency_lower_end"),
+                efficiency_higher_end=preset_value(point, "efficiency_higher_end"),
+                permissible_use=preset_value(point, "permissible_use"),
             )
         )
 
