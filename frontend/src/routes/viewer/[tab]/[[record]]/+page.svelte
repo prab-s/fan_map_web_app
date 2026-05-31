@@ -1,4 +1,5 @@
 <script>
+  import { goto } from '$app/navigation';
   import { onDestroy, onMount } from 'svelte';
   import { browser } from '$app/environment';
   import {
@@ -112,7 +113,11 @@
     const nextPath = viewerPath();
     const nextUrl = `${nextPath}${window.location.hash}`;
     if (`${window.location.pathname}${window.location.hash}` === nextUrl) return;
-    window.history.replaceState(window.history.state, '', nextUrl);
+    goto(nextUrl, {
+      replaceState: true,
+      keepFocus: true,
+      noScroll: true
+    });
   }
 
   function productEditorUrl(productId) {

@@ -1,4 +1,4 @@
-import { e as escape_html, d as bind_props, h as head, b as attr, i as attr_style, f as ensure_array_like, c as attr_class } from "../../../chunks/index2.js";
+import { e as escape_html, f as bind_props, h as head, b as attr, i as attr_style, d as ensure_array_like, c as attr_class } from "../../../chunks/index2.js";
 import { Compartment } from "@codemirror/state";
 import { MatchDecorator, Decoration, ViewPlugin, EditorView } from "@codemirror/view";
 import { html } from "@codemirror/lang-html";

@@ -286,6 +286,65 @@ class FileManagerContentUpdateRequest(BaseModel):
     content: str
 
 
+class BulkImportTableSummaryResponse(BaseModel):
+    name: str
+    kind: str
+    row_count: int = 0
+
+
+class BulkImportColumnNormalizationResponse(BaseModel):
+    raw_header: str
+    normalized_header: str
+    role: str
+    rpm: Optional[float] = None
+    reason: Optional[str] = None
+
+
+class BulkImportSheetNormalizationResponse(BaseModel):
+    sheet_name: str
+    row_count: int = 0
+    include_in_import: bool = True
+    raw_headers: list[str] = Field(default_factory=list)
+    normalized_headers: list[str] = Field(default_factory=list)
+    columns: list[BulkImportColumnNormalizationResponse] = Field(default_factory=list)
+    rpm_line_count: int = 0
+    rpm_point_count: int = 0
+    efficiency_point_count: int = 0
+    error: Optional[str] = None
+
+
+class BulkImportManifestSheetResponse(BaseModel):
+    sheet_name: str
+    product_model: Optional[str] = None
+    product_type_key: Optional[str] = None
+    series_name: Optional[str] = None
+    image_count: int = 0
+
+
+class BulkImportResponse(BaseModel):
+    dry_run: bool
+    tables: list[BulkImportTableSummaryResponse] = Field(default_factory=list)
+    sheet_normalizations: list[BulkImportSheetNormalizationResponse] = Field(default_factory=list)
+    manifest_sheets: list[BulkImportManifestSheetResponse] = Field(default_factory=list)
+    skipped_sheets: list[str] = Field(default_factory=list)
+    created_series: int = 0
+    updated_series: int = 0
+    created_products: int = 0
+    updated_products: int = 0
+    created_series_images: int = 0
+    created_product_images: int = 0
+    warnings: list[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
+
+
+class BulkImageImportResponse(BaseModel):
+    target_kind: str
+    target_id: int
+    file_names: list[str] = Field(default_factory=list)
+    image_count: int = 0
+    overwritten_file_names: list[str] = Field(default_factory=list)
+
+
 class SeriesBase(_RichTextAliasMixin):
     name: str
     product_type_key: str
@@ -618,6 +677,7 @@ class AuthSessionResponse(BaseModel):
     authenticated: bool
     username: Optional[str] = None
     is_admin: bool = False
+    cookie_secure: bool = False
 
 
 class UserCreate(BaseModel):

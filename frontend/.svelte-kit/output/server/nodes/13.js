@@ -1,8 +1,10 @@
-
+import * as universal from '../entries/pages/editor/series/_page.js';
 
 export const index = 13;
 let component_cache;
-export const component = async () => component_cache ??= (await import('../entries/pages/editor/series/create/_page.svelte.js')).default;
-export const imports = ["_app/immutable/nodes/13.Bb6tF2l9.js","_app/immutable/chunks/CWj6FrbW.js","_app/immutable/chunks/DFzR8caL.js","_app/immutable/chunks/bopv7RXo.js","_app/immutable/chunks/BBQcLBo9.js","_app/immutable/chunks/DhZUfZlc.js","_app/immutable/chunks/Ctlj2boL.js","_app/immutable/chunks/CeyxxxIj.js","_app/immutable/chunks/CbaID5D2.js","_app/immutable/chunks/D8h75jP6.js","_app/immutable/chunks/DVcBOjDy.js","_app/immutable/chunks/qmdHm5Ug.js","_app/immutable/chunks/DOArj5A6.js","_app/immutable/chunks/DzE9GDi8.js","_app/immutable/chunks/FoCE11im.js","_app/immutable/chunks/Bhdiahua.js","_app/immutable/chunks/Pm6m9bH9.js","_app/immutable/chunks/B6XD0_Ck.js","_app/immutable/chunks/BUApaBEI.js","_app/immutable/chunks/Cn321wFf.js"];
+export const component = async () => component_cache ??= (await import('../entries/pages/editor/series/_page.svelte.js')).default;
+export { universal };
+export const universal_id = "src/routes/editor/series/+page.js";
+export const imports = ["_app/immutable/nodes/13.C0E08i0K.js","_app/immutable/chunks/pfMRWl6z.js","_app/immutable/chunks/BUApaBEI.js","_app/immutable/chunks/CWj6FrbW.js","_app/immutable/chunks/B8AtQkhI.js","_app/immutable/chunks/D4GndEBo.js","_app/immutable/chunks/1fAUmMee.js","_app/immutable/chunks/BmR1Vjd5.js","_app/immutable/chunks/FGsG58rJ.js","_app/immutable/chunks/D8_GFJuo.js","_app/immutable/chunks/D5GhMCzy.js","_app/immutable/chunks/XhnPXEtc.js","_app/immutable/chunks/SjmN_6cJ.js"];
 export const stylesheets = [];
 export const fonts = [];

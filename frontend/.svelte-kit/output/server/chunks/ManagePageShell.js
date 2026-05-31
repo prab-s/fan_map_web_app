@@ -1,4 +1,4 @@
-import { e as escape_html, b as attr, a as slot, d as bind_props } from "./index2.js";
+import { e as escape_html, b as attr, a as slot, f as bind_props } from "./index2.js";
 import { f as fallback } from "./equality.js";
 function ManagePageShell($$renderer, $$props) {
   let eyebrow = fallback($$props["eyebrow"], "");

@@ -1,0 +1,1 @@
+import{a as l}from"./C7YJlRmi.js";import{y as r}from"./D4GndEBo.js";function a(t,e,f,i){var y=t.__style;if(r||y!==e){var s=l(e);(!r||s!==t.getAttribute("style"))&&(s==null?t.removeAttribute("style"):t.style.cssText=s),t.__style=e}return i}export{a as s};

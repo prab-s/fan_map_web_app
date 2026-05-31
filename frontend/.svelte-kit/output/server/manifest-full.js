@@ -10,7 +10,7 @@ return {
 	assets: new Set(["favicon.png"]),
 	mimeTypes: {".png":"image/png"},
 	_: {
-		client: {start:"_app/immutable/entry/start.DhslFcDj.js",app:"_app/immutable/entry/app.BFBhqbA7.js",imports:["_app/immutable/entry/start.DhslFcDj.js","_app/immutable/chunks/B6XD0_Ck.js","_app/immutable/chunks/DOArj5A6.js","_app/immutable/chunks/bopv7RXo.js","_app/immutable/chunks/BUApaBEI.js","_app/immutable/entry/app.BFBhqbA7.js","_app/immutable/chunks/C1FmrZbK.js","_app/immutable/chunks/bopv7RXo.js","_app/immutable/chunks/CWj6FrbW.js","_app/immutable/chunks/DOArj5A6.js","_app/immutable/chunks/Ctlj2boL.js","_app/immutable/chunks/Bqmpj1Up.js","_app/immutable/chunks/D8h75jP6.js","_app/immutable/chunks/DVcBOjDy.js"],stylesheets:[],fonts:[],uses_env_dynamic_public:false},
+		client: {start:"_app/immutable/entry/start.4bACVl6I.js",app:"_app/immutable/entry/app.uNhDybB9.js",imports:["_app/immutable/entry/start.4bACVl6I.js","_app/immutable/chunks/VrTdLCCP.js","_app/immutable/chunks/B4CsTNPU.js","_app/immutable/chunks/D4GndEBo.js","_app/immutable/chunks/BUApaBEI.js","_app/immutable/entry/app.uNhDybB9.js","_app/immutable/chunks/C1FmrZbK.js","_app/immutable/chunks/D4GndEBo.js","_app/immutable/chunks/CWj6FrbW.js","_app/immutable/chunks/B4CsTNPU.js","_app/immutable/chunks/FGsG58rJ.js","_app/immutable/chunks/DhJhfQAU.js","_app/immutable/chunks/XhnPXEtc.js","_app/immutable/chunks/SjmN_6cJ.js"],stylesheets:[],fonts:[],uses_env_dynamic_public:false},
 		nodes: [
 			__memo(() => import('./nodes/0.js')),
 			__memo(() => import('./nodes/1.js')),
@@ -38,7 +38,8 @@ return {
 			__memo(() => import('./nodes/23.js')),
 			__memo(() => import('./nodes/24.js')),
 			__memo(() => import('./nodes/25.js')),
-			__memo(() => import('./nodes/26.js'))
+			__memo(() => import('./nodes/26.js')),
+			__memo(() => import('./nodes/27.js'))
 		],
 		remotes: {
 			
@@ -52,171 +53,178 @@ return {
 				endpoint: null
 			},
 			{
+				id: "/bulk-import",
+				pattern: /^\/bulk-import\/?$/,
+				params: [],
+				page: { layouts: [0,], errors: [1,], leaf: 3 },
+				endpoint: null
+			},
+			{
 				id: "/catalogue",
 				pattern: /^\/catalogue\/?$/,
 				params: [],
-				page: { layouts: [0,], errors: [1,], leaf: 3 },
+				page: { layouts: [0,], errors: [1,], leaf: 4 },
 				endpoint: null
 			},
 			{
 				id: "/editor",
 				pattern: /^\/editor\/?$/,
 				params: [],
-				page: { layouts: [0,], errors: [1,], leaf: 4 },
+				page: { layouts: [0,], errors: [1,], leaf: 5 },
 				endpoint: null
 			},
 			{
 				id: "/editor/create",
 				pattern: /^\/editor\/create\/?$/,
 				params: [],
-				page: { layouts: [0,], errors: [1,], leaf: 5 },
+				page: { layouts: [0,], errors: [1,], leaf: 6 },
 				endpoint: null
 			},
 			{
 				id: "/editor/edit",
 				pattern: /^\/editor\/edit\/?$/,
 				params: [],
-				page: { layouts: [0,], errors: [1,], leaf: 6 },
+				page: { layouts: [0,], errors: [1,], leaf: 7 },
 				endpoint: null
 			},
 			{
 				id: "/editor/edit/[product]",
 				pattern: /^\/editor\/edit\/([^/]+?)\/?$/,
 				params: [{"name":"product","optional":false,"rest":false,"chained":false}],
-				page: { layouts: [0,], errors: [1,], leaf: 7 },
+				page: { layouts: [0,], errors: [1,], leaf: 8 },
 				endpoint: null
 			},
 			{
 				id: "/editor/product-types",
 				pattern: /^\/editor\/product-types\/?$/,
 				params: [],
-				page: { layouts: [0,], errors: [1,], leaf: 8 },
+				page: { layouts: [0,], errors: [1,], leaf: 9 },
 				endpoint: null
 			},
 			{
 				id: "/editor/product-types/create",
 				pattern: /^\/editor\/product-types\/create\/?$/,
 				params: [],
-				page: { layouts: [0,], errors: [1,], leaf: 9 },
+				page: { layouts: [0,], errors: [1,], leaf: 10 },
 				endpoint: null
 			},
 			{
 				id: "/editor/product-types/edit",
 				pattern: /^\/editor\/product-types\/edit\/?$/,
 				params: [],
-				page: { layouts: [0,], errors: [1,], leaf: 10 },
+				page: { layouts: [0,], errors: [1,], leaf: 11 },
 				endpoint: null
 			},
 			{
 				id: "/editor/product-types/edit/[product_type]",
 				pattern: /^\/editor\/product-types\/edit\/([^/]+?)\/?$/,
 				params: [{"name":"product_type","optional":false,"rest":false,"chained":false}],
-				page: { layouts: [0,], errors: [1,], leaf: 11 },
+				page: { layouts: [0,], errors: [1,], leaf: 12 },
 				endpoint: null
 			},
 			{
 				id: "/editor/series",
 				pattern: /^\/editor\/series\/?$/,
 				params: [],
-				page: { layouts: [0,], errors: [1,], leaf: 12 },
+				page: { layouts: [0,], errors: [1,], leaf: 13 },
 				endpoint: null
 			},
 			{
 				id: "/editor/series/create",
 				pattern: /^\/editor\/series\/create\/?$/,
 				params: [],
-				page: { layouts: [0,], errors: [1,], leaf: 13 },
+				page: { layouts: [0,], errors: [1,], leaf: 14 },
 				endpoint: null
 			},
 			{
 				id: "/editor/series/edit",
 				pattern: /^\/editor\/series\/edit\/?$/,
 				params: [],
-				page: { layouts: [0,], errors: [1,], leaf: 14 },
+				page: { layouts: [0,], errors: [1,], leaf: 15 },
 				endpoint: null
 			},
 			{
 				id: "/editor/series/edit/[series]",
 				pattern: /^\/editor\/series\/edit\/([^/]+?)\/?$/,
 				params: [{"name":"series","optional":false,"rest":false,"chained":false}],
-				page: { layouts: [0,], errors: [1,], leaf: 15 },
+				page: { layouts: [0,], errors: [1,], leaf: 16 },
 				endpoint: null
 			},
 			{
 				id: "/entry",
 				pattern: /^\/entry\/?$/,
 				params: [],
-				page: { layouts: [0,], errors: [1,], leaf: 16 },
+				page: { layouts: [0,], errors: [1,], leaf: 17 },
 				endpoint: null
 			},
 			{
 				id: "/map",
 				pattern: /^\/map\/?$/,
 				params: [],
-				page: { layouts: [0,], errors: [1,], leaf: 17 },
+				page: { layouts: [0,], errors: [1,], leaf: 18 },
 				endpoint: null
 			},
 			{
 				id: "/products",
 				pattern: /^\/products\/?$/,
 				params: [],
-				page: { layouts: [0,], errors: [1,], leaf: 18 },
+				page: { layouts: [0,], errors: [1,], leaf: 19 },
 				endpoint: null
 			},
 			{
 				id: "/products/type/[product_type]",
 				pattern: /^\/products\/type\/([^/]+?)\/?$/,
 				params: [{"name":"product_type","optional":false,"rest":false,"chained":false}],
-				page: { layouts: [0,], errors: [1,], leaf: 20 },
+				page: { layouts: [0,], errors: [1,], leaf: 21 },
 				endpoint: null
 			},
 			{
 				id: "/products/[product]",
 				pattern: /^\/products\/([^/]+?)\/?$/,
 				params: [{"name":"product","optional":false,"rest":false,"chained":false}],
-				page: { layouts: [0,], errors: [1,], leaf: 19 },
+				page: { layouts: [0,], errors: [1,], leaf: 20 },
 				endpoint: null
 			},
 			{
 				id: "/series/[series]",
 				pattern: /^\/series\/([^/]+?)\/?$/,
 				params: [{"name":"series","optional":false,"rest":false,"chained":false}],
-				page: { layouts: [0,], errors: [1,], leaf: 21 },
+				page: { layouts: [0,], errors: [1,], leaf: 22 },
 				endpoint: null
 			},
 			{
 				id: "/setup",
 				pattern: /^\/setup\/?$/,
 				params: [],
-				page: { layouts: [0,], errors: [1,], leaf: 22 },
+				page: { layouts: [0,], errors: [1,], leaf: 23 },
 				endpoint: null
 			},
 			{
 				id: "/template-builder-v2",
 				pattern: /^\/template-builder-v2\/?$/,
 				params: [],
-				page: { layouts: [0,], errors: [1,], leaf: 24 },
+				page: { layouts: [0,], errors: [1,], leaf: 25 },
 				endpoint: null
 			},
 			{
 				id: "/template-builder",
 				pattern: /^\/template-builder\/?$/,
 				params: [],
-				page: { layouts: [0,], errors: [1,], leaf: 23 },
+				page: { layouts: [0,], errors: [1,], leaf: 24 },
 				endpoint: null
 			},
 			{
 				id: "/viewer",
 				pattern: /^\/viewer\/?$/,
 				params: [],
-				page: { layouts: [0,], errors: [1,], leaf: 25 },
+				page: { layouts: [0,], errors: [1,], leaf: 26 },
 				endpoint: null
 			},
 			{
 				id: "/viewer/[tab]/[[record]]",
 				pattern: /^\/viewer\/([^/]+?)(?:\/([^/]+))?\/?$/,
 				params: [{"name":"tab","optional":false,"rest":false,"chained":false},{"name":"record","optional":true,"rest":false,"chained":true}],
-				page: { layouts: [0,], errors: [1,], leaf: 26 },
+				page: { layouts: [0,], errors: [1,], leaf: 27 },
 				endpoint: null
 			}
 		],

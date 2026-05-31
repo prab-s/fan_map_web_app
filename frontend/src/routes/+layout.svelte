@@ -1,6 +1,7 @@
 <script>
   import 'bootstrap/dist/css/bootstrap.min.css';
   import '../app.css';
+  import { afterNavigate } from '$app/navigation';
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import { auth } from '$lib/auth.js';
@@ -9,13 +10,19 @@
   let username = '';
   let password = '';
   let isPublicRoute = false;
+  let currentPath = '';
   const PUBLIC_ROUTE_PREFIXES = ['/series', '/products'];
 
-  $: isPublicRoute = PUBLIC_ROUTE_PREFIXES.some((prefix) => $page.url.pathname === prefix || $page.url.pathname.startsWith(`${prefix}/`));
+  $: currentPath = $page.url.pathname;
+  $: isPublicRoute = PUBLIC_ROUTE_PREFIXES.some((prefix) => currentPath === prefix || currentPath.startsWith(`${prefix}/`));
 
   onMount(() => {
     initTheme();
     auth.refresh();
+  });
+
+  afterNavigate((nav) => {
+    currentPath = nav.to?.url?.pathname || window.location.pathname;
   });
 
   function pathMatches(pathname, path) {
@@ -24,7 +31,7 @@
   }
 
   function isActive(path) {
-    return pathMatches($page.url.pathname, path);
+    return pathMatches(currentPath, path);
   }
 
   async function submitLogin() {
@@ -109,7 +116,7 @@
           <div>
             <p class="small text-uppercase text-body-secondary fw-semibold mb-1"><strong>Internal Facing</strong></p>
           </div>
-          <span class="small text-body-secondary">{#if isActive('/editor')}Editor{:else if isActive('/viewer')}Viewer{:else if isActive('/template-builder-v2')}Template Builder V2{:else if isActive('/template-builder')}Template Builder{:else if isActive('/setup')}Setup{:else}Overview{/if}</span>
+          <span class="small text-body-secondary">{#if isActive('/editor')}Editor{:else if isActive('/viewer')}Viewer{:else if isActive('/template-builder-v2')}Template Builder V2{:else if isActive('/template-builder')}Template Builder{:else if isActive('/setup')}Setup{:else if isActive('/bulk-import')}Bulk Import{:else}Overview{/if}</span>
         </div>
 
         <nav class="nav nav-underline justify-content-center mx-auto" aria-label="Primary">
@@ -117,6 +124,9 @@
           <a class={`nav-link ${isActive('/editor') ? 'active text-body fw-medium' : 'text-body-secondary'}`} href="/editor">Editor</a>
           <a class={`nav-link ${isActive('/viewer') ? 'active text-body fw-medium' : 'text-body-secondary'}`} href="/viewer">Viewer</a>
           <a class={`nav-link ${isActive('/template-builder') ? 'active text-body fw-medium' : 'text-body-secondary'}`} href="/template-builder">Template Builder</a>
+          {#if $auth.is_admin}
+            <a class={`nav-link ${isActive('/bulk-import') ? 'active text-body fw-medium' : 'text-body-secondary'}`} href="/bulk-import">Bulk Import</a>
+          {/if}
           <a class={`nav-link ${isActive('/setup') ? 'active text-body fw-medium' : 'text-body-secondary'}`} href="/setup">Setup</a>
         </nav>
 

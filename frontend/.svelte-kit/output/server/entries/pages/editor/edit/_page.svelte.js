@@ -1,4 +1,4 @@
-import { h as head, d as bind_props } from "../../../../chunks/index2.js";
+import { h as head, f as bind_props } from "../../../../chunks/index2.js";
 import { M as ManagePageShell } from "../../../../chunks/ManagePageShell.js";
 import { P as ProductWorkspace } from "../../../../chunks/ProductWorkspace.js";
 import { f as fallback } from "../../../../chunks/equality.js";

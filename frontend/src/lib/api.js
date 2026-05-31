@@ -763,6 +763,86 @@ export async function uploadFileManagerEntries(rootName, path, files, replaceExi
   return r.json();
 }
 
+export async function runBulkImport(
+  files,
+  {
+    dryRun = false,
+    downsampleImportedCurves = true,
+    downsamplePointCount = 5,
+    scaleEfficiencyPermissibleAgainstHighestRpm = true
+  } = {}
+) {
+  const sp = new URLSearchParams();
+  if (dryRun) sp.set('dry_run', 'true');
+  if (downsampleImportedCurves) sp.set('downsample_imported_curves', 'true');
+  if (downsamplePointCount != null) sp.set('downsample_point_count', String(downsamplePointCount));
+  if (scaleEfficiencyPermissibleAgainstHighestRpm) sp.set('scale_efficiency_permissible_against_highest_rpm', 'true');
+  const formData = new FormData();
+  for (const file of files) {
+    const relativeName = file?.webkitRelativePath || file?.name || 'upload.bin';
+    formData.append('files', file, relativeName);
+  }
+  const r = await apiFetch(`/bulk-import${sp.toString() ? `?${sp.toString()}` : ''}`, {
+    method: 'POST',
+    body: formData
+  });
+  return r.json();
+}
+
+export async function runBulkWorkbookImport(
+  files,
+  {
+    dryRun = false,
+    downsampleImportedCurves = true,
+    downsamplePointCount = 5,
+    scaleEfficiencyPermissibleAgainstHighestRpm = true,
+    manifestJson = null
+  } = {}
+) {
+  const sp = new URLSearchParams();
+  if (dryRun) sp.set('dry_run', 'true');
+  if (downsampleImportedCurves) sp.set('downsample_imported_curves', 'true');
+  if (downsamplePointCount != null) sp.set('downsample_point_count', String(downsamplePointCount));
+  if (scaleEfficiencyPermissibleAgainstHighestRpm) sp.set('scale_efficiency_permissible_against_highest_rpm', 'true');
+  const formData = new FormData();
+  if (manifestJson) {
+    formData.append('manifest_json', typeof manifestJson === 'string' ? manifestJson : JSON.stringify(manifestJson));
+  }
+  for (const file of files) {
+    const relativeName = file?.webkitRelativePath || file?.name || 'upload.bin';
+    formData.append('files', file, relativeName);
+  }
+  const r = await apiFetch(`/bulk-import${sp.toString() ? `?${sp.toString()}` : ''}`, {
+    method: 'POST',
+    body: formData
+  });
+  return r.json();
+}
+
+export async function uploadBulkProductImages(productId, files) {
+  const formData = new FormData();
+  for (const file of files) {
+    formData.append('files', file, file?.name || 'image.png');
+  }
+  const r = await apiFetch(`/products/${productId}/product-images/bulk`, {
+    method: 'POST',
+    body: formData
+  });
+  return r.json();
+}
+
+export async function uploadBulkSeriesImages(seriesId, files) {
+  const formData = new FormData();
+  for (const file of files) {
+    formData.append('files', file, file?.name || 'image.png');
+  }
+  const r = await apiFetch(`/series/${seriesId}/series-images/bulk`, {
+    method: 'POST',
+    body: formData
+  });
+  return r.json();
+}
+
 export async function renameFileManagerEntry(rootName, path, newName) {
   const sp = new URLSearchParams({ path });
   const r = await apiFetch(`/file-manager/${rootName}/rename?${sp.toString()}`, {

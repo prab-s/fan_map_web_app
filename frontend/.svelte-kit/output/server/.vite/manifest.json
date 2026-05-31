@@ -250,7 +250,7 @@
       "_config.js"
     ],
     "css": [
-      "_app/immutable/assets/_layout.B8S1PzqK.css"
+      "_app/immutable/assets/_layout.DrrCJQdT.css"
     ]
   },
   "src/routes/+page.svelte": {
@@ -264,6 +264,24 @@
       "_utils.js",
       "_root.js",
       "_state.svelte.js"
+    ]
+  },
+  "src/routes/bulk-import/+page.svelte": {
+    "file": "entries/pages/bulk-import/_page.svelte.js",
+    "name": "entries/pages/bulk-import/_page.svelte",
+    "src": "src/routes/bulk-import/+page.svelte",
+    "isEntry": true,
+    "imports": [
+      "_index2.js",
+      "_auth.js",
+      "_index-server.js",
+      "_exports.js",
+      "_utils.js",
+      "_root.js",
+      "_state.svelte.js"
+    ],
+    "css": [
+      "_app/immutable/assets/_page.CFIodOV5.css"
     ]
   },
   "src/routes/catalogue/+page.svelte": {
@@ -589,6 +607,7 @@
     "isEntry": true,
     "imports": [
       "_index2.js",
+      "_false.js",
       "_index-server.js",
       "_auth.js",
       "_config.js",
@@ -646,12 +665,16 @@
     "imports": [
       "_index2.js",
       "_index-server.js",
+      "_exports.js",
+      "_utils.js",
+      "_equality.js",
+      "_root.js",
+      "_state.svelte.js",
       "_api.js",
       "_fullChart.js",
       "_config.js",
       "_JobProgressPanel.js",
       "_SeriesNamesBadgeList.js",
-      "_equality.js",
       "_html.js"
     ],
     "css": [

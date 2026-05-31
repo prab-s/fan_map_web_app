@@ -1,4 +1,4 @@
-import { e as escape_html, c as attr_class, b as attr, i as attr_style, d as bind_props } from "./index2.js";
+import { e as escape_html, c as attr_class, b as attr, i as attr_style, f as bind_props } from "./index2.js";
 import { o as onDestroy } from "./index-server.js";
 import { f as fallback } from "./equality.js";
 function maintenanceJobProgressPercent(job) {

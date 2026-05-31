@@ -1,4 +1,5 @@
 <script>
+  import { browser } from '$app/environment';
   import { onDestroy, onMount } from 'svelte';
   import { get } from 'svelte/store';
   import { auth } from '$lib/auth.js';
@@ -74,6 +75,7 @@
   let successMessages = [];
   let successToastKey = 0;
   let successDismissTimeout = null;
+  let isHttpOrigin = false;
 
   function clearSuccessToast() {
     successMessages = [];
@@ -117,6 +119,7 @@
   }
 
   onMount(() => {
+    isHttpOrigin = browser && window.location.protocol === 'http:';
     const session = get(auth);
     if (session.authenticated) {
       loadUsers();
@@ -144,6 +147,8 @@
   $: if ($auth.authenticated && !productTypesLoaded && !loadingProductTypes) {
     loadProductTypes();
   }
+
+  $: showCookieWarning = browser && isHttpOrigin && $auth.authenticated && $auth.cookie_secure;
 
   function productTemplates() {
     return templateRegistry.product_templates ?? [];
@@ -856,6 +861,15 @@
 <svelte:head>
   <title>Setup - Internal Facing</title>
 </svelte:head>
+
+{#if showCookieWarning}
+  <div class="alert alert-warning border-0 shadow-sm mb-3">
+    <div class="fw-semibold mb-1">Session cookies are marked secure, but this app is being served over HTTP.</div>
+    <div class="text-body-secondary mb-0">
+      Logins can fail or disappear after reloads until the app is served over HTTPS, or <code>AUTH_COOKIE_SECURE</code> is disabled for local and SIT runs.
+    </div>
+  </div>
+{/if}
 
 {#if successMessages.length}
   <div class="success-toast shadow-lg" role="status" aria-live="polite" aria-atomic="true">

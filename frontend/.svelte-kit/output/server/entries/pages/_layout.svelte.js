@@ -1,11 +1,11 @@
 import { g as getContext, s as store_get, a as slot, b as attr, e as escape_html, c as attr_class, u as unsubscribe_stores } from "../../chunks/index2.js";
-import "clsx";
 import "@sveltejs/kit/internal";
 import "../../chunks/exports.js";
 import "../../chunks/utils.js";
 import "@sveltejs/kit/internal/server";
 import "../../chunks/root.js";
 import "../../chunks/state.svelte.js";
+import "clsx";
 import { a as auth } from "../../chunks/auth.js";
 import { t as theme } from "../../chunks/config.js";
 const getStores = () => {
@@ -35,15 +35,17 @@ function _layout($$renderer, $$props) {
     let username = "";
     let password = "";
     let isPublicRoute = false;
+    let currentPath = "";
     const PUBLIC_ROUTE_PREFIXES = ["/series", "/products"];
     function pathMatches(pathname, path) {
       if (path === "/") return pathname === "/";
       return pathname === path || pathname.startsWith(`${path}/`);
     }
     function isActive(path) {
-      return pathMatches(store_get($$store_subs ??= {}, "$page", page).url.pathname, path);
+      return pathMatches(currentPath, path);
     }
-    isPublicRoute = PUBLIC_ROUTE_PREFIXES.some((prefix) => store_get($$store_subs ??= {}, "$page", page).url.pathname === prefix || store_get($$store_subs ??= {}, "$page", page).url.pathname.startsWith(`${prefix}/`));
+    currentPath = store_get($$store_subs ??= {}, "$page", page).url.pathname;
+    isPublicRoute = PUBLIC_ROUTE_PREFIXES.some((prefix) => currentPath === prefix || currentPath.startsWith(`${prefix}/`));
     $$renderer2.push(`<div class="app-shell">`);
     if (isPublicRoute) {
       $$renderer2.push("<!--[0-->");
@@ -81,11 +83,21 @@ function _layout($$renderer, $$props) {
       } else if (isActive("/setup")) {
         $$renderer2.push("<!--[4-->");
         $$renderer2.push(`Setup`);
+      } else if (isActive("/bulk-import")) {
+        $$renderer2.push("<!--[5-->");
+        $$renderer2.push(`Bulk Import`);
       } else {
         $$renderer2.push("<!--[-1-->");
         $$renderer2.push(`Overview`);
       }
-      $$renderer2.push(`<!--]--></span></div> <nav class="nav nav-underline justify-content-center mx-auto" aria-label="Primary"><a${attr_class(`nav-link ${isActive("/") ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/">Home</a> <a${attr_class(`nav-link ${isActive("/editor") ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/editor">Editor</a> <a${attr_class(`nav-link ${isActive("/viewer") ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/viewer">Viewer</a> <a${attr_class(`nav-link ${isActive("/template-builder") ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/template-builder">Template Builder</a> <a${attr_class(`nav-link ${isActive("/setup") ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/setup">Setup</a></nav> <div class="d-flex align-items-center gap-2"><span class="small text-body-secondary d-none d-lg-inline">Signed in as ${escape_html(store_get($$store_subs ??= {}, "$auth", auth).username)}</span> <button class="btn btn-outline-primary btn-sm" type="button">${escape_html(store_get($$store_subs ??= {}, "$theme", theme) === "dark" ? "Switch to Light" : "Switch to Dark")}</button> <button class="btn btn-outline-secondary btn-sm" type="button">Sign Out</button></div></div></header> <main class="app-frame py-3"><!--[-->`);
+      $$renderer2.push(`<!--]--></span></div> <nav class="nav nav-underline justify-content-center mx-auto" aria-label="Primary"><a${attr_class(`nav-link ${isActive("/") ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/">Home</a> <a${attr_class(`nav-link ${isActive("/editor") ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/editor">Editor</a> <a${attr_class(`nav-link ${isActive("/viewer") ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/viewer">Viewer</a> <a${attr_class(`nav-link ${isActive("/template-builder") ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/template-builder">Template Builder</a> `);
+      if (store_get($$store_subs ??= {}, "$auth", auth).is_admin) {
+        $$renderer2.push("<!--[0-->");
+        $$renderer2.push(`<a${attr_class(`nav-link ${isActive("/bulk-import") ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/bulk-import">Bulk Import</a>`);
+      } else {
+        $$renderer2.push("<!--[-1-->");
+      }
+      $$renderer2.push(`<!--]--> <a${attr_class(`nav-link ${isActive("/setup") ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/setup">Setup</a></nav> <div class="d-flex align-items-center gap-2"><span class="small text-body-secondary d-none d-lg-inline">Signed in as ${escape_html(store_get($$store_subs ??= {}, "$auth", auth).username)}</span> <button class="btn btn-outline-primary btn-sm" type="button">${escape_html(store_get($$store_subs ??= {}, "$theme", theme) === "dark" ? "Switch to Light" : "Switch to Dark")}</button> <button class="btn btn-outline-secondary btn-sm" type="button">Sign Out</button></div></div></header> <main class="app-frame py-3"><!--[-->`);
       slot($$renderer2, $$props, "default", {});
       $$renderer2.push(`<!--]--></main>`);
     }

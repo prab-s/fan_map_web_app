@@ -27,37 +27,39 @@ export const nodes = [
 	() => import('./nodes/23'),
 	() => import('./nodes/24'),
 	() => import('./nodes/25'),
-	() => import('./nodes/26')
+	() => import('./nodes/26'),
+	() => import('./nodes/27')
 ];
 
 export const server_loads = [];
 
 export const dictionary = {
 		"/": [2],
-		"/catalogue": [3],
-		"/editor": [4],
-		"/editor/create": [5],
-		"/editor/edit": [6],
-		"/editor/edit/[product]": [7],
-		"/editor/product-types": [8],
-		"/editor/product-types/create": [9],
-		"/editor/product-types/edit": [10],
-		"/editor/product-types/edit/[product_type]": [11],
-		"/editor/series": [12],
-		"/editor/series/create": [13],
-		"/editor/series/edit": [14],
-		"/editor/series/edit/[series]": [15],
-		"/entry": [16],
-		"/map": [17],
-		"/products": [18],
-		"/products/type/[product_type]": [20],
-		"/products/[product]": [19],
-		"/series/[series]": [21],
-		"/setup": [22],
-		"/template-builder-v2": [24],
-		"/template-builder": [23],
-		"/viewer": [25],
-		"/viewer/[tab]/[[record]]": [26]
+		"/bulk-import": [3],
+		"/catalogue": [4],
+		"/editor": [5],
+		"/editor/create": [6],
+		"/editor/edit": [7],
+		"/editor/edit/[product]": [8],
+		"/editor/product-types": [9],
+		"/editor/product-types/create": [10],
+		"/editor/product-types/edit": [11],
+		"/editor/product-types/edit/[product_type]": [12],
+		"/editor/series": [13],
+		"/editor/series/create": [14],
+		"/editor/series/edit": [15],
+		"/editor/series/edit/[series]": [16],
+		"/entry": [17],
+		"/map": [18],
+		"/products": [19],
+		"/products/type/[product_type]": [21],
+		"/products/[product]": [20],
+		"/series/[series]": [22],
+		"/setup": [23],
+		"/template-builder-v2": [25],
+		"/template-builder": [24],
+		"/viewer": [26],
+		"/viewer/[tab]/[[record]]": [27]
 	};
 
 export const hooks = {

@@ -1,4 +1,4 @@
-import { h as head, f as ensure_array_like, e as escape_html, b as attr, d as bind_props } from "./index2.js";
+import { h as head, d as ensure_array_like, e as escape_html, b as attr, f as bind_props } from "./index2.js";
 import { o as onDestroy } from "./index-server.js";
 import "@sveltejs/kit/internal";
 import "./exports.js";

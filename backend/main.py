@@ -2,6 +2,7 @@ import asyncio
 import csv
 import base64
 import datetime
+import math
 import hashlib
 import html
 from collections import deque
@@ -26,7 +27,7 @@ from uuid import uuid4
 from xml.etree import ElementTree as ET
 
 import html5lib
-from fastapi import FastAPI, Depends, HTTPException, Query, Request, UploadFile, File, Form
+from fastapi import APIRouter, FastAPI, Depends, HTTPException, Query, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import FileResponse, StreamingResponse
@@ -116,6 +117,11 @@ from backend.schemas import (
     FileManagerEntryResponse,
     FileManagerListingResponse,
     FileManagerRenameRequest,
+    BulkImportResponse,
+    BulkImportSheetNormalizationResponse,
+    BulkImportTableSummaryResponse,
+    BulkImportManifestSheetResponse,
+    BulkImageImportResponse,
     ProductTypePdfResponse,
     SetupLogEntryResponse,
 )
@@ -126,6 +132,7 @@ GRAPH_FILTER_GROUP_NAME = "__graph__"
 PRODUCT_IMAGES_DIR = Path(DEFAULT_DATA_DIR) / "product_images"
 SERIES_IMAGES_DIR = Path(DEFAULT_DATA_DIR) / "series_images"
 PRODUCT_GRAPHS_DIR = Path(DEFAULT_DATA_DIR) / "product_graphs"
+IMPORTS_DIR = Path(DEFAULT_DATA_DIR) / "bulk_imports"
 PRODUCT_PDFS_DIR = Path(DEFAULT_DATA_DIR) / "product_pdfs"
 PRODUCT_TYPE_PDFS_DIR = Path(DEFAULT_DATA_DIR) / "product_type_pdfs"
 SERIES_GRAPHS_DIR = Path(DEFAULT_DATA_DIR) / "series_graphs"
@@ -148,6 +155,7 @@ ECHARTS_RENDER_SCRIPT = FRONTEND_DIR / "scripts" / "render_product_graph.mjs"
 PRODUCT_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 SERIES_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 PRODUCT_GRAPHS_DIR.mkdir(parents=True, exist_ok=True)
+IMPORTS_DIR.mkdir(parents=True, exist_ok=True)
 PRODUCT_PDFS_DIR.mkdir(parents=True, exist_ok=True)
 PRODUCT_TYPE_PDFS_DIR.mkdir(parents=True, exist_ok=True)
 SERIES_GRAPHS_DIR.mkdir(parents=True, exist_ok=True)
@@ -182,7 +190,19 @@ POSTGRES_USER = os.getenv("POSTGRES_USER", "").strip()
 PASSWORD_HASH_ITERATIONS = 600_000
 POSTGRES_CLIENT_IMAGE = os.getenv("PG_CLIENT_IMAGE", "docker.io/library/postgres:16").strip() or "docker.io/library/postgres:16"
 MAINTENANCE_JOBS: dict[str, dict] = {}
+
+
+def is_localhost_database_url(database_url: str) -> bool:
+    if not database_url:
+        return False
+    parsed = urllib.parse.urlparse(database_url)
+    hostname = (parsed.hostname or "").lower()
+    return hostname in {"localhost", "127.0.0.1", "::1"}
+
+
+AUTH_COOKIE_SECURE = AUTH_COOKIE_SECURE and not is_localhost_database_url(DATABASE_URL)
 MAINTENANCE_JOBS_LOCK = threading.Lock()
+bulk_import_router = APIRouter(tags=["Maintenance"])
 
 
 class InMemoryLogHandler(logging.Handler):
@@ -705,6 +725,1386 @@ def file_manager_write_text_file(root_name: str, relative_path: str, content: st
     return file_manager_read_text_file(root_name, relative_path)
 
 
+def normalize_bulk_import_name(value: str | None) -> str:
+    normalized = re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().lower()).strip("_")
+    alias_map = {
+        "producttype": "product_type_key",
+        "producttypekey": "product_type_key",
+        "product_type": "product_type_key",
+        "seriesname": "series_name",
+        "seriesid": "series_id",
+        "productid": "product_id",
+        "productmodel": "model",
+        "model": "model",
+        "name": "name",
+        "filename": "file_name",
+        "file": "file_name",
+        "filepath": "file_name",
+        "path": "file_name",
+        "descriptionhtml": "description1_html",
+        "description1html": "description1_html",
+        "description2html": "description2_html",
+        "description3html": "description3_html",
+        "description4html": "description4_html",
+        "printedtemplateid": "printed_template_id",
+        "onlinetemplateid": "online_template_id",
+        "templateid": "template_id",
+        "showrpmbandshading": "show_rpm_band_shading",
+        "green_system": "efficiency_centre",
+        "upper_red_curve": "efficiency_lower_end",
+        "lower_red_curve": "efficiency_higher_end",
+    }
+    if normalized in alias_map:
+        return alias_map[normalized]
+
+    rpm_match = re.fullmatch(r"(?:pressure_)?([0-9]+(?:\.[0-9]+)?)rpm", normalized)
+    if rpm_match:
+        return f"pressure_{rpm_match.group(1)}rpm"
+
+    return normalized
+
+
+def normalize_bulk_import_row(row: dict) -> dict:
+    normalized: dict = {}
+    for raw_key, raw_value in row.items():
+        if raw_key is None:
+            continue
+        key = normalize_bulk_import_name(str(raw_key))
+        if not key:
+            continue
+        value = raw_value
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                continue
+            if value.lower() in {"true", "false"}:
+                value = value.lower() == "true"
+        normalized[key] = value
+    return normalized
+
+
+def normalize_bulk_import_source_name(filename: str) -> str:
+    return Path(str(filename or "").replace("\\", "/")).as_posix().lstrip("./")
+
+
+def bulk_import_sheet_key(value: str | None) -> str:
+    return str(value or "").strip().casefold()
+
+
+def load_bulk_import_csv(file_name: str, content: bytes) -> list[dict]:
+    text = content.decode("utf-8-sig")
+    reader = csv.DictReader(io.StringIO(text))
+    return [normalize_bulk_import_row(row) for row in reader if any(str(value or "").strip() for value in row.values())]
+
+
+def load_bulk_import_workbook(file_name: str, content: bytes) -> tuple[dict[str, list[dict]], dict[str, dict]]:
+    try:
+        from openpyxl import load_workbook
+    except ImportError as exc:
+        raise HTTPException(status_code=500, detail="Excel workbook imports require the openpyxl package.") from exc
+
+    workbook = load_workbook(io.BytesIO(content), data_only=True)
+    tables: dict[str, list[dict]] = {}
+    sheet_meta: dict[str, dict] = {}
+    for sheet in workbook.worksheets:
+        sheet_name = str(sheet.title or "").strip() or "Sheet"
+        rows = list(sheet.iter_rows(values_only=True))
+        if not rows:
+            tables[sheet_name] = []
+            sheet_meta[sheet_name] = {
+                "sheet_name": sheet_name,
+                "row_count": 0,
+                "raw_headers": [],
+                "normalized_headers": [],
+            }
+            continue
+
+        raw_headers = [str(header or "").strip() for header in rows[0]]
+        normalized_headers = [normalize_bulk_import_name(header) for header in rows[0]]
+        table_rows: list[dict] = []
+        for raw_row in rows[1:]:
+            row_data: dict = {}
+            for index, header in enumerate(normalized_headers):
+                if not header or index >= len(raw_row):
+                    continue
+                value = raw_row[index]
+                if value is None:
+                    continue
+                if isinstance(value, str):
+                    value = value.strip()
+                    if not value:
+                        continue
+                    if value.lower() in {"true", "false"}:
+                        value = value.lower() == "true"
+                row_data[header] = value
+            if any(value is not None for value in row_data.values()):
+                table_rows.append(row_data)
+        tables[sheet_name] = table_rows
+        sheet_meta[sheet_name] = {
+            "sheet_name": sheet_name,
+            "row_count": len(table_rows),
+            "raw_headers": raw_headers,
+            "normalized_headers": normalized_headers,
+        }
+    return tables, sheet_meta
+
+
+def load_bulk_import_manifest(content: bytes | str) -> dict:
+    try:
+        if isinstance(content, str):
+            content = content.encode("utf-8")
+        manifest = json.loads(content.decode("utf-8-sig"))
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Import manifest must be valid JSON.") from exc
+
+    if not isinstance(manifest, dict):
+        raise HTTPException(status_code=400, detail="Import manifest must be a JSON object.")
+    return manifest
+
+
+def parse_int_or_none(value) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return int(value)
+    try:
+        text = str(value).strip()
+        if not text:
+            return None
+        return int(float(text))
+    except (TypeError, ValueError):
+        return None
+
+
+def bulk_import_find_series(db: Session, row: dict) -> Series | None:
+    series_id = parse_int_or_none(row.get("id") or row.get("series_id"))
+    if series_id is not None:
+        return db.get(Series, series_id)
+
+    name = str(row.get("name") or row.get("series_name") or "").strip()
+    if not name:
+        return None
+    product_type_key = str(row.get("product_type_key") or "fan").strip() or "fan"
+    return (
+        db.query(Series)
+        .join(ProductType)
+        .filter(ProductType.key == product_type_key, func.lower(Series.name) == name.lower())
+        .first()
+    )
+
+
+def bulk_import_find_product(db: Session, row: dict) -> Product | None:
+    product_id = parse_int_or_none(row.get("id") or row.get("product_id"))
+    if product_id is not None:
+        return db.get(Product, product_id)
+
+    model = str(row.get("model") or "").strip()
+    if not model:
+        return None
+
+    query = db.query(Product).filter(func.lower(Product.model) == model.lower())
+    series_id = parse_int_or_none(row.get("series_id"))
+    if series_id is not None:
+        query = query.filter(Product.series_id == series_id)
+    else:
+        series_name = str(row.get("series_name") or "").strip()
+        if series_name:
+            query = query.filter(func.lower(Product.series_name) == series_name.lower())
+    product_type_key = str(row.get("product_type_key") or "").strip()
+    if product_type_key:
+        query = query.join(ProductType).filter(ProductType.key == product_type_key)
+    return query.first()
+
+
+def bulk_import_resolve_image_bytes(image_sources: dict[str, bytes], image_name: str) -> tuple[bytes | None, str | None]:
+    normalized_name = normalize_bulk_import_source_name(image_name)
+    if normalized_name in image_sources:
+        return image_sources[normalized_name], normalized_name
+
+    basename = Path(normalized_name).name
+    matching = [key for key in image_sources if Path(key).name == basename]
+    if len(matching) == 1:
+        return image_sources[matching[0]], matching[0]
+    if len(matching) > 1:
+        raise HTTPException(
+            status_code=400,
+            detail=f'Image reference "{image_name}" is ambiguous. Use a unique relative path or filename.',
+        )
+    return None, None
+
+
+def bulk_import_resolve_series_lookup(db: Session, row: dict, known_series: dict[tuple[str, str], int]) -> Series | None:
+    series = bulk_import_find_series(db, row)
+    if series is not None:
+        return series
+
+    series_name = str(row.get("series_name") or "").strip()
+    if not series_name:
+        return None
+    product_type_key = str(row.get("product_type_key") or "fan").strip() or "fan"
+    series_id = known_series.get((product_type_key.lower(), series_name.lower()))
+    if series_id is None:
+        return None
+    return db.get(Series, series_id)
+
+
+def bulk_import_parse_number(value):
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool):
+        return int(value)
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(parsed):
+        return None
+    return parsed
+
+
+def bulk_import_parse_integer(value):
+    parsed = bulk_import_parse_number(value)
+    if parsed is None:
+        return None
+    return int(round(parsed))
+
+
+def bulk_import_parse_graph_line_token(header: str) -> float | None:
+    normalized = bulk_import_sheet_key(header)
+    candidates = [
+        r"^(?:pressure[_ -]?)?([0-9]+(?:\.[0-9]+)?)rpm$",
+        r"^([0-9]+(?:\.[0-9]+)?)rpm$",
+        r"^pressure[_ -]?([0-9]+(?:\.[0-9]+)?)$",
+        r"^rpm[_ -]?([0-9]+(?:\.[0-9]+)?)$",
+        r"^([0-9]+(?:\.[0-9]+)?)$",
+    ]
+    for pattern in candidates:
+        match = re.match(pattern, normalized)
+        if not match:
+            continue
+        try:
+            return float(match.group(1))
+        except ValueError:
+            continue
+    return None
+
+
+def bulk_import_interpolate_value(points: list[dict], axis_value: float):
+    if not points:
+        return None
+    if len(points) == 1:
+        return points[0]["value"]
+
+    if axis_value <= points[0]["axis"]:
+        return points[0]["value"]
+    if axis_value >= points[-1]["axis"]:
+        return points[-1]["value"]
+
+    for index in range(len(points) - 1):
+        left = points[index]
+        right = points[index + 1]
+        if axis_value < left["axis"] or axis_value > right["axis"]:
+            continue
+        span = right["axis"] - left["axis"]
+        if span == 0:
+            return right["value"]
+        ratio = (axis_value - left["axis"]) / span
+        return left["value"] + (right["value"] - left["value"]) * ratio
+
+    return points[-1]["value"]
+
+
+def bulk_import_build_interpolated_series(
+    points: list[dict],
+    axis_key: str = "airflow",
+    value_key: str = "pressure",
+    step: float = 1,
+):
+    numeric_points = (
+        [
+            {
+                "point": point,
+                "axis": bulk_import_parse_number(point.get(axis_key)),
+                "value": bulk_import_parse_number(point.get(value_key)),
+            }
+            for point in points or []
+        ]
+    )
+    numeric_points = [item for item in numeric_points if item["axis"] is not None and item["value"] is not None]
+    numeric_points.sort(key=lambda item: item["axis"])
+
+    if not numeric_points:
+        return []
+
+    if len(numeric_points) == 1:
+        only = numeric_points[0]
+        return [
+            {
+                **only["point"],
+                axis_key: round(only["axis"]),
+                value_key: round(only["value"]),
+            }
+        ]
+
+    safe_step = step if isinstance(step, (int, float)) and step > 0 else 1
+    min_axis = numeric_points[0]["axis"]
+    max_axis = numeric_points[-1]["axis"]
+    sampled = []
+    axis = min_axis
+    while axis <= max_axis:
+        sampled.append(
+            {
+                **numeric_points[0]["point"],
+                axis_key: round(axis, 3),
+                value_key: round(bulk_import_interpolate_value(numeric_points, axis) or 0),
+            }
+        )
+        axis += safe_step
+
+    if sampled and sampled[-1][axis_key] != round(max_axis, 3):
+        sampled.append(
+            {
+                **numeric_points[0]["point"],
+                axis_key: round(max_axis, 3),
+                value_key: round(bulk_import_interpolate_value(numeric_points, max_axis) or 0),
+            }
+        )
+
+    seen = set()
+    result = []
+    for point in sampled:
+        key = point.get(axis_key)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(point)
+    return result
+
+
+def bulk_import_downsample_series(points: list[dict], axis_key: str = "airflow", value_key: str = "pressure", target_count: int = 5):
+    numeric_points = (
+        [
+            {
+                "point": point,
+                "axis": bulk_import_parse_number(point.get(axis_key)),
+                "value": bulk_import_parse_number(point.get(value_key)),
+            }
+            for point in points or []
+        ]
+    )
+    numeric_points = [item for item in numeric_points if item["axis"] is not None and item["value"] is not None]
+    numeric_points.sort(key=lambda item: item["axis"])
+
+    if len(numeric_points) <= target_count:
+        return [item["point"] for item in numeric_points]
+
+    sample_axes = []
+    for index in range(target_count):
+        t = 0 if target_count == 1 else index / (target_count - 1)
+        sample_axes.append(
+            round(
+                numeric_points[0]["axis"]
+                + (numeric_points[-1]["axis"] - numeric_points[0]["axis"]) * t
+            )
+        )
+
+    template = numeric_points[0]["point"]
+    sampled = [
+        {
+            **template,
+            axis_key: axis,
+            value_key: round(bulk_import_interpolate_value(numeric_points, axis) or 0),
+        }
+        for axis in sample_axes
+    ]
+
+    seen = set()
+    result = []
+    for point in sampled:
+        axis_value = point.get(axis_key)
+        if axis_value in seen:
+            continue
+        seen.add(axis_value)
+        result.append(point)
+    return result
+
+
+def bulk_import_downsample_overlay_points(points: list[dict], value_keys: list[str], target_count: int = 5):
+    merged_points = {}
+
+    for value_key in value_keys:
+        series_points = [point for point in (points or []) if point.get(value_key) is not None]
+        sampled_points = bulk_import_downsample_series(series_points, "airflow", value_key, target_count)
+        for sampled_point in sampled_points:
+            airflow = bulk_import_parse_number(sampled_point.get("airflow"))
+            value = bulk_import_parse_number(sampled_point.get(value_key))
+            if airflow is None or value is None:
+                continue
+            merge_key = str(airflow)
+            if merge_key not in merged_points:
+                merged_points[merge_key] = {
+                    "airflow": airflow,
+                    "efficiency_centre": None,
+                    "efficiency_lower_end": None,
+                    "efficiency_higher_end": None,
+                    "permissible_use": None,
+                }
+            merged_points[merge_key][value_key] = round(value)
+
+    return sorted(merged_points.values(), key=lambda point: point["airflow"])
+
+
+def bulk_import_build_high_resolution_highest_rpm_line(rpm_lines: list[dict], rpm_points: list[dict], step: float = 1):
+    highest_line = sorted(
+        [
+            line
+            for line in (rpm_lines or [])
+            if bulk_import_parse_number(line.get("id")) is not None and bulk_import_parse_number(line.get("rpm")) is not None
+        ],
+        key=lambda line: bulk_import_parse_number(line.get("rpm")) or 0,
+        reverse=True,
+    )
+    if not highest_line:
+        return []
+
+    highest = highest_line[0]
+    highest_line_points = sorted(
+        [
+            {
+                "airflow": bulk_import_parse_number(point.get("airflow")),
+                "pressure": bulk_import_parse_number(point.get("pressure")),
+            }
+            for point in (rpm_points or [])
+            if bulk_import_parse_number(point.get("rpm_line_id")) == bulk_import_parse_number(highest.get("id"))
+        ],
+        key=lambda point: point["airflow"] or 0,
+    )
+    highest_line_points = [point for point in highest_line_points if point["airflow"] is not None and point["pressure"] is not None]
+    return bulk_import_build_interpolated_series(highest_line_points, "airflow", "pressure", step)
+
+
+def bulk_import_normalised_graph_series(points: list[dict], axis_key: str = "airflow", value_key: str = "pressure"):
+    return sorted(
+        [
+            {
+                "axis": bulk_import_parse_number(point.get(axis_key)),
+                "value": bulk_import_parse_number(point.get(value_key)),
+            }
+            for point in (points or [])
+        ],
+        key=lambda point: point["axis"] or 0,
+    )
+
+
+def bulk_import_chart_space_axis_extents(line_points: list[dict]):
+    flow_raw_max = max(
+        [bulk_import_parse_number(point.get("airflow")) for point in (line_points or []) if bulk_import_parse_number(point.get("airflow")) is not None]
+        or [1]
+    )
+    pressure_raw_max = max(
+        [bulk_import_parse_number(point.get("pressure")) for point in (line_points or []) if bulk_import_parse_number(point.get("pressure")) is not None]
+        or [1]
+    )
+    return {
+        "flowMax": (flow_raw_max * 1.05) if flow_raw_max > 0 else 1,
+        "pressureMax": (pressure_raw_max * 1.05) if pressure_raw_max > 0 else 1,
+        "overlayMax": 100,
+    }
+
+
+def bulk_import_build_highest_rpm_profile(rpm_line_points: list[dict]):
+    numeric_points = bulk_import_normalised_graph_series(rpm_line_points, "airflow", "pressure")
+    return {
+        "points": numeric_points,
+        "axis_extents": bulk_import_chart_space_axis_extents(rpm_line_points),
+    }
+
+
+def bulk_import_chart_space_difference_at_scaled_terminal_point(
+    terminal_point: dict,
+    scale_factor: float,
+    rpm_profile: dict,
+):
+    scaled_airflow = bulk_import_parse_number(terminal_point.get("airflow"))
+    scaled_value = bulk_import_parse_number(terminal_point.get("value"))
+    if scaled_airflow is None or scaled_value is None:
+        return float("inf")
+
+    scaled_point = {
+        "airflow": scaled_airflow * scale_factor,
+        "pressure": scaled_value * scale_factor,
+    }
+    target_pressure = bulk_import_interpolate_value(rpm_profile.get("points") or [], scaled_point["airflow"])
+    if target_pressure is None or not math.isfinite(target_pressure):
+        return float("inf")
+
+    axis_extents = rpm_profile.get("axis_extents") or {"overlayMax": 100, "pressureMax": 1}
+    overlay_position = scaled_point["pressure"] / axis_extents["overlayMax"]
+    rpm_position = target_pressure / axis_extents["pressureMax"]
+    return abs(overlay_position - rpm_position)
+
+
+def bulk_import_find_best_overlay_scale_factor(terminal_point: dict, rpm_profile: dict):
+    if not terminal_point or not rpm_profile:
+        return None
+
+    terminal_airflow = bulk_import_parse_number(terminal_point.get("airflow"))
+    terminal_value = bulk_import_parse_number(terminal_point.get("value"))
+    if terminal_airflow is None or terminal_value is None or terminal_airflow <= 0 or terminal_value <= 0:
+        return None
+
+    axis_extents = rpm_profile.get("axis_extents") or {"flowMax": 1, "pressureMax": 1, "overlayMax": 100}
+    best_scale_factor = 1
+    best_error = float("inf")
+    min_scale = 0.05
+    max_scale = 4
+    passes = 6
+    steps = 60
+
+    for _ in range(passes):
+        for step_index in range(steps + 1):
+            ratio = 0 if steps == 0 else step_index / steps
+            scale_factor = min_scale + (max_scale - min_scale) * ratio
+            error = bulk_import_chart_space_difference_at_scaled_terminal_point(
+                terminal_point,
+                scale_factor,
+                rpm_profile,
+            )
+            if error < best_error:
+                best_error = error
+                best_scale_factor = scale_factor
+
+        window = (max_scale - min_scale) / 4 if max_scale > min_scale else 0.5
+        min_scale = max(0.01, best_scale_factor - window)
+        max_scale = best_scale_factor + window
+
+    fine_min = max(0.01, best_scale_factor - (max_scale - min_scale) / steps if steps > 0 else best_scale_factor - 0.1)
+    fine_max = best_scale_factor + (max_scale - min_scale) / steps if steps > 0 else best_scale_factor + 0.1
+    for step_index in range(steps + 1):
+        ratio = 0 if steps == 0 else step_index / steps
+        scale_factor = fine_min + (fine_max - fine_min) * ratio
+        error = bulk_import_chart_space_difference_at_scaled_terminal_point(
+            terminal_point,
+            scale_factor,
+            rpm_profile,
+        )
+        if error < best_error:
+            best_error = error
+            best_scale_factor = scale_factor
+
+    return max(0.01, best_scale_factor * 1.01)
+
+
+def bulk_import_apply_overlay_scaling(
+    points: list[dict],
+    rpm_lines: list[dict],
+    rpm_points: list[dict],
+    *,
+    overlay_scale_tuning_factor: float = 1.0,
+):
+    high_res = bulk_import_build_high_resolution_highest_rpm_line(rpm_lines, rpm_points, 1)
+    if not high_res:
+        return [dict(point) for point in (points or [])]
+    high_res_profile = bulk_import_build_highest_rpm_profile(high_res)
+
+    next_points = [dict(point) for point in (points or [])]
+    overlay_keys = ["efficiency_centre", "efficiency_lower_end", "efficiency_higher_end", "permissible_use"]
+    tuning_factor = bulk_import_parse_number(overlay_scale_tuning_factor)
+    if tuning_factor is None or tuning_factor <= 0:
+        tuning_factor = 1.0
+    for overlay_key in overlay_keys:
+        overlay_line_points = sorted(
+            [
+                {"airflow": point.get("airflow"), "value": point.get(overlay_key), "point": point}
+                for point in next_points
+                if point.get("airflow") not in {None, ""} and point.get(overlay_key) not in {None, ""}
+            ],
+            key=lambda item: bulk_import_parse_number(item["airflow"]) or 0,
+        )
+        overlay_line_points = [
+            item
+            for item in overlay_line_points
+            if bulk_import_parse_number(item["airflow"]) is not None and bulk_import_parse_number(item["value"]) is not None
+        ]
+        if not overlay_line_points:
+            continue
+        terminal = overlay_line_points[-1]
+        scale_factor = bulk_import_find_best_overlay_scale_factor(terminal, high_res_profile)
+        if not scale_factor:
+            continue
+        scale_factor *= tuning_factor
+        for item in overlay_line_points:
+            item["point"]["airflow"] = round(bulk_import_parse_number(item["airflow"]) * scale_factor)
+            item["point"][overlay_key] = round(bulk_import_parse_number(item["value"]) * scale_factor)
+    return next_points
+
+
+def bulk_import_is_graph_sheet(rows: list[dict]) -> bool:
+    if not rows:
+        return False
+    first_row = rows[0]
+    headers = [bulk_import_sheet_key(header) for header in first_row.keys()]
+    if not headers:
+        return False
+    first_header = headers[0]
+    if first_header not in {"airflow_l_s", "airflow"}:
+        return False
+    return any(
+        header.startswith("pressure_") or header in {"efficiency_centre", "efficiency_lower_end", "efficiency_higher_end", "permissible_use"}
+        for header in headers[1:]
+    )
+
+
+def bulk_import_manifest_sheet_config(manifest: dict | None, sheet_name: str) -> dict:
+    if not isinstance(manifest, dict):
+        return {}
+    raw_sheet_name = str(sheet_name or "").strip()
+    desired = bulk_import_sheet_key(sheet_name)
+    sheets = manifest.get("sheets")
+    if isinstance(sheets, dict):
+        if raw_sheet_name and raw_sheet_name in sheets and isinstance(sheets.get(raw_sheet_name), dict):
+            return dict(sheets[raw_sheet_name])
+        for key, value in sheets.items():
+            if bulk_import_sheet_key(key) == desired and isinstance(value, dict):
+                return dict(value)
+    elif isinstance(sheets, list):
+        for item in sheets:
+            if not isinstance(item, dict):
+                continue
+            candidates = [
+                item.get("sheet_name"),
+                item.get("sheet"),
+                item.get("name"),
+                item.get("product_name"),
+                item.get("model"),
+            ]
+            if any(str(candidate or "").strip() == raw_sheet_name for candidate in candidates if candidate is not None):
+                return dict(item)
+            if any(bulk_import_sheet_key(candidate) == desired for candidate in candidates if candidate is not None):
+                return dict(item)
+    products = manifest.get("products")
+    if isinstance(products, dict):
+        if raw_sheet_name and raw_sheet_name in products and isinstance(products.get(raw_sheet_name), dict):
+            return dict(products[raw_sheet_name])
+        for key, value in products.items():
+            if bulk_import_sheet_key(key) == desired and isinstance(value, dict):
+                return dict(value)
+    elif isinstance(products, list):
+        for item in products:
+            if not isinstance(item, dict):
+                continue
+            candidates = [
+                item.get("sheet_name"),
+                item.get("sheet"),
+                item.get("name"),
+                item.get("product_name"),
+                item.get("model"),
+            ]
+            if any(str(candidate or "").strip() == raw_sheet_name for candidate in candidates if candidate is not None):
+                return dict(item)
+            if any(bulk_import_sheet_key(candidate) == desired for candidate in candidates if candidate is not None):
+                return dict(item)
+    return {}
+
+
+def bulk_import_build_graph_state(
+    rows: list[dict],
+    downsample_imported_curves: bool = True,
+    downsample_point_count: int = 5,
+    scale_overlay_lines: bool = True,
+    overlay_scale_tuning_factor: float = 1.0,
+):
+    if not rows:
+        return {"rpmLines": [], "rpmPoints": [], "efficiencyPoints": []}
+
+    headers = [bulk_import_sheet_key(header) for header in rows[0].keys()]
+    ordered_headers = list(rows[0].keys())
+    airflow_header = headers[0]
+    if airflow_header not in {"airflow_l_s", "airflow"}:
+        raise HTTPException(status_code=400, detail='The first column must be "airflow_l_s".')
+
+    pressure_columns = []
+    overlay_columns = {"efficiency_centre", "efficiency_lower_end", "efficiency_higher_end", "permissible_use"}
+    for index, header in enumerate(headers[1:], start=1):
+        original_header = ordered_headers[index]
+        if not header:
+            continue
+        if header in overlay_columns:
+            continue
+        rpm = bulk_import_parse_graph_line_token(header)
+        if rpm is None:
+            raise HTTPException(status_code=400, detail=f'Column "{original_header}" is not recognised.')
+        pressure_columns.append({"index": index, "header": original_header, "rpm": rpm})
+
+    rpm_lines = [
+        {"id": idx + 1, "rpm": column["rpm"], "band_color": None}
+        for idx, column in enumerate(pressure_columns)
+    ]
+    rpm_line_by_rpm = {str(line["rpm"]): line for line in rpm_lines}
+
+    next_rpm_points = []
+    next_efficiency_points = []
+    seen_airflows = set()
+    previous_airflow = None
+
+    for row_index, row in enumerate(rows):
+        rounded_airflow = bulk_import_parse_integer(row.get(ordered_headers[0]))
+        if rounded_airflow is None:
+            raise HTTPException(status_code=400, detail=f"Row {row_index + 2} is missing an airflow value.")
+        if rounded_airflow in seen_airflows:
+            raise HTTPException(status_code=400, detail=f"Duplicate airflow value found: {rounded_airflow}.")
+        if previous_airflow is not None and rounded_airflow <= previous_airflow:
+            raise HTTPException(status_code=400, detail=f"Airflow must increase row by row. Row {row_index + 2} is out of order.")
+        seen_airflows.add(rounded_airflow)
+        previous_airflow = rounded_airflow
+
+        for column in pressure_columns:
+            pressure = bulk_import_parse_number(row.get(column["header"]))
+            if pressure is None:
+                continue
+            rounded_pressure = bulk_import_parse_integer(row.get(column["header"]))
+            line = rpm_line_by_rpm.get(str(column["rpm"]))
+            if not line:
+                continue
+            next_rpm_points.append(
+                {
+                    "id": len(next_rpm_points) + 1,
+                    "product_id": None,
+                    "rpm_line_id": line["id"],
+                    "rpm": line["rpm"],
+                    "airflow": rounded_airflow,
+                    "pressure": rounded_pressure,
+                }
+            )
+
+        efficiency_point = {
+            "id": len(next_efficiency_points) + 1,
+            "product_id": None,
+            "airflow": rounded_airflow,
+            "efficiency_centre": None,
+            "efficiency_lower_end": None,
+            "efficiency_higher_end": None,
+            "permissible_use": None,
+        }
+        has_overlay = False
+        for overlay_key in overlay_columns:
+            if overlay_key not in headers:
+                continue
+            value = bulk_import_parse_integer(row.get(overlay_key))
+            if value is not None:
+                efficiency_point[overlay_key] = value
+                has_overlay = True
+        if has_overlay:
+            next_efficiency_points.append(efficiency_point)
+
+    if downsample_imported_curves:
+        next_rpm_points_by_line = {}
+        for point in next_rpm_points:
+            line_id = point.get("rpm_line_id")
+            next_rpm_points_by_line.setdefault(line_id, []).append(point)
+        adjusted_rpm_points = []
+        for line_points in next_rpm_points_by_line.values():
+            adjusted_rpm_points.extend(
+                bulk_import_downsample_series(line_points, "airflow", "pressure", downsample_point_count)
+            )
+    else:
+        adjusted_rpm_points = next_rpm_points
+
+    adjusted_efficiency_points = (
+        bulk_import_downsample_overlay_points(next_efficiency_points, list(overlay_columns), downsample_point_count)
+        if downsample_imported_curves
+        else next_efficiency_points
+    )
+
+    if scale_overlay_lines:
+        adjusted_efficiency_points = bulk_import_apply_overlay_scaling(
+            adjusted_efficiency_points,
+            rpm_lines,
+            adjusted_rpm_points,
+            overlay_scale_tuning_factor=overlay_scale_tuning_factor,
+        )
+
+    return {
+        "rpmLines": rpm_lines,
+        "rpmPoints": adjusted_rpm_points,
+        "efficiencyPoints": adjusted_efficiency_points,
+    }
+
+
+def bulk_import_attach_rpm_points_to_lines(rpm_lines: list[dict], rpm_points: list[dict]) -> list[dict]:
+    points_by_line_id: dict[int, list[dict]] = {}
+    for point in rpm_points or []:
+        line_id = parse_int_or_none(point.get("rpm_line_id"))
+        if line_id is None:
+            continue
+        points_by_line_id.setdefault(line_id, []).append(
+            {
+                "airflow": point.get("airflow"),
+                "pressure": point.get("pressure"),
+            }
+        )
+
+    enriched_lines: list[dict] = []
+    for line in rpm_lines or []:
+        line_id = parse_int_or_none(line.get("id"))
+        if line_id is None:
+            continue
+        enriched_lines.append(
+            {
+                "rpm": line.get("rpm"),
+                "band_color": line.get("band_color"),
+                "points": sorted(points_by_line_id.get(line_id, []), key=lambda point: bulk_import_parse_number(point.get("airflow")) or 0),
+            }
+        )
+    return enriched_lines
+
+
+def bulk_import_describe_sheet_normalization(
+    sheet_name: str,
+    rows: list[dict],
+    sheet_meta: dict | None = None,
+    include_in_import: bool = True,
+    error: str | None = None,
+) -> dict:
+    meta = sheet_meta or {}
+    raw_headers = list(meta.get("raw_headers") or [])
+    normalized_headers = list(meta.get("normalized_headers") or [])
+    if not normalized_headers and rows:
+        normalized_headers = list(rows[0].keys())
+    if not raw_headers and normalized_headers:
+        raw_headers = list(normalized_headers)
+    headers = normalized_headers or (list(rows[0].keys()) if rows else [])
+    raw_headers = raw_headers[: len(headers)]
+    if len(raw_headers) < len(headers):
+        raw_headers.extend([""] * (len(headers) - len(raw_headers)))
+
+    columns = []
+    if headers:
+        overlay_columns = {"efficiency_centre", "efficiency_lower_end", "efficiency_higher_end", "permissible_use"}
+        for index, normalized_header in enumerate(headers):
+            raw_header = str(raw_headers[index] or "").strip() if index < len(raw_headers) else ""
+            role = "ignored"
+            rpm = None
+            reason = ""
+            if not raw_header and not normalized_header:
+                reason = "Blank header, so it is ignored."
+            elif index == 0:
+                role = "airflow"
+                if raw_header and normalized_header and normalized_header != raw_header:
+                    reason = f"Normalized from '{raw_header}' and used as the airflow column."
+                else:
+                    reason = "First column is used as the airflow axis."
+            elif normalized_header in overlay_columns:
+                role = "overlay"
+                if raw_header and normalized_header and normalized_header != raw_header:
+                    reason = f"Normalized from '{raw_header}' and matched an efficiency overlay column."
+                else:
+                    reason = "Matched an efficiency overlay column."
+            else:
+                rpm = bulk_import_parse_graph_line_token(normalized_header)
+                if rpm is not None:
+                    role = "rpm_line"
+                    if raw_header and normalized_header and normalized_header != raw_header:
+                        reason = f"Normalized from '{raw_header}' and parsed as the {rpm:g} RPM curve."
+                    else:
+                        reason = f"Parsed as the {rpm:g} RPM curve."
+                elif not reason:
+                    if raw_header and normalized_header and normalized_header != raw_header:
+                        reason = f"Normalized from '{raw_header}' but it did not match airflow, overlay, or RPM curve patterns."
+                    else:
+                        reason = "Did not match airflow, overlay, or RPM curve patterns."
+            columns.append(
+                {
+                    "raw_header": raw_header,
+                    "normalized_header": normalized_header,
+                    "role": role,
+                    "rpm": rpm,
+                    "reason": reason,
+                }
+            )
+
+    graph_state = None
+    if not error and bulk_import_is_graph_sheet(rows):
+        try:
+            graph_state = bulk_import_build_graph_state(rows)
+        except Exception as exc:
+            error = str(exc)
+
+    return {
+        "sheet_name": sheet_name,
+        "row_count": int(meta.get("row_count") or len(rows) or 0),
+        "include_in_import": include_in_import,
+        "raw_headers": raw_headers,
+        "normalized_headers": headers,
+        "columns": columns,
+        "rpm_line_count": len(graph_state["rpmLines"]) if graph_state else 0,
+        "rpm_point_count": len(graph_state["rpmPoints"]) if graph_state else 0,
+        "efficiency_point_count": len(graph_state["efficiencyPoints"]) if graph_state else 0,
+        "error": error,
+    }
+
+
+def bulk_import_process_payloads(
+    db: Session,
+    tables: dict[str, list[dict]],
+    image_sources: dict[str, bytes],
+    sheet_meta: dict[str, dict],
+    dry_run: bool,
+    default_downsample_imported_curves: bool = True,
+    default_downsample_point_count: int = 5,
+    default_scale_overlay_lines: bool = True,
+) -> BulkImportResponse:
+    report = BulkImportResponse(dry_run=dry_run)
+    manifest = tables.get("__manifest__") if isinstance(tables.get("__manifest__"), dict) else {}
+    defaults = dict(manifest.get("defaults") or {}) if isinstance(manifest, dict) else {}
+    defaults.setdefault("downsample_imported_curves", default_downsample_imported_curves)
+    defaults.setdefault("downsample_point_count", default_downsample_point_count)
+    defaults.setdefault("scale_efficiency_permissible_against_highest_rpm", default_scale_overlay_lines)
+    defaults.setdefault("overlay_scale_tuning_factor", 1.0)
+    report.tables = [
+        BulkImportTableSummaryResponse(name=table_name, kind="sheet" if bulk_import_is_graph_sheet(rows) else "table", row_count=len(rows))
+        for table_name, rows in sorted(((name, rows) for name, rows in tables.items() if name != "__manifest__"), key=lambda item: item[0].casefold())
+        if isinstance(rows, list)
+    ]
+    report.sheet_normalizations = [
+        BulkImportSheetNormalizationResponse(**bulk_import_describe_sheet_normalization(table_name, rows, sheet_meta.get(table_name), True))
+        for table_name, rows in sorted(((name, rows) for name, rows in tables.items() if name != "__manifest__"), key=lambda item: item[0].casefold())
+        if isinstance(rows, list)
+    ]
+
+    known_series: dict[tuple[str, str], int] = {}
+    touched_products: dict[int, Product] = {}
+    touched_series: dict[int, Series] = {}
+    product_sheet_lookup: dict[str, dict] = {}
+    manifest_images = manifest.get("images") if isinstance(manifest, dict) else []
+    if isinstance(manifest_images, dict):
+        manifest_images = list(manifest_images.values())
+    if not isinstance(manifest_images, list):
+        manifest_images = []
+    manifest_image_counts: dict[str, int] = {}
+    for image_spec in manifest_images:
+        if not isinstance(image_spec, dict):
+            continue
+        sheet_key = bulk_import_sheet_key(
+            image_spec.get("sheet_name")
+            or image_spec.get("sheet")
+            or image_spec.get("product_name")
+            or image_spec.get("series_name")
+        )
+        if sheet_key:
+            manifest_image_counts[sheet_key] = manifest_image_counts.get(sheet_key, 0) + 1
+
+    for table_name, rows in tables.items():
+        if table_name == "__manifest__" or not isinstance(rows, list) or not bulk_import_is_graph_sheet(rows):
+            continue
+
+        sheet_config = bulk_import_manifest_sheet_config(manifest, table_name)
+        if bool(sheet_config.get("skip_import")):
+            report.skipped_sheets.append(table_name)
+            for entry in report.sheet_normalizations:
+                if entry.sheet_name == table_name:
+                    entry.include_in_import = False
+                    break
+            continue
+        product_model = str(
+            sheet_config.get("product_model")
+            or sheet_config.get("product_name")
+            or sheet_config.get("model")
+            or table_name
+        ).strip() or table_name
+        product_type_key = str(
+            sheet_config.get("product_type_key")
+            or defaults.get("product_type_key")
+            or "fan"
+        ).strip() or "fan"
+        series_name = str(sheet_config.get("series_name") or defaults.get("series_name") or "").strip() or None
+        series_id = parse_int_or_none(sheet_config.get("series_id"))
+        product_id = parse_int_or_none(sheet_config.get("product_id") or sheet_config.get("id"))
+        downsample_imported_curves = bool(
+            sheet_config.get(
+                "downsample_imported_curves",
+                defaults.get("downsample_imported_curves", True),
+            )
+        )
+        downsample_point_count = parse_int_or_none(
+            sheet_config.get("downsample_point_count", defaults.get("downsample_point_count", 5))
+        ) or 5
+        scale_overlays = bool(
+            sheet_config.get(
+                "scale_efficiency_permissible_against_highest_rpm",
+                defaults.get("scale_efficiency_permissible_against_highest_rpm", True),
+            )
+        )
+        overlay_scale_tuning_factor = bulk_import_parse_number(
+            sheet_config.get("overlay_scale_tuning_factor", defaults.get("overlay_scale_tuning_factor", 1.0))
+        )
+        if overlay_scale_tuning_factor is None or overlay_scale_tuning_factor <= 0:
+            overlay_scale_tuning_factor = 1.0
+
+        try:
+            graph_state = bulk_import_build_graph_state(
+                rows,
+                downsample_imported_curves=downsample_imported_curves,
+                downsample_point_count=downsample_point_count,
+                scale_overlay_lines=scale_overlays,
+                overlay_scale_tuning_factor=overlay_scale_tuning_factor,
+            )
+            graph_rpm_lines = bulk_import_attach_rpm_points_to_lines(graph_state["rpmLines"], graph_state["rpmPoints"])
+            for entry in report.sheet_normalizations:
+                if entry.sheet_name == table_name:
+                    entry.rpm_line_count = len(graph_state["rpmLines"])
+                    entry.rpm_point_count = len(graph_state["rpmPoints"])
+                    entry.efficiency_point_count = len(graph_state["efficiencyPoints"])
+                    entry.error = None
+                    entry.include_in_import = True
+                    break
+            payload = {
+                "model": product_model,
+                "product_type_key": product_type_key,
+                "series_id": series_id,
+                "series_name": series_name,
+                "template_id": sheet_config.get("template_id"),
+                "printed_template_id": sheet_config.get("printed_template_id"),
+                "online_template_id": sheet_config.get("online_template_id"),
+                "description1_html": sheet_config.get("description1_html"),
+                "description2_html": sheet_config.get("description2_html"),
+                "description3_html": sheet_config.get("description3_html"),
+                "comments_html": sheet_config.get("comments_html"),
+                "show_rpm_band_shading": sheet_config.get("show_rpm_band_shading", True),
+                "band_graph_background_color": sheet_config.get("band_graph_background_color"),
+                "band_graph_label_text_color": sheet_config.get("band_graph_label_text_color"),
+                "band_graph_faded_opacity": sheet_config.get("band_graph_faded_opacity"),
+                "band_graph_permissible_label_color": sheet_config.get("band_graph_permissible_label_color"),
+                "rpm_lines": graph_rpm_lines,
+                "efficiency_points": graph_state["efficiencyPoints"],
+            }
+
+            if series_id is None and series_name:
+                series = bulk_import_find_series(db, {"name": series_name, "product_type_key": product_type_key})
+                if series is None:
+                    if dry_run:
+                        report.created_series += 1
+                    else:
+                        series = create_series(SeriesCreate(name=series_name, product_type_key=product_type_key), db)
+                        report.created_series += 1
+                if series is not None:
+                    payload["series_id"] = series.id
+                    payload["series_name"] = series.name
+            product = None
+            if product_id is not None:
+                product = db.get(Product, product_id)
+            if product is None:
+                product = bulk_import_find_product(db, {"model": product_model, "series_id": payload.get("series_id"), "series_name": series_name, "product_type_key": product_type_key})
+
+            if product is None:
+                if dry_run:
+                    report.created_products += 1
+                    product_sheet_lookup[bulk_import_sheet_key(table_name)] = {
+                        "model": product_model,
+                        "product_type_key": product_type_key,
+                        "series_name": series_name,
+                        "series_id": payload.get("series_id"),
+                    }
+                    continue
+                body = ProductCreate(**payload)
+                product = create_product(body, db)
+                report.created_products += 1
+            else:
+                if dry_run:
+                    report.updated_products += 1
+                else:
+                    update_body = ProductUpdate(**{key: value for key, value in payload.items() if value is not None})
+                    product = update_product(product.id, update_body, db)
+                    replace_product_graph_data(db, product, graph_rpm_lines, graph_state["efficiencyPoints"])
+                    db.commit()
+                    db.refresh(product)
+                    report.updated_products += 1
+
+            if product is not None and product.id is not None:
+                touched_products[product.id] = product
+                product_sheet_lookup[bulk_import_sheet_key(table_name)] = {
+                    "product_id": product.id,
+                    "model": product.model,
+                    "series_name": product.series_name,
+                    "product_type_key": product.product_type_key,
+                }
+                product_sheet_lookup[bulk_import_sheet_key(product_model)] = {
+                    "product_id": product.id,
+                    "model": product.model,
+                    "series_name": product.series_name,
+                    "product_type_key": product.product_type_key,
+                }
+                report.manifest_sheets.append(
+                    BulkImportManifestSheetResponse(
+                        sheet_name=table_name,
+                        product_model=product_model,
+                        product_type_key=product_type_key,
+                        series_name=series_name,
+                        image_count=manifest_image_counts.get(bulk_import_sheet_key(table_name), 0),
+                    )
+                )
+        except Exception as exc:
+            report.errors.append(f"Sheet import failed for '{table_name}': {exc}")
+            for entry in report.sheet_normalizations:
+                if entry.sheet_name == table_name:
+                    entry.error = str(exc)
+                    break
+
+    def attach_product_image(product: Product, file_name: str, image_bytes: bytes, sort_order: int | None = None):
+        if dry_run:
+            report.created_product_images += 1
+            return
+        existing_image = next((image for image in product.product_images if image.file_name == file_name), None)
+        if existing_image is None:
+            existing_image = ProductImage(
+                product_id=product.id,
+                file_name=file_name,
+                sort_order=sort_order if sort_order is not None else len(product.product_images),
+            )
+            db.add(existing_image)
+            db.flush()
+        else:
+            existing_image.sort_order = sort_order if sort_order is not None else existing_image.sort_order
+        target_path = product_image_target_path(product.id, existing_image.file_name)
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_bytes(image_bytes)
+        touched_products[product.id] = product
+        report.created_product_images += 1
+
+    def attach_series_image(series: Series, file_name: str, image_bytes: bytes, sort_order: int | None = None):
+        if dry_run:
+            report.created_series_images += 1
+            return
+        existing_image = next((image for image in series.series_images if image.file_name == file_name), None)
+        if existing_image is None:
+            existing_image = SeriesImage(
+                series_id=series.id,
+                file_name=file_name,
+                sort_order=sort_order if sort_order is not None else len(series.series_images),
+            )
+            db.add(existing_image)
+            db.flush()
+        else:
+            existing_image.sort_order = sort_order if sort_order is not None else existing_image.sort_order
+        target_path = series_image_target_path(series.id, existing_image.file_name)
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_bytes(image_bytes)
+        touched_series[series.id] = series
+        report.created_series_images += 1
+
+    for image_spec in manifest_images:
+        if not isinstance(image_spec, dict):
+            continue
+        sheet_name = image_spec.get("sheet_name") or image_spec.get("sheet") or image_spec.get("product_name") or image_spec.get("series_name")
+        file_name = str(image_spec.get("file_name") or Path(str(image_spec.get("source") or "")).name or "").strip()
+        source_name = str(image_spec.get("source") or file_name).strip()
+        kind = bulk_import_sheet_key(image_spec.get("kind") or "product")
+        if not sheet_name or not file_name or not source_name:
+            continue
+        image_bytes, _ = bulk_import_resolve_image_bytes(image_sources, source_name)
+        if image_bytes is None:
+            report.errors.append(f'Image "{source_name}" listed in the manifest was not uploaded.')
+            continue
+
+        if kind == "series":
+            series = bulk_import_find_series(db, {"name": sheet_name, "product_type_key": image_spec.get("product_type_key") or defaults.get("product_type_key") or "fan"})
+            if series is None and not dry_run:
+                continue
+            if series is None and dry_run:
+                report.created_series_images += 1
+                continue
+            attach_series_image(series, file_name, image_bytes, parse_int_or_none(image_spec.get("sort_order")))
+        else:
+            lookup = product_sheet_lookup.get(bulk_import_sheet_key(sheet_name))
+            product = db.get(Product, lookup["product_id"]) if lookup and lookup.get("product_id") else bulk_import_find_product(db, {"model": sheet_name, "product_type_key": image_spec.get("product_type_key") or defaults.get("product_type_key") or "fan"})
+            if product is None and not dry_run:
+                continue
+            if product is None and dry_run:
+                report.created_product_images += 1
+                continue
+            attach_product_image(product, file_name, image_bytes, parse_int_or_none(image_spec.get("sort_order")))
+
+    for table_name in ("series", "products", "product_images", "series_images"):
+        rows = tables.get(table_name, [])
+        if not isinstance(rows, list):
+            continue
+        if table_name == "series":
+            for row in rows:
+                try:
+                    series = bulk_import_find_series(db, row)
+                    payload = dict(row)
+                    if series is None:
+                        if "name" not in payload or not str(payload.get("name") or "").strip():
+                            report.errors.append("Series row is missing a name.")
+                            continue
+                        if dry_run:
+                            report.created_series += 1
+                            continue
+                        series = create_series(SeriesCreate(**payload), db)
+                        report.created_series += 1
+                    else:
+                        if dry_run:
+                            report.updated_series += 1
+                        else:
+                            update_series(series.id, SeriesUpdate(**payload), db)
+                            series = db.get(Series, series.id)
+                            report.updated_series += 1
+                    if series is not None and series.id is not None:
+                        touched_series[series.id] = series
+                except Exception as exc:
+                    report.errors.append(f"Series import failed for row {row!r}: {exc}")
+        elif table_name == "products":
+            for row in rows:
+                try:
+                    payload = dict(row)
+                    series = bulk_import_resolve_series_lookup(db, payload, known_series)
+                    if series is not None:
+                        payload.setdefault("series_id", series.id)
+                        payload.setdefault("series_name", series.name)
+                        payload.setdefault("product_type_key", series.product_type.key)
+                    payload.setdefault("product_type_key", "fan")
+
+                    product = bulk_import_find_product(db, payload)
+                    if product is None:
+                        if "model" not in payload or not str(payload.get("model") or "").strip():
+                            report.errors.append("Product row is missing a model.")
+                            continue
+                        if dry_run:
+                            report.created_products += 1
+                            continue
+                        product = create_product(ProductCreate(**payload), db)
+                        report.created_products += 1
+                    else:
+                        if dry_run:
+                            report.updated_products += 1
+                        else:
+                            update_product(product.id, ProductUpdate(**payload), db)
+                            product = db.get(Product, product.id)
+                            report.updated_products += 1
+                    if product is not None and product.id is not None:
+                        touched_products[product.id] = product
+                except Exception as exc:
+                    report.errors.append(f"Product import failed for row {row!r}: {exc}")
+        else:
+            for row in rows:
+                try:
+                    file_name = str(row.get("file_name") or "").strip()
+                    if not file_name:
+                        continue
+                    image_bytes, _ = bulk_import_resolve_image_bytes(image_sources, file_name)
+                    if image_bytes is None:
+                        continue
+                    if table_name == "product_images":
+                        product = bulk_import_find_product(db, row)
+                        if product is None:
+                            continue
+                        attach_product_image(product, file_name, image_bytes, parse_int_or_none(row.get("sort_order")))
+                    elif table_name == "series_images":
+                        series = bulk_import_find_series(db, row)
+                        if series is None:
+                            series = bulk_import_resolve_series_lookup(db, row, known_series)
+                        if series is None:
+                            continue
+                        attach_series_image(series, file_name, image_bytes, parse_int_or_none(row.get("sort_order")))
+                except Exception as exc:
+                    report.errors.append(f"{table_name} import failed for row {row!r}: {exc}")
+
+    if not dry_run:
+        for product in touched_products.values():
+            sync_product_image_files(product)
+        for series in touched_series.values():
+            sync_series_image_files(series)
+        db.commit()
+        for product in touched_products.values():
+            db.refresh(product)
+        for series in touched_series.values():
+            db.refresh(series)
+        notify_public_catalogue_cache_refresh()
+
+    return report
+
+
+def bulk_import_sources_from_uploads(
+    files: list[UploadFile], manifest_json: str | None = None
+) -> tuple[dict[str, list[dict]], dict[str, bytes], dict[str, dict]]:
+    tables: dict[str, list[dict]] = {}
+    image_sources: dict[str, bytes] = {}
+    sheet_meta: dict[str, dict] = {}
+    duplicates: set[str] = set()
+
+    for upload in files:
+        raw_name = normalize_bulk_import_source_name(upload.filename or "")
+        suffix = Path(raw_name).suffix.lower()
+        contents = upload.file.read() if hasattr(upload, "file") else None
+        if contents is None:
+            continue
+        if suffix in {".xlsx", ".xlsm"}:
+            workbook_tables, workbook_sheet_meta = load_bulk_import_workbook(raw_name, contents)
+            for sheet_name, rows in workbook_tables.items():
+                tables[sheet_name] = rows
+            for sheet_name, meta in workbook_sheet_meta.items():
+                sheet_meta[sheet_name] = meta
+        elif suffix == ".csv":
+            table_name = str(Path(raw_name).stem or raw_name).strip() or raw_name
+            tables[table_name] = load_bulk_import_csv(raw_name, contents)
+            sheet_meta[table_name] = {
+                "sheet_name": table_name,
+                "row_count": len(tables[table_name]),
+                "raw_headers": list(tables[table_name][0].keys()) if tables[table_name] else [],
+                "normalized_headers": list(tables[table_name][0].keys()) if tables[table_name] else [],
+            }
+        elif suffix in {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tif", ".tiff"}:
+            if raw_name in image_sources:
+                duplicates.add(raw_name)
+            image_sources[raw_name] = contents
+
+    if manifest_json:
+        tables["__manifest__"] = load_bulk_import_manifest(manifest_json)
+
+    if duplicates:
+        logger.warning("Bulk import received duplicate image filenames: %s", ", ".join(sorted(duplicates)))
+
+    return tables, image_sources, sheet_meta
+
+
+async def bulk_import_assets(
+    dry_run: bool = False,
+    downsample_imported_curves: bool = True,
+    downsample_point_count: int = 5,
+    scale_efficiency_permissible_against_highest_rpm: bool = True,
+    manifest_json: str | None = Form(None),
+    files: list[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+):
+    try:
+        if not files:
+            raise HTTPException(status_code=400, detail="Please upload at least one workbook, CSV, or image file.")
+
+        # Read all uploads before any database writes so dry runs and imports share the same parsing path.
+        for upload in files:
+            await upload.seek(0)
+
+        tables, image_sources, sheet_meta = bulk_import_sources_from_uploads(files, manifest_json=manifest_json)
+        if not tables and not image_sources:
+            raise HTTPException(status_code=400, detail="No supported workbook, CSV, or image files were provided.")
+
+        return bulk_import_process_payloads(
+            db,
+            tables,
+            image_sources,
+            sheet_meta,
+            dry_run,
+            default_downsample_imported_curves=downsample_imported_curves,
+            default_downsample_point_count=downsample_point_count,
+            default_scale_overlay_lines=scale_efficiency_permissible_against_highest_rpm,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Bulk import failed unexpectedly: %s", exc)
+        raise HTTPException(status_code=500, detail="Bulk import failed unexpectedly.") from exc
+
+
 def sync_templates_after_file_change():
     sync_template_registry_with_disk()
 
@@ -979,12 +2379,49 @@ def product_type_pdf_path(product_type: ProductType, variant: str) -> Path:
     return PRODUCT_TYPE_PDFS_DIR / product_type_pdf_file_name(product_type, variant)
 
 
-def image_file_path(file_name: str) -> Path:
-    return PRODUCT_IMAGES_DIR / file_name
+def _normalize_media_relative_path(relative_path: str | None) -> Path:
+    candidate = Path((relative_path or "").strip())
+    if str(candidate).strip() in {"", "."}:
+        raise HTTPException(status_code=400, detail="A valid file name is required.")
+    if candidate.is_absolute() or any(part in {"..", ""} for part in candidate.parts):
+        raise HTTPException(status_code=400, detail="Invalid file name.")
+    return candidate
 
 
-def series_image_file_path(file_name: str) -> Path:
-    return SERIES_IMAGES_DIR / file_name
+def product_image_directory(product_id: int) -> Path:
+    directory = PRODUCT_IMAGES_DIR / f"product_{product_id}"
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
+def series_image_directory(series_id: int) -> Path:
+    directory = SERIES_IMAGES_DIR / f"series_{series_id}"
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
+def product_image_target_path(product_id: int, file_name: str) -> Path:
+    return product_image_directory(product_id) / _normalize_media_relative_path(file_name)
+
+
+def series_image_target_path(series_id: int, file_name: str) -> Path:
+    return series_image_directory(series_id) / _normalize_media_relative_path(file_name)
+
+
+def product_image_path(product_id: int, file_name: str) -> Path:
+    target_path = product_image_target_path(product_id, file_name)
+    if target_path.exists():
+        return target_path
+    legacy_path = PRODUCT_IMAGES_DIR / _normalize_media_relative_path(file_name)
+    return legacy_path if legacy_path.exists() else target_path
+
+
+def series_image_path(series_id: int, file_name: str) -> Path:
+    target_path = series_image_target_path(series_id, file_name)
+    if target_path.exists():
+        return target_path
+    legacy_path = SERIES_IMAGES_DIR / _normalize_media_relative_path(file_name)
+    return legacy_path if legacy_path.exists() else target_path
 
 
 def remove_file(path: str | os.PathLike | None):
@@ -1592,18 +3029,20 @@ def sync_product_image_files(product: Product):
     temp_paths = {}
 
     for image in ordered_images:
-        current_path = image_file_path(image.file_name)
+        current_path = product_image_path(product.id, image.file_name)
         if current_path.exists():
-            temp_path = image_file_path(f"tmp_{image.id}_{image.file_name}")
+            temp_path = product_image_target_path(product.id, f"tmp_{image.id}_{Path(image.file_name).name}")
+            temp_path.parent.mkdir(parents=True, exist_ok=True)
             current_path.rename(temp_path)
             temp_paths[image.id] = temp_path
 
     for index, image in enumerate(ordered_images, start=1):
         suffix = Path(image.file_name).suffix or ".jpg"
         final_name = product_image_file_name(product, index, suffix)
-        final_path = image_file_path(final_name)
+        final_path = product_image_target_path(product.id, final_name)
         temp_path = temp_paths.get(image.id)
         if temp_path and temp_path.exists():
+            final_path.parent.mkdir(parents=True, exist_ok=True)
             if final_path.exists():
                 final_path.unlink()
             temp_path.rename(final_path)
@@ -1616,18 +3055,20 @@ def sync_series_image_files(series: Series):
     temp_paths = {}
 
     for image in ordered_images:
-        current_path = series_image_file_path(image.file_name)
+        current_path = series_image_path(series.id, image.file_name)
         if current_path.exists():
-            temp_path = series_image_file_path(f"tmp_{image.id}_{image.file_name}")
+            temp_path = series_image_target_path(series.id, f"tmp_{image.id}_{Path(image.file_name).name}")
+            temp_path.parent.mkdir(parents=True, exist_ok=True)
             current_path.rename(temp_path)
             temp_paths[image.id] = temp_path
 
     for index, image in enumerate(ordered_images, start=1):
         suffix = Path(image.file_name).suffix or ".jpg"
         final_name = series_image_file_name(series, index, suffix)
-        final_path = series_image_file_path(final_name)
+        final_path = series_image_target_path(series.id, final_name)
         temp_path = temp_paths.get(image.id)
         if temp_path and temp_path.exists():
+            final_path.parent.mkdir(parents=True, exist_ok=True)
             if final_path.exists():
                 final_path.unlink()
             temp_path.rename(final_path)
@@ -1884,7 +3325,7 @@ def render_product_image_html(product: Product, image_index: int, css_class: str
         return '<p class="placeholder">No product image available.</p>'
 
     image = ordered_images[image_index - 1]
-    image_path = image_file_path(image.file_name)
+    image_path = product_image_path(product.id, image.file_name)
     if not image_path.is_file():
         return '<p class="placeholder">No product image available.</p>'
 
@@ -1900,7 +3341,7 @@ def render_image_gallery_html(product: Product, start_index: int = 1) -> str:
 
     items: list[str] = []
     for index, image in enumerate(ordered_images[start_index - 1 :], start=start_index):
-        image_path = image_file_path(image.file_name)
+        image_path = product_image_path(product.id, image.file_name)
         if not image_path.is_file():
             continue
         items.append(
@@ -1940,7 +3381,7 @@ def build_product_pdf_html(product: Product, variant: str) -> tuple[str, str]:
     primary_image_uri = ""
     if product.product_images:
         first_image = sorted(product.product_images, key=lambda img: (img.sort_order, img.id))[0]
-        first_image_path = image_file_path(first_image.file_name)
+        first_image_path = product_image_path(product.id, first_image.file_name)
         if first_image_path.is_file():
             primary_image_uri = first_image_path.as_uri()
 
@@ -2271,7 +3712,7 @@ def render_series_image_html(
         return f'<div class="{html.escape(placeholder_class)}">{html.escape(placeholder_text)}</div>'
 
     image = ordered_images[image_index - 1]
-    image_path = series_image_file_path(image.file_name)
+    image_path = series_image_path(series.id, image.file_name)
     if not image_path.is_file():
         return f'<div class="{html.escape(placeholder_class)}">{html.escape(placeholder_text)}</div>'
 
@@ -2619,7 +4060,7 @@ def product_primary_image_uri(product: Product) -> str:
     ordered_images = sorted(product.product_images or [], key=lambda img: (img.sort_order, img.id))
     if not ordered_images:
         return ""
-    first_image_path = image_file_path(ordered_images[0].file_name)
+    first_image_path = product_image_path(product.id, ordered_images[0].file_name)
     if not first_image_path.is_file():
         return ""
     return first_image_path.as_uri()
@@ -3008,11 +4449,13 @@ def generate_product_type_pdf(product_type: ProductType) -> Path:
 
 
 def delete_product_image_file(image: ProductImage):
-    remove_file(image_file_path(image.file_name))
+    remove_file(product_image_target_path(image.product_id, image.file_name))
+    remove_file(PRODUCT_IMAGES_DIR / _normalize_media_relative_path(image.file_name))
 
 
 def delete_series_image_file(image: SeriesImage):
-    remove_file(series_image_file_path(image.file_name))
+    remove_file(series_image_target_path(image.series_id, image.file_name))
+    remove_file(SERIES_IMAGES_DIR / _normalize_media_relative_path(image.file_name))
 
 
 def build_graph_config(product_type: ProductType | None) -> dict:
@@ -3501,6 +4944,16 @@ def require_admin_user(current_user: User = Depends(get_current_user)) -> User:
     return current_user
 
 
+bulk_import_router.add_api_route(
+    "/api/bulk-import",
+    bulk_import_assets,
+    methods=["POST"],
+    response_model=BulkImportResponse,
+    dependencies=[Depends(require_admin_user)],
+    summary="Import workbook sheets and image assets",
+)
+
+
 def active_admin_count(db: Session) -> int:
     return db.query(User).filter(User.is_admin.is_(True), User.is_active.is_(True)).count()
 
@@ -3987,6 +5440,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(bulk_import_router)
 
 
 @app.on_event("startup")
@@ -4964,11 +6419,12 @@ def start_refresh_series_pdf_job(series_id: int):
 @app.get("/api/auth/session", response_model=AuthSessionResponse, tags=["Public", "Authentication"])
 def get_auth_session(request: Request):
     if not is_authenticated(request):
-        return AuthSessionResponse(authenticated=False)
+        return AuthSessionResponse(authenticated=False, cookie_secure=AUTH_COOKIE_SECURE)
     return AuthSessionResponse(
         authenticated=True,
         username=request.session.get("username"),
         is_admin=bool(request.session.get("is_admin")),
+        cookie_secure=AUTH_COOKIE_SECURE,
     )
 
 
@@ -4981,13 +6437,13 @@ def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
     request.session["user_id"] = user.id
     request.session["username"] = user.username
     request.session["is_admin"] = user.is_admin
-    return AuthSessionResponse(authenticated=True, username=user.username, is_admin=user.is_admin)
+    return AuthSessionResponse(authenticated=True, username=user.username, is_admin=user.is_admin, cookie_secure=AUTH_COOKIE_SECURE)
 
 
 @app.post("/api/auth/logout", response_model=AuthSessionResponse, tags=["Public", "Authentication"])
 def logout(request: Request):
     request.session.clear()
-    return AuthSessionResponse(authenticated=False)
+    return AuthSessionResponse(authenticated=False, cookie_secure=AUTH_COOKIE_SECURE)
 
 
 @app.post("/api/auth/change-password", response_model=AuthSessionResponse, tags=["Authentication"])
@@ -5003,7 +6459,7 @@ def change_password(
     db.commit()
     request.session["username"] = current_user.username
     request.session["is_admin"] = current_user.is_admin
-    return AuthSessionResponse(authenticated=True, username=current_user.username, is_admin=current_user.is_admin)
+    return AuthSessionResponse(authenticated=True, username=current_user.username, is_admin=current_user.is_admin, cookie_secure=AUTH_COOKIE_SECURE)
 
 
 @app.get("/api/users", response_model=list[UserResponse], tags=["Users"])
@@ -6321,7 +7777,9 @@ async def upload_product_images(
         db.add(image)
         db.flush()
         contents = await upload.read()
-        with open(image_file_path(image.file_name), "wb") as output:
+        target_path = product_image_target_path(product_id, image.file_name)
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(target_path, "wb") as output:
             output.write(contents)
         next_order += 1
 
@@ -6330,6 +7788,113 @@ async def upload_product_images(
     db.refresh(product)
     notify_public_catalogue_cache_refresh()
     return sorted(product.product_images, key=lambda image: (image.sort_order, image.id))
+
+
+def _bulk_image_upload_name(upload: UploadFile, fallback_prefix: str, target_id: int, index: int) -> str:
+    file_name = Path(upload.filename or "").name.strip()
+    if not file_name:
+        file_name = f"{fallback_prefix}_{target_id}_{index}.jpg"
+    if not Path(file_name).suffix:
+        file_name = f"{file_name}.jpg"
+    return file_name
+
+
+async def _bulk_upload_images(target_kind: str, target_id: int, files: list[UploadFile], db: Session) -> BulkImageImportResponse:
+    if not files:
+        raise HTTPException(400, "No files provided")
+
+    if target_kind == "product":
+        product = require_product(db, target_id)
+        existing_images = list(product.product_images)
+        next_order = len(existing_images)
+        file_names: list[str] = []
+        overwritten_file_names: list[str] = []
+        for index, upload in enumerate(files):
+            file_name = _bulk_image_upload_name(upload, "product_image", target_id, index)
+            contents = await upload.read()
+            existing_image = next((image for image in existing_images if image.file_name == file_name), None)
+            if existing_image is None:
+                existing_image = ProductImage(
+                    product_id=target_id,
+                    file_name=file_name,
+                    sort_order=next_order,
+                )
+                db.add(existing_image)
+                db.flush()
+                existing_images.append(existing_image)
+                next_order += 1
+                file_names.append(file_name)
+            else:
+                overwritten_file_names.append(file_name)
+            target_path = product_image_target_path(target_id, file_name)
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            target_path.write_bytes(contents)
+        db.commit()
+        db.refresh(product)
+        notify_public_catalogue_cache_refresh()
+        return BulkImageImportResponse(
+            target_kind="product",
+            target_id=target_id,
+            file_names=file_names,
+            overwritten_file_names=overwritten_file_names,
+            image_count=len(product.product_images),
+        )
+
+    series = db.get(Series, target_id)
+    if not series:
+        raise HTTPException(404, "Series not found")
+    existing_images = list(series.series_images)
+    next_order = len(existing_images)
+    file_names = []
+    overwritten_file_names = []
+    for index, upload in enumerate(files):
+        file_name = _bulk_image_upload_name(upload, "series_image", target_id, index)
+        contents = await upload.read()
+        existing_image = next((image for image in existing_images if image.file_name == file_name), None)
+        if existing_image is None:
+            existing_image = SeriesImage(
+                series_id=target_id,
+                file_name=file_name,
+                sort_order=next_order,
+            )
+            db.add(existing_image)
+            db.flush()
+            existing_images.append(existing_image)
+            next_order += 1
+            file_names.append(file_name)
+        else:
+            overwritten_file_names.append(file_name)
+        target_path = series_image_target_path(target_id, file_name)
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_bytes(contents)
+    db.commit()
+    db.refresh(series)
+    notify_public_catalogue_cache_refresh()
+    return BulkImageImportResponse(
+        target_kind="series",
+        target_id=target_id,
+        file_names=file_names,
+        overwritten_file_names=overwritten_file_names,
+        image_count=len(series.series_images),
+    )
+
+
+@app.post("/api/products/{product_id}/product-images/bulk", response_model=BulkImageImportResponse, dependencies=[Depends(get_current_user)], tags=["Product Images"])
+async def bulk_upload_product_images(
+    product_id: int,
+    files: list[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+):
+    return await _bulk_upload_images("product", product_id, files, db)
+
+
+@app.post("/api/series/{series_id}/series-images/bulk", response_model=BulkImageImportResponse, dependencies=[Depends(get_current_user)], tags=["Series Images"])
+async def bulk_upload_series_images(
+    series_id: int,
+    files: list[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+):
+    return await _bulk_upload_images("series", series_id, files, db)
 
 
 @app.post("/api/fans/{product_id}/product-images/reorder", response_model=list[ProductImageResponse], dependencies=[Depends(get_current_user)], tags=["Product Images"], include_in_schema=False)
@@ -6398,7 +7963,9 @@ async def upload_series_images(
         db.add(image)
         db.flush()
         contents = await upload.read()
-        with open(series_image_file_path(image.file_name), "wb") as output:
+        target_path = series_image_target_path(series_id, image.file_name)
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(target_path, "wb") as output:
             output.write(contents)
         next_order += 1
 
@@ -6446,17 +8013,17 @@ def delete_series_image(series_id: int, image_id: int, db: Session = Depends(get
     return {"deleted": image_id}
 
 
-@app.get("/api/media/product_images/{file_name}", dependencies=[Depends(get_current_user)], tags=["Media"])
-def serve_product_image(file_name: str):
-    file_path = image_file_path(file_name)
+@app.get("/api/media/product_images/{product_id}/{file_name:path}", dependencies=[Depends(get_current_user)], tags=["Media"])
+def serve_product_image(product_id: int, file_name: str):
+    file_path = product_image_path(product_id, file_name)
     if not file_path.is_file():
         raise HTTPException(status_code=404, detail="Product image not found")
     return FileResponse(file_path)
 
 
-@app.get("/api/media/series_images/{file_name}", dependencies=[Depends(get_current_user)], tags=["Media"])
-def serve_series_image(file_name: str):
-    file_path = series_image_file_path(file_name)
+@app.get("/api/media/series_images/{series_id}/{file_name:path}", dependencies=[Depends(get_current_user)], tags=["Media"])
+def serve_series_image(series_id: int, file_name: str):
+    file_path = series_image_path(series_id, file_name)
     if not file_path.is_file():
         raise HTTPException(status_code=404, detail="Series image not found")
     return FileResponse(file_path)
@@ -6503,26 +8070,26 @@ def serve_series_pdf(file_name: str):
 
 
 @app.get(
-    "/api/public/media/product_images/{file_name}",
+    "/api/public/media/product_images/{product_id}/{file_name:path}",
     tags=["Public Media"],
     summary="Get a public customer product image",
     description="Public product image endpoint intended for rendered customer-facing pages.",
 )
-def serve_cms_product_image(file_name: str):
-    file_path = image_file_path(file_name)
+def serve_cms_product_image(product_id: int, file_name: str):
+    file_path = product_image_path(product_id, file_name)
     if not file_path.is_file():
         raise HTTPException(status_code=404, detail="Product image not found")
     return FileResponse(file_path)
 
 
 @app.get(
-    "/api/public/media/series_images/{file_name}",
+    "/api/public/media/series_images/{series_id}/{file_name:path}",
     tags=["Public Media"],
     summary="Get a public customer series image",
     description="Public series image endpoint intended for rendered customer-facing pages.",
 )
-def serve_cms_series_image(file_name: str):
-    file_path = series_image_file_path(file_name)
+def serve_cms_series_image(series_id: int, file_name: str):
+    file_path = series_image_path(series_id, file_name)
     if not file_path.is_file():
         raise HTTPException(status_code=404, detail="Series image not found")
     return FileResponse(file_path)

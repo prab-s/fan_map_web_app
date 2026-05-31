@@ -1,4 +1,5 @@
-import { e as escape_html, b as attr, f as ensure_array_like, d as bind_props, s as store_get, h as head, c as attr_class, u as unsubscribe_stores, aa as clsx } from "../../../chunks/index2.js";
+import { e as escape_html, b as attr, d as ensure_array_like, f as bind_props, s as store_get, h as head, c as attr_class, u as unsubscribe_stores, aa as clsx } from "../../../chunks/index2.js";
+import { b as browser } from "../../../chunks/false.js";
 import { o as onDestroy } from "../../../chunks/index-server.js";
 import { a as auth } from "../../../chunks/auth.js";
 import { G as GLOBAL_UNIT_OPTIONS } from "../../../chunks/config.js";
@@ -143,6 +144,7 @@ function FileManager($$renderer, $$props) {
 function _page($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
     var $$store_subs;
+    let showCookieWarning;
     let users = [];
     let usersLoaded = false;
     let filteredUsers = [];
@@ -315,6 +317,7 @@ function _page($$renderer, $$props) {
     if (store_get($$store_subs ??= {}, "$auth", auth).authenticated && !productTypesLoaded && !loadingProductTypes) {
       loadProductTypes();
     }
+    showCookieWarning = browser;
     if (productTypesLoaded) {
       if (selectedProductTypeId) {
         syncPresetDraftsForSelectedType(selectedProductTypeId);
@@ -332,6 +335,13 @@ function _page($$renderer, $$props) {
         $$renderer4.push(`<title>Setup - Internal Facing</title>`);
       });
     });
+    if (showCookieWarning) {
+      $$renderer2.push("<!--[0-->");
+      $$renderer2.push(`<div class="alert alert-warning border-0 shadow-sm mb-3"><div class="fw-semibold mb-1">Session cookies are marked secure, but this app is being served over HTTP.</div> <div class="text-body-secondary mb-0">Logins can fail or disappear after reloads until the app is served over HTTPS, or <code>AUTH_COOKIE_SECURE</code> is disabled for local and SIT runs.</div></div>`);
+    } else {
+      $$renderer2.push("<!--[-1-->");
+    }
+    $$renderer2.push(`<!--]--> `);
     if (successMessages.length) {
       $$renderer2.push("<!--[0-->");
       $$renderer2.push(`<div class="success-toast shadow-lg svelte-g40i6i" role="status" aria-live="polite" aria-atomic="true"><div class="alert alert-success mb-0 success-toast-alert svelte-g40i6i"><!--[-->`);

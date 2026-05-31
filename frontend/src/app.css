@@ -1,13 +1,18 @@
 :root,
 :root[data-theme='dark'] {
   /* App palette */
-  --app-bg: #0f172a;
+  --app-bg: #0f3b3e;
   --app-surface: #162033;
-  --app-surface-soft: #1d2940;
+  --app-surface-rgb: 22, 32, 51;
+  --app-surface-soft: #233961;
+  --app-surface-soft-rgb: 29, 41, 64;
   --app-text: #e5eefc;
   --app-muted: #9db1cf;
-  --app-border: rgba(157, 177, 207, 0.5);
+  --app-border: rgba(157, 177, 207, 0.42);
   --app-chart: #121c2d;
+  --app-shadow-xs: 0 0.4rem 1rem rgba(1, 6, 18, 0.66);
+  --app-shadow-sm: 0 0.75rem 1.75rem rgba(1, 6, 18, 0.66);
+  --app-shadow-md: 0 1.25rem 2.5rem rgba(1, 6, 18, 0.66);
 
   /* Bootstrap theme mapping */
   --bs-body-bg: var(--app-bg);
@@ -31,13 +36,18 @@
 
 :root[data-theme='light'] {
   /* App palette */
-  --app-bg: #edf2f7;
+  --app-bg: #fffbfb;
   --app-surface: #ffffff;
-  --app-surface-soft: #f8fafc;
+  --app-surface-rgb: 255, 255, 255;
+  --app-surface-soft: #dfdfdf;
+  --app-surface-soft-rgb: 248, 250, 252;
   --app-text: #1f2d3d;
   --app-muted: #5f748d;
-  --app-border: rgba(95, 116, 141, 0.5);
+  --app-border: rgba(95, 116, 141, 0.62);
   --app-chart: #ffffff;
+  --app-shadow-xs: 0 0.35rem 0.9rem rgba(15, 23, 42, 0.66);
+  --app-shadow-sm: 0 0.5rem 1.25rem rgba(15, 23, 42, 0.66);
+  --app-shadow-md: 0 1rem 2rem rgba(15, 23, 42, 0.66);
 
   /* Bootstrap theme mapping */
   --bs-body-bg: var(--app-bg);
@@ -49,7 +59,7 @@
   --bs-tertiary-color: var(--app-muted);
   --bs-tertiary-color-rgb: 95, 116, 141;
   --bs-border-color: var(--app-border);
-  --bs-border-color-translucent: rgba(95, 116, 141, 0.24);
+  --bs-border-color-translucent: rgba(95, 116, 141, 0.15);
   --bs-card-bg: var(--app-surface);
   --bs-card-border-color: var(--app-border);
   --bs-tertiary-bg: var(--app-surface-soft);
@@ -79,6 +89,25 @@ body {
   z-index: 1030;
   background: var(--app-surface);
   border-bottom: 1px solid var(--app-border);
+}
+
+.shadow-sm {
+  box-shadow: var(--app-shadow-sm) !important;
+}
+
+.shadow-lg {
+  box-shadow: var(--app-shadow-md) !important;
+}
+
+.card {
+  overflow: hidden;
+  background: linear-gradient(180deg, var(--app-surface) 0%, var(--app-surface-soft) 100%);
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+}
+
+.card-body {
+  background-color: inherit;
 }
 
 .echart-host {

@@ -729,16 +729,21 @@ class ProductImage(Base):
 
     @property
     def url(self):
-        file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "product_images", self.file_name)
+        base_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "product_images")
+        file_path = os.path.join(base_dir, f"product_{self.product_id}", self.file_name)
+        if not os.path.exists(file_path):
+            legacy_path = os.path.join(base_dir, self.file_name)
+            if os.path.exists(legacy_path):
+                file_path = legacy_path
         version = None
         try:
             version = int(os.path.getmtime(file_path))
         except OSError:
             version = None
         return (
-            f"/api/public/media/product_images/{self.file_name}?v={version}"
+            f"/api/public/media/product_images/{self.product_id}/{self.file_name}?v={version}"
             if version is not None
-            else f"/api/public/media/product_images/{self.file_name}"
+            else f"/api/public/media/product_images/{self.product_id}/{self.file_name}"
         )
 
 
@@ -754,14 +759,19 @@ class SeriesImage(Base):
 
     @property
     def url(self):
-        file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "series_images", self.file_name)
+        base_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "series_images")
+        file_path = os.path.join(base_dir, f"series_{self.series_id}", self.file_name)
+        if not os.path.exists(file_path):
+            legacy_path = os.path.join(base_dir, self.file_name)
+            if os.path.exists(legacy_path):
+                file_path = legacy_path
         version = None
         try:
             version = int(os.path.getmtime(file_path))
         except OSError:
             version = None
         return (
-            f"/api/public/media/series_images/{self.file_name}?v={version}"
+            f"/api/public/media/series_images/{self.series_id}/{self.file_name}?v={version}"
             if version is not None
-            else f"/api/public/media/series_images/{self.file_name}"
+            else f"/api/public/media/series_images/{self.series_id}/{self.file_name}"
         )
