@@ -4,14 +4,15 @@ import { o as onDestroy } from "../../../chunks/index-server.js";
 import { a as auth } from "../../../chunks/auth.js";
 import { G as GLOBAL_UNIT_OPTIONS } from "../../../chunks/config.js";
 import { f as fallback } from "../../../chunks/equality.js";
-import { h as getUsers, i as getProductTypes } from "../../../chunks/api.js";
+import { h as getProducts, i as getSeries, j as getUsers, k as getProductTypes } from "../../../chunks/api.js";
 function FileManager($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
     let currentPath, pathSegments, canModifyCurrentFolder;
     let rootName = fallback($$props["rootName"], "");
     let title = fallback($$props["title"], "");
     let description = fallback($$props["description"], "");
-    let listing = { entries: [] };
+    let entryLabelResolver = fallback($$props["entryLabelResolver"], () => "");
+    let listing = { root: rootName, path: "", parent_path: null, entries: [] };
     let loading = false;
     let createFolderName = "";
     let uploadFiles = [];
@@ -66,10 +67,10 @@ function FileManager($$renderer, $$props) {
       if (suffixIndex <= 0) return false;
       return editableExtensions.has(lowerName.slice(suffixIndex));
     }
-    currentPath = "";
+    currentPath = listing?.path || "";
     pathSegments = currentPath ? currentPath.split("/") : [];
     canModifyCurrentFolder = true;
-    $$renderer2.push(`<div class="card border shadow-sm"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><p class="small text-uppercase text-body-secondary fw-semibold mb-1">${escape_html(title)}</p> <h3 class="h5 mb-1">${escape_html(rootName)}/${escape_html(currentPath || "")}</h3> <p class="text-body-secondary mb-0">${escape_html(description)}</p></div> <div class="d-flex align-items-center gap-2 flex-wrap"><button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", loading, true)}>${escape_html("Refresh")}</button> <button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", !currentPath, true)}>Up</button></div></div> `);
+    $$renderer2.push(`<div class="card border shadow-sm"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><p class="small text-uppercase text-body-secondary fw-semibold mb-1">${escape_html(title)}</p> <h3 class="h5 mb-1">${escape_html(rootName)}/${escape_html(currentPath || "")}</h3> <p class="text-body-secondary mb-0">${escape_html(description)}</p></div> <div class="d-flex align-items-center gap-2 flex-wrap"><button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", loading, true)}>${escape_html("Refresh")}</button> <button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", !listing?.parent_path && !currentPath, true)}>Up</button></div></div> `);
     {
       $$renderer2.push("<!--[-1-->");
     }
@@ -95,7 +96,8 @@ function FileManager($$renderer, $$props) {
     const each_array_1 = ensure_array_like(listing?.entries || []);
     for (let $$index_1 = 0, $$length = each_array_1.length; $$index_1 < $$length; $$index_1++) {
       let entry = each_array_1[$$index_1];
-      $$renderer2.push(`<tr><td><div class="d-flex align-items-center gap-2 flex-wrap">`);
+      const entryLabel = entry.type === "directory" ? entryLabelResolver(entry, listing) : "";
+      $$renderer2.push(`<tr><td><div class="d-grid gap-1"><div class="d-flex align-items-center gap-2 flex-wrap">`);
       if (entry.type === "directory") {
         $$renderer2.push("<!--[0-->");
         $$renderer2.push(`<button class="btn btn-link p-0 text-decoration-none" type="button">${escape_html(entry.name)}</button>`);
@@ -107,6 +109,13 @@ function FileManager($$renderer, $$props) {
       if (entry.protected) {
         $$renderer2.push("<!--[0-->");
         $$renderer2.push(`<span class="badge text-bg-warning">Protected</span>`);
+      } else {
+        $$renderer2.push("<!--[-1-->");
+      }
+      $$renderer2.push(`<!--]--></div> `);
+      if (entryLabel) {
+        $$renderer2.push("<!--[0-->");
+        $$renderer2.push(`<div class="small text-body-secondary">${escape_html(entryLabel)}</div>`);
       } else {
         $$renderer2.push("<!--[-1-->");
       }
@@ -138,7 +147,7 @@ function FileManager($$renderer, $$props) {
       $$renderer2.push("<!--[-1-->");
     }
     $$renderer2.push(`<!--]-->`);
-    bind_props($$props, { rootName, title, description });
+    bind_props($$props, { rootName, title, description, entryLabelResolver });
   });
 }
 function _page($$renderer, $$props) {
@@ -158,6 +167,13 @@ function _page($$renderer, $$props) {
     let newPassword = "";
     let newIsAdmin = false;
     let maintenanceLoading = false;
+    let maintenanceErrorToast = "";
+    let products = [];
+    let productsLoaded = false;
+    let loadingProducts = false;
+    let series = [];
+    let seriesLoaded = false;
+    let loadingSeries = false;
     let productTypes = [];
     let productTypesLoaded = false;
     let loadingProductTypes = false;
@@ -176,10 +192,47 @@ function _page($$renderer, $$props) {
     };
     let templateRegistry = { product_templates: [] };
     let successMessages = [];
+    let seriesByIdMap = /* @__PURE__ */ new Map();
+    let productsByIdMap = /* @__PURE__ */ new Map();
     onDestroy(() => {
     });
     function productTemplates() {
       return templateRegistry.product_templates ?? [];
+    }
+    function mediaFolderLabelResolver(entry) {
+      if (!entry || entry.type !== "directory") return "";
+      const match = String(entry.name || "").match(/^(series|product)_(\d+)$/i);
+      if (!match) return "";
+      const kind = match[1].toLowerCase();
+      const id = match[2];
+      if (kind === "series") {
+        const seriesItem = seriesByIdMap.get(id);
+        return seriesItem?.name ? `Series ${id} · ${seriesItem.name}` : `Series ${id}`;
+      }
+      const productItem = productsByIdMap.get(id);
+      return productItem?.model ? `Product ${id} · ${productItem.model}` : `Product ${id}`;
+    }
+    async function loadProducts() {
+      loadingProducts = true;
+      try {
+        products = await getProducts();
+        productsLoaded = true;
+      } catch (error) {
+        maintenanceErrorToast = error?.message || "Unable to load products.";
+      } finally {
+        loadingProducts = false;
+      }
+    }
+    async function loadSeries() {
+      loadingSeries = true;
+      try {
+        series = await getSeries();
+        seriesLoaded = true;
+      } catch (error) {
+        maintenanceErrorToast = error?.message || "Unable to load series.";
+      } finally {
+        loadingSeries = false;
+      }
     }
     async function loadUsers() {
       loadingUsers = true;
@@ -317,7 +370,15 @@ function _page($$renderer, $$props) {
     if (store_get($$store_subs ??= {}, "$auth", auth).authenticated && !productTypesLoaded && !loadingProductTypes) {
       loadProductTypes();
     }
+    if (store_get($$store_subs ??= {}, "$auth", auth).authenticated && !productsLoaded && !loadingProducts) {
+      loadProducts();
+    }
+    if (store_get($$store_subs ??= {}, "$auth", auth).authenticated && !seriesLoaded && !loadingSeries) {
+      loadSeries();
+    }
     showCookieWarning = browser;
+    seriesByIdMap = new Map(series.map((item) => [String(item.id), item]));
+    productsByIdMap = new Map(products.map((item) => [String(item.id), item]));
     if (productTypesLoaded) {
       if (selectedProductTypeId) {
         syncPresetDraftsForSelectedType(selectedProductTypeId);
@@ -359,7 +420,14 @@ function _page($$renderer, $$props) {
       $$renderer2.push("<!--[-1-->");
     }
     $$renderer2.push(`<!--]--> `);
-    {
+    if (maintenanceErrorToast) {
+      $$renderer2.push("<!--[0-->");
+      $$renderer2.push(`<div class="error-toast shadow-lg svelte-g40i6i" role="alert" aria-live="assertive" aria-atomic="true"><div class="alert alert-danger mb-0 error-toast-alert svelte-g40i6i"><div class="d-flex justify-content-between align-items-start gap-3"><div class="me-auto">${escape_html(maintenanceErrorToast)}</div> <button class="btn-close" type="button" aria-label="Dismiss error"></button></div> <!---->`);
+      {
+        $$renderer2.push(`<div class="error-toast-progress svelte-g40i6i"></div>`);
+      }
+      $$renderer2.push(`<!----></div></div>`);
+    } else {
       $$renderer2.push("<!--[-1-->");
     }
     $$renderer2.push(`<!--]--> <div class="setup-hero card shadow-sm mb-4 svelte-g40i6i"><div class="card-body bg-body-secondary bg-opacity-10 p-4 p-lg-5"><div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-end gap-3"><div class="setup-hero-copy svelte-g40i6i"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Setup</p> <h1 class="h2 mb-2">Account and application setup.</h1> <p class="text-body-secondary mb-0">Manage your own password here. Admins can also create and manage internal user accounts, inspect live logs,
@@ -437,7 +505,8 @@ function _page($$renderer, $$props) {
       FileManager($$renderer2, {
         rootName: "data",
         title: "Media File Manager",
-        description: "Browse and manage media folders in the deployment volume. Open a folder to upload, create folders, rename, or delete items."
+        description: "Browse and manage media folders in the deployment volume. Open a folder to upload, create folders, rename, or delete items.",
+        entryLabelResolver: mediaFolderLabelResolver
       });
       $$renderer2.push(`<!----></div> <div class="mb-3">`);
       FileManager($$renderer2, {

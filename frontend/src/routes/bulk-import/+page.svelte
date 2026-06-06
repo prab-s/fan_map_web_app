@@ -267,7 +267,7 @@
     workbookMappings = nextMappings;
   }
 
-  async function analyzeWorkbookData() {
+  async function analyseWorkbookData() {
     const report = await runBulkWorkbookImport(workbookFiles, {
       dryRun: true,
       downsampleImportedCurves,
@@ -336,13 +336,13 @@
     syncImageSeriesFilterSelection();
   }
 
-  async function analyzeWorkbook() {
+  async function analyseWorkbook() {
     if (!workbookFiles.length || workbookBusy) return;
     workbookBusy = true;
     resetWorkbookMessages();
     workbookReport = null;
     try {
-      await analyzeWorkbookData();
+      await analyseWorkbookData();
     } catch (err) {
       workbookError = err?.message || 'Workbook analysis failed.';
     } finally {
@@ -357,9 +357,9 @@
     workbookReport = null;
     try {
       if (!workbookMappings.length) {
-        await analyzeWorkbookData();
+        await analyseWorkbookData();
         if (!workbookMappings.length) {
-          throw new Error('Please analyze the workbook before importing so the sheet mappings can be reviewed.');
+          throw new Error('Please analyse the workbook before importing so the sheet mappings can be reviewed.');
         }
       }
       const report = await runBulkWorkbookImport(workbookFiles, {
@@ -545,7 +545,7 @@
               <p class="section-label mb-2">Graph Data Import</p>
               <h2 class="h4 mb-2">Drop workbook or CSV files here</h2>
               <p class="text-body-secondary mb-4">
-                Upload `.xlsx`, `.xlsm`, or `.csv` files. Click Analyze to build an inline sheet-to-product mapping panel before you import.
+                Upload `.xlsx`, `.xlsm`, or `.csv` files. Click Analyse to build an inline sheet-to-product mapping panel before you import.
               </p>
               <div class="d-flex justify-content-center flex-wrap gap-2">
                 <label class="btn btn-primary" for="bulk-workbook-files">Choose Files</label>
@@ -614,7 +614,7 @@
 
           <div class="d-flex flex-wrap gap-2 mt-3">
             <button class="btn btn-outline-secondary" type="button" on:click={() => runWorkbookImport(true)} disabled={workbookBusy || workbookFiles.length === 0}>
-              {workbookBusy ? 'Working...' : 'Analyze Workbook'}
+              {workbookBusy ? 'Working...' : 'Analyse Workbook'}
             </button>
             <button class="btn btn-primary" type="button" on:click={() => runWorkbookImport(false)} disabled={workbookBusy || workbookFiles.length === 0}>
               {workbookBusy ? 'Working...' : 'Run Import'}
@@ -795,7 +795,7 @@
                       {/each}
                     </div>
                   {:else}
-                    <div class="text-body-secondary">No sheet mappings available yet. Run Analyze Workbook first.</div>
+                    <div class="text-body-secondary">No sheet mappings available yet. Run Analyse Workbook first.</div>
                   {/if}
 
                   {#if workbookReport.skipped_sheets?.length}

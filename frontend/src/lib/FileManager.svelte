@@ -15,6 +15,7 @@
   export let rootName = '';
   export let title = '';
   export let description = '';
+  export let entryLabelResolver = () => '';
 
   let listing = { root: rootName, path: '', parent_path: null, entries: [] };
   let loading = false;
@@ -388,18 +389,24 @@
         </thead>
         <tbody>
           {#each listing?.entries || [] as entry}
+            {@const entryLabel = entry.type === 'directory' ? entryLabelResolver(entry, listing) : ''}
             <tr>
               <td>
-                <div class="d-flex align-items-center gap-2 flex-wrap">
-                  {#if entry.type === 'directory'}
-                    <button class="btn btn-link p-0 text-decoration-none" type="button" on:click={() => goToPath(entry.path)}>
-                      {entry.name}
-                    </button>
-                  {:else}
-                    <span>{entry.name}</span>
-                  {/if}
-                  {#if entry.protected}
-                    <span class="badge text-bg-warning">Protected</span>
+                <div class="d-grid gap-1">
+                  <div class="d-flex align-items-center gap-2 flex-wrap">
+                    {#if entry.type === 'directory'}
+                      <button class="btn btn-link p-0 text-decoration-none" type="button" on:click={() => goToPath(entry.path)}>
+                        {entry.name}
+                      </button>
+                    {:else}
+                      <span>{entry.name}</span>
+                    {/if}
+                    {#if entry.protected}
+                      <span class="badge text-bg-warning">Protected</span>
+                    {/if}
+                  </div>
+                  {#if entryLabel}
+                    <div class="small text-body-secondary">{entryLabel}</div>
                   {/if}
                 </div>
               </td>

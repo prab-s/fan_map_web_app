@@ -13,8 +13,10 @@
     downloadMaintenanceJobFile,
     getTemplates,
     getMaintenanceJob,
+    getProducts,
     getProductTypes,
     getUsers,
+    getSeries,
     startDataBackupBundleJob,
     startDatabaseBackupBundleJob,
     startDeleteAllGraphImagesJob,
@@ -54,6 +56,12 @@
   let mediaBackupFile = null;
   let maintenanceJob = null;
   let maintenancePollTimeout = null;
+  let products = [];
+  let productsLoaded = false;
+  let loadingProducts = false;
+  let series = [];
+  let seriesLoaded = false;
+  let loadingSeries = false;
   let productTypes = [];
   let productTypesLoaded = false;
   let loadingProductTypes = false;
@@ -76,6 +84,8 @@
   let successToastKey = 0;
   let successDismissTimeout = null;
   let isHttpOrigin = false;
+  let seriesByIdMap = new Map();
+  let productsByIdMap = new Map();
 
   function clearSuccessToast() {
     successMessages = [];
@@ -123,6 +133,8 @@
     const session = get(auth);
     if (session.authenticated) {
       loadUsers();
+      loadProducts();
+      loadSeries();
       loadProductTypes();
       loadTemplates();
     }
@@ -148,10 +160,38 @@
     loadProductTypes();
   }
 
+  $: if ($auth.authenticated && !productsLoaded && !loadingProducts) {
+    loadProducts();
+  }
+
+  $: if ($auth.authenticated && !seriesLoaded && !loadingSeries) {
+    loadSeries();
+  }
+
   $: showCookieWarning = browser && isHttpOrigin && $auth.authenticated && $auth.cookie_secure;
+
+  $: seriesByIdMap = new Map(series.map((item) => [String(item.id), item]));
+  $: productsByIdMap = new Map(products.map((item) => [String(item.id), item]));
 
   function productTemplates() {
     return templateRegistry.product_templates ?? [];
+  }
+
+  function mediaFolderLabelResolver(entry) {
+    if (!entry || entry.type !== 'directory') return '';
+    const match = String(entry.name || '').match(/^(series|product)_(\d+)$/i);
+    if (!match) return '';
+
+    const kind = match[1].toLowerCase();
+    const id = match[2];
+
+    if (kind === 'series') {
+      const seriesItem = seriesByIdMap.get(id);
+      return seriesItem?.name ? `Series ${id} · ${seriesItem.name}` : `Series ${id}`;
+    }
+
+    const productItem = productsByIdMap.get(id);
+    return productItem?.model ? `Product ${id} · ${productItem.model}` : `Product ${id}`;
   }
 
   function maintenanceJobTypeIncludes(...needles) {
@@ -184,6 +224,30 @@
       templateRegistry = await getTemplates();
     } catch (error) {
       typePresetError = error?.message || 'Unable to load templates.';
+    }
+  }
+
+  async function loadProducts() {
+    loadingProducts = true;
+    try {
+      products = await getProducts();
+      productsLoaded = true;
+    } catch (error) {
+      maintenanceErrorToast = error?.message || 'Unable to load products.';
+    } finally {
+      loadingProducts = false;
+    }
+  }
+
+  async function loadSeries() {
+    loadingSeries = true;
+    try {
+      series = await getSeries();
+      seriesLoaded = true;
+    } catch (error) {
+      maintenanceErrorToast = error?.message || 'Unable to load series.';
+    } finally {
+      loadingSeries = false;
     }
   }
 
@@ -1213,6 +1277,7 @@
               rootName="data"
               title="Media File Manager"
               description="Browse and manage media folders in the deployment volume. Open a folder to upload, create folders, rename, or delete items."
+              entryLabelResolver={mediaFolderLabelResolver}
             />
           </div>
 

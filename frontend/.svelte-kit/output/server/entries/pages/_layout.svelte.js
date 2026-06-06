@@ -1,11 +1,11 @@
 import { g as getContext, s as store_get, a as slot, b as attr, e as escape_html, c as attr_class, u as unsubscribe_stores } from "../../chunks/index2.js";
+import "clsx";
 import "@sveltejs/kit/internal";
 import "../../chunks/exports.js";
 import "../../chunks/utils.js";
 import "@sveltejs/kit/internal/server";
 import "../../chunks/root.js";
 import "../../chunks/state.svelte.js";
-import "clsx";
 import { a as auth } from "../../chunks/auth.js";
 import { t as theme } from "../../chunks/config.js";
 const getStores = () => {
@@ -36,16 +36,21 @@ function _layout($$renderer, $$props) {
     let password = "";
     let isPublicRoute = false;
     let currentPath = "";
+    let homeActive = false;
+    let editorActive = false;
+    let viewerActive = false;
+    let templateBuilderActive = false;
+    let bulkImportActive = false;
+    let setupActive = false;
     const PUBLIC_ROUTE_PREFIXES = ["/series", "/products"];
-    function pathMatches(pathname, path) {
-      if (path === "/") return pathname === "/";
-      return pathname === path || pathname.startsWith(`${path}/`);
-    }
-    function isActive(path) {
-      return pathMatches(currentPath, path);
-    }
     currentPath = store_get($$store_subs ??= {}, "$page", page).url.pathname;
     isPublicRoute = PUBLIC_ROUTE_PREFIXES.some((prefix) => currentPath === prefix || currentPath.startsWith(`${prefix}/`));
+    homeActive = currentPath === "/";
+    editorActive = currentPath === "/editor" || currentPath.startsWith("/editor/");
+    viewerActive = currentPath === "/viewer" || currentPath.startsWith("/viewer/");
+    templateBuilderActive = currentPath === "/template-builder" || currentPath.startsWith("/template-builder/");
+    bulkImportActive = currentPath === "/bulk-import" || currentPath.startsWith("/bulk-import/");
+    setupActive = currentPath === "/setup" || currentPath.startsWith("/setup/");
     $$renderer2.push(`<div class="app-shell">`);
     if (isPublicRoute) {
       $$renderer2.push("<!--[0-->");
@@ -68,36 +73,36 @@ function _layout($$renderer, $$props) {
     } else {
       $$renderer2.push("<!--[-1-->");
       $$renderer2.push(`<header class="topbar navbar navbar-expand-lg"><div class="container-fluid app-frame px-0 d-flex align-items-center gap-3 flex-wrap justify-content-center"><div class="topbar-brand navbar-brand mb-0 text-center text-lg-start"><div><p class="small text-uppercase text-body-secondary fw-semibold mb-1"><strong>Internal Facing</strong></p></div> <span class="small text-body-secondary">`);
-      if (isActive("/editor")) {
+      if (editorActive) {
         $$renderer2.push("<!--[0-->");
         $$renderer2.push(`Editor`);
-      } else if (isActive("/viewer")) {
+      } else if (viewerActive) {
         $$renderer2.push("<!--[1-->");
         $$renderer2.push(`Viewer`);
-      } else if (isActive("/template-builder-v2")) {
+      } else if (currentPath.startsWith("/template-builder-v2")) {
         $$renderer2.push("<!--[2-->");
         $$renderer2.push(`Template Builder V2`);
-      } else if (isActive("/template-builder")) {
+      } else if (templateBuilderActive) {
         $$renderer2.push("<!--[3-->");
         $$renderer2.push(`Template Builder`);
-      } else if (isActive("/setup")) {
+      } else if (setupActive) {
         $$renderer2.push("<!--[4-->");
         $$renderer2.push(`Setup`);
-      } else if (isActive("/bulk-import")) {
+      } else if (bulkImportActive) {
         $$renderer2.push("<!--[5-->");
         $$renderer2.push(`Bulk Import`);
       } else {
         $$renderer2.push("<!--[-1-->");
         $$renderer2.push(`Overview`);
       }
-      $$renderer2.push(`<!--]--></span></div> <nav class="nav nav-underline justify-content-center mx-auto" aria-label="Primary"><a${attr_class(`nav-link ${isActive("/") ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/">Home</a> <a${attr_class(`nav-link ${isActive("/editor") ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/editor">Editor</a> <a${attr_class(`nav-link ${isActive("/viewer") ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/viewer">Viewer</a> <a${attr_class(`nav-link ${isActive("/template-builder") ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/template-builder">Template Builder</a> `);
+      $$renderer2.push(`<!--]--></span></div> <nav class="nav nav-underline justify-content-center mx-auto" aria-label="Primary"><a${attr_class(`nav-link ${homeActive ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/"${attr("aria-current", homeActive ? "page" : void 0)}>Home</a> <a${attr_class(`nav-link ${editorActive ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/editor"${attr("aria-current", editorActive ? "page" : void 0)}>Editor</a> <a${attr_class(`nav-link ${viewerActive ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/viewer"${attr("aria-current", viewerActive ? "page" : void 0)}>Viewer</a> <a${attr_class(`nav-link ${templateBuilderActive ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/template-builder"${attr("aria-current", templateBuilderActive ? "page" : void 0)}>Template Builder</a> `);
       if (store_get($$store_subs ??= {}, "$auth", auth).is_admin) {
         $$renderer2.push("<!--[0-->");
-        $$renderer2.push(`<a${attr_class(`nav-link ${isActive("/bulk-import") ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/bulk-import">Bulk Import</a>`);
+        $$renderer2.push(`<a${attr_class(`nav-link ${bulkImportActive ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/bulk-import"${attr("aria-current", bulkImportActive ? "page" : void 0)}>Bulk Import</a>`);
       } else {
         $$renderer2.push("<!--[-1-->");
       }
-      $$renderer2.push(`<!--]--> <a${attr_class(`nav-link ${isActive("/setup") ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/setup">Setup</a></nav> <div class="d-flex align-items-center gap-2"><span class="small text-body-secondary d-none d-lg-inline">Signed in as ${escape_html(store_get($$store_subs ??= {}, "$auth", auth).username)}</span> <button class="btn btn-outline-primary btn-sm" type="button">${escape_html(store_get($$store_subs ??= {}, "$theme", theme) === "dark" ? "Switch to Light" : "Switch to Dark")}</button> <button class="btn btn-outline-secondary btn-sm" type="button">Sign Out</button></div></div></header> <main class="app-frame py-3"><!--[-->`);
+      $$renderer2.push(`<!--]--> <a${attr_class(`nav-link ${setupActive ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/setup"${attr("aria-current", setupActive ? "page" : void 0)}>Setup</a></nav> <div class="d-flex align-items-center gap-2"><span class="small text-body-secondary d-none d-lg-inline">Signed in as ${escape_html(store_get($$store_subs ??= {}, "$auth", auth).username)}</span> <button class="btn btn-outline-primary btn-sm" type="button">${escape_html(store_get($$store_subs ??= {}, "$theme", theme) === "dark" ? "Switch to Light" : "Switch to Dark")}</button> <button class="btn btn-outline-secondary btn-sm" type="button">Sign Out</button></div></div></header> <main class="app-frame py-3"><!--[-->`);
       slot($$renderer2, $$props, "default", {});
       $$renderer2.push(`<!--]--></main>`);
     }

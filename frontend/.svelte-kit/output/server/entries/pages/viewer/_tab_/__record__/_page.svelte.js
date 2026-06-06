@@ -7,7 +7,7 @@ import { f as fallback } from "../../../../../chunks/equality.js";
 import "@sveltejs/kit/internal/server";
 import "../../../../../chunks/root.js";
 import "../../../../../chunks/state.svelte.js";
-import { j as getProductChartData, k as getSeries, m as getSeriesById, n as getProducts, o as getProduct } from "../../../../../chunks/api.js";
+import { m as getProductChartData, i as getSeries, n as getSeriesById, h as getProducts, o as getProduct } from "../../../../../chunks/api.js";
 import { E as ECharts, g as getChartTheme, b as buildFullChartOption } from "../../../../../chunks/fullChart.js";
 import { t as theme } from "../../../../../chunks/config.js";
 import { J as JobProgressPanel } from "../../../../../chunks/JobProgressPanel.js";
