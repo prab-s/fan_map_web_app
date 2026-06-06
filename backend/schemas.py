@@ -517,6 +517,7 @@ class ProductResponse(ProductBase):
     id: int
     product_type_label: Optional[str] = None
     graph_image_url: Optional[str] = None
+    grouped_specs_main_table: Optional[str] = None
     product_pdf_url: Optional[str] = None
     product_printed_pdf_url: Optional[str] = None
     product_online_pdf_url: Optional[str] = None
@@ -724,10 +725,12 @@ class CmsProductResponse(BaseModel):
     description3_html: Optional[str] = None
     comments_html: Optional[str] = None
     graph_image_url: Optional[str] = None
+    grouped_specs_main_table: Optional[str] = None
     product_pdf_url: Optional[str] = None
     product_printed_pdf_url: Optional[str] = None
     product_online_pdf_url: Optional[str] = None
     primary_product_image_url: Optional[str] = None
+    product_images: list["ProductImageResponse"] = Field(default_factory=list)
     parameter_groups: list["ProductParameterGroupResponse"] = Field(default_factory=list)
     rpm_lines: list[RpmLineResponse] = Field(default_factory=list)
     efficiency_points: list[EfficiencyPointResponse] = Field(default_factory=list)

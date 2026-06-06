@@ -3155,6 +3155,39 @@ def render_grouped_specs_rows_html(product: Product, group_name: str) -> str:
     return "".join(rows)
 
 
+def render_grouped_specs_table_for_group(product: Product, group_name: str) -> str:
+    target_slug = template_token_slug(group_name)
+    matching_groups = [
+        group
+        for group in sorted(product.parameter_groups, key=lambda item: (item.sort_order, item.id))
+        if template_token_slug(group.group_name or "") == target_slug
+    ]
+    if not matching_groups:
+        return f'<p class="placeholder">No {html.escape(group_name.lower())} grouped specifications available.</p>'
+
+    rows: list[str] = []
+    for group in matching_groups:
+        for parameter in sorted(group.parameters, key=lambda item: (item.sort_order, item.id)):
+            if parameter.value_string not in {None, ""}:
+                value_html = html.escape(parameter.value_string)
+            elif parameter.value_number is not None:
+                number_value = f"{parameter.value_number:g}"
+                value_html = html.escape(f"{number_value} {parameter.unit}".strip())
+            else:
+                value_html = "—"
+            rows.append(
+                "<tr>"
+                f"<th>{html.escape(parameter.parameter_name)}</th>"
+                f"<td>{value_html}</td>"
+                "</tr>"
+            )
+
+    if not rows:
+        return f'<p class="placeholder">No {html.escape(group_name.lower())} grouped specifications available.</p>'
+
+    return '<table class="spec-table"><tbody>' + "".join(rows) + "</tbody></table>"
+
+
 def format_parameter_value(parameter: ProductParameter) -> str:
     if parameter.value_string not in {None, ""}:
         return parameter.value_string
@@ -3181,13 +3214,14 @@ def build_grouped_spec_token_map(product: Product) -> dict[str, str]:
 
 def build_grouped_spec_group_token_map(product: Product) -> dict[str, str]:
     replacements: dict[str, str] = {}
-    for group_name in ("impeller", "motor", "fan"):
+    for group_name in ("impeller", "motor", "fan", "main"):
         rows_html = render_grouped_specs_rows_html(product, group_name)
         replacements[f"{{{{product.grouped_specs_{group_name}_html}}}}"] = (
             '<div class="spec-list">' + rows_html + "</div>"
             if rows_html.startswith("<div class=\"spec-list__row\">")
             else rows_html
         )
+        replacements[f"{{{{product.grouped_specs_{group_name}_table}}}}"] = render_grouped_specs_table_for_group(product, group_name)
     return replacements
 
 
@@ -3409,6 +3443,7 @@ def build_product_pdf_html(product: Product, variant: str) -> tuple[str, str]:
         "{{product.comments_html}}": render_richtext_html(product.comments_html),
         "{{product.grouped_specs_cards}}": render_grouped_specs_cards(product),
         "{{product.grouped_specs_table}}": render_grouped_specs_table(product),
+        "{{product.grouped_specs_main_table}}": render_grouped_specs_table_for_group(product, "main"),
         "{{product.fan_acoustic_table}}": render_fan_acoustic_table(product),
         "{{product.image_gallery}}": render_image_gallery_html(product),
         "{{product.image_gallery_from_third}}": render_image_gallery_html(product, start_index=3),

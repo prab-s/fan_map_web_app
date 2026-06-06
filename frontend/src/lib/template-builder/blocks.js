@@ -97,6 +97,7 @@ export function buildTemplateBlocks() {
         '<form><div class="mb-3"><label class="form-label">Email</label><input type="email" class="form-control" placeholder="name@example.com" /></div><button class="btn btn-primary" type="submit">Submit</button></form>'
     },
     { id: 'spec-table', label: 'Specs Table', category: 'Data', content: '<div>{{product.grouped_specs_table}}</div>' },
+    { id: 'main-spec-table', label: 'Main Specs Table', category: 'Data', content: '<div>{{product.grouped_specs_main_table}}</div>' },
     { id: 'product-graph', label: 'Product Graph', category: 'Data', content: '<div>{{product.graph_image_tag}}</div>' },
     {
       id: 'series-graph',

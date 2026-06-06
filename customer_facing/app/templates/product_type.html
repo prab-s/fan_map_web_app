@@ -27,57 +27,37 @@
           <div class="small text-uppercase text-muted fw-semibold mb-1">Series count</div>
           <div class="stat-value mb-2">{{ series|length }}</div>
           <div class="small text-muted">Products listed in this type: {{ products|length }}</div>
+          <hr>
+          {% for item in product_type_downloads %}
+            <a class="btn btn-outline-secondary btn-sm" href="{{ media_url(item.url) }}" target="_blank" rel="noopener">{{ item.label }}</a>
+          {% endfor %}
         </div>
       </div>
     </div>
   </div>
 </section>
 
-{% if product_type_downloads %}
-  <section class="card shadow-sm mb-4">
-    <div class="card-body">
-      <div class="d-flex align-items-end justify-content-between flex-wrap gap-2 mb-3">
-        <div>
-          <p class="section-kicker text-uppercase fw-semibold mb-1">Product type downloads</p>
-          <p class="text-muted mb-0">Use the product type PDF first, then open the series or product pages for deeper PDFs.</p>
-        </div>
-      </div>
-      <div class="d-flex flex-wrap gap-2">
-        {% for item in product_type_downloads %}
-          <a class="btn btn-outline-secondary btn-sm" href="{{ media_url(item.url) }}" target="_blank" rel="noopener">{{ item.label }}</a>
-        {% endfor %}
+<section class="card shadow-sm border-0 mb-4 section-card">
+  <div class="card-body">
+    <div class="d-flex align-items-end justify-content-between flex-wrap gap-3 mb-3">
+      <div>
+        <p class="section-kicker text-uppercase fw-semibold mb-1">{{ selected_type.label }} Series</p>
       </div>
     </div>
-  </section>
-{% endif %}
 
-{% if selected_type.series_names %}
-  <div class="card shadow-sm border-0 mb-4 section-card">
-    <div class="card-body">
-      <h2 class="h5 mb-3">Series names</h2>
-      <div class="d-flex flex-wrap gap-2">
-        {% for series_name in selected_type.series_names %}
-          <span class="badge text-bg-light border">{{ series_name }}</span>
-        {% endfor %}
-      </div>
+    <div class="row g-3">
+      {% for series in series %}
+        <div class="col-12 col-sm-3">
+          {% include "partials/series_card.html" %}
+        </div>
+      {% else %}
+        <div class="col-12">
+          <p class="text-muted mb-0">No series found for this product type.</p>
+        </div>
+      {% endfor %}
     </div>
   </div>
-{% endif %}
-
-<div class="d-flex align-items-end justify-content-between flex-wrap gap-2 mb-3">
-  <h2 class="h4 mb-0">Series</h2>
-  <a class="btn btn-outline-secondary btn-sm" href="/contact">Need help choosing?</a>
-</div>
-
-<div class="row g-3 mb-5">
-  {% for series in series %}
-    <div class="col-md-6 col-xl-4">
-      {% include "partials/series_card.html" %}
-    </div>
-  {% else %}
-    <p class="text-muted">No series found for this product type.</p>
-  {% endfor %}
-</div>
+</section>
 
 <div class="d-flex align-items-end justify-content-between flex-wrap gap-2 mb-3">
   <h2 class="h4 mb-0">Products</h2>
@@ -85,7 +65,7 @@
 
 <div class="row g-3">
   {% for product in products %}
-    <div class="col-md-6 col-xl-4">
+    <div class="col-12 col-sm-6 col-lg-3">
       {% include "partials/product_card.html" %}
     </div>
   {% else %}

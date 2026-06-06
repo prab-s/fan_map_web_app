@@ -26,20 +26,18 @@
         {% endif %}
         <a class="btn btn-outline-secondary" href="{{ request_quote_url }}">Request a Quote</a>
       </div>
-    </section>
-
-    {% if series_downloads %}
-      <section class="card shadow-sm mb-4">
-        <div class="card-body">
-          <p class="section-kicker text-uppercase fw-semibold mb-1">Series downloads</p>
+      {% if series_downloads %}
+        <hr>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <span class="section-kicker text-uppercase fw-semibold mb-0">Series downloads</span>
           <div class="d-flex flex-wrap gap-2">
             {% for item in series_downloads %}
               <a class="btn btn-outline-secondary btn-sm" href="{{ media_url(item.url) }}" target="_blank" rel="noopener">{{ item.label }}</a>
             {% endfor %}
           </div>
         </div>
-      </section>
-    {% endif %}
+      {% endif %}
+    </section>
 
     {% for section in series_sections %}
       <section class="content-section mb-4">
@@ -100,7 +98,27 @@
   </div>
 
   <aside class="col-lg-4">
-    {% include "partials/downloads_panel.html" %}
+    {% if series.series_images %}
+      <section class="card shadow-sm mb-4">
+        <div class="card-body">
+          <p class="section-kicker text-uppercase fw-semibold mb-1">Series images</p>
+          <h2 class="h5 mb-3">Image set</h2>
+          <div class="row g-3">
+            {% for image in series.series_images %}
+              <div class="col-12">
+                <figure class="product-image-tile h-100 mb-0">
+                  <img
+                    class="product-image-tile__img"
+                    src="{{ media_url(image.url) }}"
+                    alt="{{ series.name }} image {{ loop.index }}"
+                  >
+                </figure>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      </section>
+    {% endif %}
   </aside>
 </div>
 

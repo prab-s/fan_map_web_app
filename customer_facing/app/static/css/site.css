@@ -253,10 +253,36 @@ body {
   border-bottom: 1px solid rgba(142, 154, 172, 0.68);
 }
 
-.product-main-image {
-  background: linear-gradient(180deg, rgba(185, 28, 28, 0.08), var(--catalogue-surface-soft));
-  max-height: 420px;
+.series-card-image {
+  height: 150px;
   object-fit: contain;
+  background:
+    linear-gradient(180deg, rgba(185, 28, 28, 0.1), rgba(127, 29, 29, 0.02) 42%),
+    var(--catalogue-surface-soft);
+  padding: 0.9rem;
+  border-bottom: 1px solid rgba(142, 154, 172, 0.68);
+}
+
+.series-card .card-body {
+  padding: 1rem;
+}
+
+.product-image-tile {
+  border-radius: 0.6rem;
+  overflow: hidden;
+  border: 1px solid rgba(142, 154, 172, 0.68);
+  background:
+    linear-gradient(180deg, rgba(185, 28, 28, 0.08), rgba(127, 29, 29, 0.02) 42%),
+    var(--catalogue-surface-soft);
+  box-shadow: 0 10px 24px rgba(2, 6, 23, 0.08);
+}
+
+.product-image-tile__img {
+  display: block;
+  width: 100%;
+  height: 240px;
+  object-fit: contain;
+  padding: 1rem;
 }
 
 .series-performance-card .card-body {
@@ -625,6 +651,28 @@ body {
 .product-card .text-muted,
 .series-card .text-muted {
   color: var(--catalogue-ink-muted) !important;
+}
+
+.product-card .spec-table {
+  font-size: 0.82rem;
+  line-height: 1.15;
+}
+
+.product-card .spec-table th,
+.product-card .spec-table td {
+  padding: 0.18rem 0;
+  border: 0;
+}
+
+.product-card .spec-table th {
+  width: 48%;
+  font-weight: 600;
+  color: var(--catalogue-ink);
+}
+
+.product-card .spec-table td {
+  color: var(--catalogue-ink-muted);
+  text-align: right;
 }
 
 .card-header.fw-semibold {

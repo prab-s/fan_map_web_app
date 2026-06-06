@@ -7,10 +7,10 @@
     <li class="breadcrumb-item"><a href="/">Home</a></li>
     <li class="breadcrumb-item"><a href="{{ products_url() }}">Products</a></li>
     {% if product_type %}
-      <li class="breadcrumb-item"><a href="{{ product_type_url(product_type) }}">{{ product_type.label }}</a></li>
+    <li class="breadcrumb-item"><a href="{{ product_type_url(product_type) }}">{{ product_type.label }}</a></li>
     {% endif %}
     {% if series %}
-      <li class="breadcrumb-item"><a href="{{ series_url(series) }}">{{ series.name }}</a></li>
+    <li class="breadcrumb-item"><a href="{{ series_url(series) }}">{{ series.name }}</a></li>
     {% endif %}
     <li class="breadcrumb-item active" aria-current="page">{{ product.model }}</li>
   </ol>
@@ -23,94 +23,105 @@
       <h1 class="display-6 mb-3">{{ product.model }}</h1>
       <p class="lead text-muted mb-3">
         {% if product.series_name %}
-          {{ product.series_name }} ·
+        {{ product.series_name }} ·
         {% endif %}
         Exact model data, performance output, and downloadable PDFs.
       </p>
       <div class="d-flex flex-wrap gap-2">
         <a class="btn btn-primary" href="{{ products_url() }}">Back to Products</a>
         {% if series %}
-          <a class="btn btn-outline-secondary" href="{{ series_url(series) }}">Series page</a>
+        <a class="btn btn-outline-secondary" href="{{ series_url(series) }}">Series page</a>
         {% endif %}
         <a class="btn btn-outline-secondary" href="{{ request_quote_url }}">Request a Quote</a>
       </div>
+      <hr>
+      {% if product_downloads %}
+      <p class="section-kicker text-uppercase fw-semibold mb-1">Product downloads</p>
+      <div class="d-flex flex-wrap gap-2">
+        {% for item in product_downloads %}
+        <a class="btn btn-outline-secondary btn-sm" href="{{ media_url(item.url) }}" target="_blank" rel="noopener">{{
+          item.label }}</a>
+        {% endfor %}
+      </div>
+      {% endif %}
     </section>
 
-    {% if product.primary_product_image_url %}
-      <img
-        class="img-fluid rounded-2 border mb-4 product-main-image"
-        src="{{ media_url(product.primary_product_image_url) }}"
-        alt="{{ product.model }}"
-      >
-    {% endif %}
-
-    {% if product_downloads %}
-      <section class="card shadow-sm mb-4">
-        <div class="card-body">
-          <p class="section-kicker text-uppercase fw-semibold mb-1">Product downloads</p>
-          <div class="d-flex flex-wrap gap-2">
-            {% for item in product_downloads %}
-              <a class="btn btn-outline-secondary btn-sm" href="{{ media_url(item.url) }}" target="_blank" rel="noopener">{{ item.label }}</a>
-            {% endfor %}
-          </div>
-        </div>
-      </section>
-    {% endif %}
-
     {% for section in product_sections %}
-      <section class="content-section mb-4">
-        <h2 class="h4">{{ section.title }}</h2>
-        <div class="content-block">
-          {{ section.html | safe }}
-        </div>
-      </section>
+    <section class="content-section mb-4">
+      <h2 class="h4">{{ section.title }}</h2>
+      <div class="content-block">
+        {{ section.html | safe }}
+      </div>
+    </section>
     {% endfor %}
 
     {% if product_graph.hasGraphData %}
-      <div class="card my-4 product-graph-card">
-        <div class="card-header fw-semibold">Performance graph</div>
-        <div class="card-body">
-          <div
-            id="product-graph"
-            class="product-graph-host"
-            data-product-graph-host
-            aria-label="{{ product.model }} performance graph"
-          ></div>
-          {% if product.graph_image_url %}
-            <noscript>
-              <img class="img-fluid mt-3" src="{{ media_url(product.graph_image_url) }}" alt="{{ product.model }} graph">
-            </noscript>
-          {% endif %}
-        </div>
+    <div class="card my-4 product-graph-card">
+      <div class="card-header fw-semibold">Performance graph</div>
+      <div class="card-body">
+        <div id="product-graph" class="product-graph-host" data-product-graph-host
+          aria-label="{{ product.model }} performance graph"></div>
+        {% if product.graph_image_url %}
+        <noscript>
+          <img class="img-fluid mt-3" src="{{ media_url(product.graph_image_url) }}" alt="{{ product.model }} graph">
+        </noscript>
+        {% endif %}
       </div>
+    </div>
     {% elif product.graph_image_url %}
-      <div class="card my-4">
-        <div class="card-header fw-semibold">Performance graph</div>
-        <div class="card-body">
-          <img class="img-fluid" src="{{ media_url(product.graph_image_url) }}" alt="{{ product.model }} graph">
-        </div>
+    <div class="card my-4">
+      <div class="card-header fw-semibold">Performance graph</div>
+      <div class="card-body">
+        <img class="img-fluid" src="{{ media_url(product.graph_image_url) }}" alt="{{ product.model }} graph">
       </div>
+    </div>
     {% endif %}
 
     {% include "partials/fan_acoustic_table.html" %}
 
     {% if product.parameter_groups %}
-      <h2 class="h4 mt-4">Specifications</h2>
-      {% include "partials/specs_table.html" %}
+    <h2 class="h4 mt-4">Specifications</h2>
+    {% include "partials/specs_table.html" %}
     {% endif %}
   </div>
 
-  <aside class="col-lg-4">
+  <!-- <aside class="col-lg-4">
     {% include "partials/downloads_panel.html" %}
+  </aside> -->
+  <aside class="col">
+    {% if product.product_images %}
+    <section class="card shadow-sm mb-4">
+      <div class="card-body">
+        <div class="d-flex align-items-end justify-content-between flex-wrap gap-2 mb-3">
+          <div>
+            <p class="section-kicker text-uppercase fw-semibold mb-1">Product images</p>
+            <h2 class="h5 mb-0">All product images</h2>
+          </div>
+          <div class="small text-muted">{{ product.product_images|length }} image{% if product.product_images|length !=
+            1 %}s{% endif %}</div>
+        </div>
+        <div class="row g-3">
+          {% for image in product.product_images %}
+          <div class="col-12 col-sm-6">
+            <figure class="product-image-tile h-100 mb-0">
+              <img class="product-image-tile__img" src="{{ media_url(image.url) }}"
+                alt="{{ product.model }} image {{ loop.index }}">
+            </figure>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+    {% endif %}
   </aside>
 </div>
 
 {% endblock %}
 
 {% block page_scripts %}
-  <script>
-    window.__PRODUCT_GRAPH_DATA__ = {{ product_graph | tojson }};
-  </script>
-  <script src="/static/js/echarts.min.js" defer></script>
-  <script src="/static/js/product-graph.js" defer></script>
+<script>
+  window.__PRODUCT_GRAPH_DATA__ = {{ product_graph | tojson }};
+</script>
+<script src="/static/js/echarts.min.js" defer></script>
+<script src="/static/js/product-graph.js" defer></script>
 {% endblock %}

@@ -6,6 +6,7 @@ import re
 import hashlib
 import colorsys
 import json
+import html
 
 from sqlalchemy import Boolean, Column, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
@@ -517,6 +518,38 @@ class Product(Base):
             return None
         first_image = sorted(self.product_images, key=lambda img: (img.sort_order, img.id))[0]
         return first_image.url
+
+    @property
+    def grouped_specs_main_table(self):
+        matching_groups = [
+            group
+            for group in sorted(self.parameter_groups or [], key=lambda item: (item.sort_order, item.id))
+            if (group.group_name or "").strip().lower() == "main"
+        ]
+        if not matching_groups:
+            return None
+
+        rows: list[str] = []
+        for group in matching_groups:
+            for parameter in sorted(group.parameters or [], key=lambda item: (item.sort_order, item.id)):
+                if parameter.value_string not in {None, ""}:
+                    value_html = html.escape(parameter.value_string)
+                elif parameter.value_number is not None:
+                    number_value = f"{parameter.value_number:g}"
+                    value_html = html.escape(f"{number_value} {parameter.unit}".strip())
+                else:
+                    value_html = "—"
+                rows.append(
+                    "<tr>"
+                    f"<th>{html.escape(parameter.parameter_name)}</th>"
+                    f"<td>{value_html}</td>"
+                    "</tr>"
+                )
+
+        if not rows:
+            return None
+
+        return '<table class="spec-table"><tbody>' + "".join(rows) + "</tbody></table>"
 
     @property
     def product_pdf_url(self):

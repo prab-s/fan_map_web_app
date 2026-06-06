@@ -9,18 +9,22 @@
 
   <div class="card-body">
     <h3 class="h5 card-title">
+      {% if product.series_name %}
+        <span class="badge text-bg-light border mb-2">
+          {{ product.series_name }}
+        </span>
+      {% endif %}
       <a class="stretched-link text-decoration-none" href="{{ product_url(product) }}">
         {{ product.model }}
       </a>
     </h3>
 
-    <p class="text-muted small mb-2">
-      {{ product.product_type_label }}
-      {% if product.series_name %} · {{ product.series_name }}{% endif %}
-    </p>
+    <div class="table-responsive">
+      {{ product.grouped_specs_main_table | safe }}
+    </div>
 
-    {% if product.product_pdf_url or product.product_online_pdf_url or product.product_printed_pdf_url %}
-      <span class="badge text-bg-light border">Datasheet available</span>
+    {% if product.description1_html %}
+      <p class="card-text mt-2">{{ product.description1_html }}</p>
     {% endif %}
   </div>
 </div>

@@ -234,6 +234,7 @@
       '{{product.grouped_specs_impeller_html}}': createPreviewSpecsHtml('Impeller'),
       '{{product.grouped_specs_motor_html}}': createPreviewSpecsHtml('Motor'),
       '{{product.grouped_specs_fan_html}}': createPreviewSpecsHtml('Fan'),
+      '{{product.grouped_specs_main_html}}': createPreviewSpecsHtml('Main'),
       '{{product.description1_html}}': '<p>Sample product description block. This is where the product overview appears.</p>',
       '{{product.description2_html}}': '<p>Sample product feature block. Add supporting product details here.</p>',
       '{{product.description3_html}}': '<p>Sample product specification block. Additional product detail appears here.</p>',
@@ -253,6 +254,11 @@
           'General purpose exhaust'
         ]),
       '{{product.grouped_specs_table}}': createPreviewTable('Grouped Specs', [
+        ['Model', 'Sample Model 3000'],
+        ['Frame', 'Cast aluminum'],
+        ['Finish', 'Powder coated']
+      ]),
+      '{{product.grouped_specs_main_table}}': createPreviewTable('Main Specs', [
         ['Model', 'Sample Model 3000'],
         ['Frame', 'Cast aluminum'],
         ['Finish', 'Powder coated']
