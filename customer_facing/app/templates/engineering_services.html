@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb small mb-0">
+    <li class="breadcrumb-item"><a href="/">Home</a></li>
+    <li class="breadcrumb-item active" aria-current="page">Engineering services</li>
+  </ol>
+</nav>
+
+<section class="engineering-hero page-hero mb-4">
+  <div class="row g-4 align-items-center">
+    <div class="col-lg-7">
+      <p class="section-kicker text-uppercase fw-semibold mb-2">Engineering services</p>
+      <h1 class="display-6 mb-3">Fabrication support for custom metalwork and project build-outs</h1>
+      <p class="lead text-muted mb-0">
+        Our engineering services cover the practical workshop processes that turn flat material into usable parts.
+        We support laser cutting, brake pressing, rolling, and flanging for custom fabrication jobs, prototypes, and repeat work.
+      </p>
+    </div>
+    <div class="col-lg-5">
+      <div class="hero-callout card shadow-sm engineering-callout">
+        <div class="card-body">
+          <div class="small text-uppercase text-muted fw-semibold mb-1">Workshop capabilities</div>
+          <ul class="list-unstyled mb-0 d-grid gap-2">
+            <li class="d-flex gap-2"><span class="service-bullet">01</span><span>Laser cutting for clean, accurate part profiles</span></li>
+            <li class="d-flex gap-2"><span class="service-bullet">02</span><span>Brake pressing for folds, returns, and formed sections</span></li>
+            <li class="d-flex gap-2"><span class="service-bullet">03</span><span>Rolling for curved sections and controlled radii</span></li>
+            <li class="d-flex gap-2"><span class="service-bullet">04</span><span>Flanging for stiffened edges and better assembly</span></li>
+          </ul>
+          <div class="d-flex flex-wrap gap-2 mt-3">
+            <a class="btn btn-primary" href="{{ request_quote_url }}">Request a Quote</a>
+            <a class="btn btn-outline-secondary" href="/contact">Talk to the team</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="engineering-intro surface-section mb-4">
+  <div class="row g-4">
+    <div class="col-lg-8">
+      <div class="card shadow-sm border-0 section-card h-100">
+        <div class="card-body p-4">
+          <p class="section-kicker text-uppercase fw-semibold mb-2">What we do</p>
+          <h2 class="h4 mb-3">Reliable workshop processes that support fabrication and product development</h2>
+          <div class="hero-copy">
+            <p>
+              Engineering services are often the bridge between design intent and a finished component. We can help
+              with straightforward production work, one-off parts, and custom fabrication requirements where a clean,
+              accurate result matters.
+            </p>
+            <p>
+              The service list below focuses on the main processes people ask us for most often. If your job needs a
+              combination of these steps, we can usually sequence the work so the part moves from flat material to a
+              ready-to-use component without unnecessary rework.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-4">
+      <div class="card shadow-sm border-0 section-card h-100">
+        <div class="card-body p-4">
+          <p class="section-kicker text-uppercase fw-semibold mb-2">Best fit for</p>
+          <ul class="mb-0 ps-3">
+            <li>Custom metal parts and small assemblies</li>
+            <li>Prototype work and repeat fabrication runs</li>
+            <li>Panels, brackets, guards, and formed components</li>
+            <li>Edge finishing and shape control on curved parts</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="surface-section mb-4">
+  <div class="row g-4">
+    {% for service in services %}
+    <div class="col-lg-6">
+      <article class="card shadow-sm border-0 service-card h-100">
+        <div class="service-visual-wrap">
+          <img class="service-visual-image" src="{{ service.image }}" alt="{{ service.title }} illustration" loading="lazy">
+          <div class="service-visual-overlay">
+            <span class="badge text-bg-dark">{{ service.badge }}</span>
+          </div>
+        </div>
+        <div class="card-body p-4">
+          <p class="section-kicker text-uppercase fw-semibold mb-2">{{ service.title }}</p>
+          <h2 class="h4 mb-2">{{ service.title }}</h2>
+          <p class="text-muted mb-3">{{ service.summary }}</p>
+          <ul class="service-list mb-0">
+            {% for point in service.points %}
+            <li>{{ point }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </article>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="engineering-cta page-hero mb-4">
+  <div class="row g-4 align-items-center">
+    <div class="col-lg-8">
+      <p class="section-kicker text-uppercase fw-semibold mb-2">Next step</p>
+      <h2 class="h4 mb-2">Send us the drawing, dimensions, or rough idea and we can advise on the best process.</h2>
+      <p class="text-muted mb-0">
+        If a part needs multiple operations, we can help talk through the order of work and what will give the cleanest
+        finish.
+      </p>
+    </div>
+    <div class="col-lg-4 text-lg-end">
+      <a class="btn btn-primary btn-lg" href="{{ request_quote_url }}">Request a Quote</a>
+    </div>
+  </div>
+</section>
+{% endblock %}

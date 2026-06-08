@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-label="Brake press illustration">
+  <defs>
+    <linearGradient id="press-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1d4ed8"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="360" rx="28" fill="url(#press-bg)"/>
+  <rect x="110" y="82" width="420" height="42" rx="12" fill="#e2e8f0"/>
+  <rect x="168" y="124" width="304" height="28" rx="10" fill="#94a3b8"/>
+  <path d="M176 182 L316 240 L454 182" fill="none" stroke="#f8fafc" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M176 182 L176 250 L454 250" fill="none" stroke="#22c55e" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="146" y="258" width="348" height="24" rx="12" fill="rgba(248,250,252,0.18)"/>
+  <circle cx="516" cy="252" r="26" fill="#f59e0b"/>
+  <circle cx="516" cy="252" r="10" fill="#fff7ed"/>
+</svg>

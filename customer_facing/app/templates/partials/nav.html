@@ -33,6 +33,17 @@
             </a>
           {% endfor %}
         </div>
+
+        <a
+          class="btn btn-outline-light nav-service-button btn-sm"
+          href="/engineering-services"
+          {% if request.url.path.startswith('/engineering-services') %}
+            aria-current="page"
+          {% endif %}
+        >
+          Engineering Services
+        </a>
+
       </div>
     </div>
   </div>

@@ -595,6 +595,71 @@ async def contact_page(request: Request):
     return templates.TemplateResponse(request, "contact.html", context)
 
 
+@router.get("/engineering-services")
+async def engineering_services_page(request: Request):
+    context = await common_context()
+    context.update({
+        "request": request,
+        "seo": seo_meta(
+            "Engineering services",
+            "Laser cutting, brake pressing, rolling, and flanging services for custom fabrication and project support.",
+            "/engineering-services",
+        ),
+        "request_quote_url": request_quote_url(),
+        "services": [
+            {
+                "title": "Laser cutter",
+                "summary": "Fast, precise cutting for sheet metal parts, cut-outs, brackets, panels, and repeatable fabrication work.",
+                "image": "/static/media/laser-cutter.svg",
+                "points": [
+                    "Clean profiles with consistent edges",
+                    "Ideal for one-offs, short runs, and repeat jobs",
+                    "Supports detailed openings and custom shapes",
+                ],
+                "badge": "Precision cutting",
+                "tone": "laser",
+            },
+            {
+                "title": "Brake press",
+                "summary": "Accurate folding for enclosures, returns, brackets, and formed components that need repeatable angles.",
+                "image": "/static/media/brake-press.svg",
+                "points": [
+                    "Reliable bends and formed sections",
+                    "Good for enclosures and structural parts",
+                    "Helps move from flat sheet to finished parts",
+                ],
+                "badge": "Clean folds",
+                "tone": "press",
+            },
+            {
+                "title": "Roller",
+                "summary": "Rolling for curved sections, arcs, cylindrical forms, and other components that need a controlled radius.",
+                "image": "/static/media/roller.svg",
+                "points": [
+                    "Curved profiles and rolled sections",
+                    "Useful for ducting and shaped assemblies",
+                    "Supports gentle forming without harsh edges",
+                ],
+                "badge": "Controlled curves",
+                "tone": "roller",
+            },
+            {
+                "title": "Flanger",
+                "summary": "Edge forming and stiffening for components that need a flange, a stronger rim, or a cleaner join.",
+                "image": "/static/media/flanger.svg",
+                "points": [
+                    "Strengthens edges and improves rigidity",
+                    "Helps prepare parts for assembly",
+                    "Useful on round and custom fabricated components",
+                ],
+                "badge": "Stiffened edges",
+                "tone": "flange",
+            },
+        ],
+    })
+    return templates.TemplateResponse(request, "engineering_services.html", context)
+
+
 @router.get("/finder")
 async def finder_page_redirect():
     return RedirectResponse(products_url(), status_code=307)

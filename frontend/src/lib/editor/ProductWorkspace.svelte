@@ -1157,7 +1157,7 @@
 
   function productGraphKindLabel() {
     const graphKind = getCurrentProductType()?.graph_kind;
-    if (graphKind === "silencer_loss") return "silencer pressure-loss graph";
+    if (graphKind === "silencer_loss") return "attenuator pressure-loss graph";
     if (graphKind === "fan_map") return "fan graph";
     return "product graph";
   }

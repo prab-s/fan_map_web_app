@@ -5514,7 +5514,7 @@ def list_product_types(db: Session = Depends(get_db)):
             selectinload(ProductType.rpm_line_presets).selectinload(ProductTypeRpmLinePreset.point_presets),
             selectinload(ProductType.efficiency_point_presets),
         )
-        .order_by(ProductType.label)
+        .order_by(ProductType.sort_order, ProductType.id)
         .all()
     )
 
@@ -5537,7 +5537,7 @@ def list_public_product_types(db: Session = Depends(get_db)):
             selectinload(ProductType.rpm_line_presets).selectinload(ProductTypeRpmLinePreset.point_presets),
             selectinload(ProductType.efficiency_point_presets),
         )
-        .order_by(ProductType.label)
+        .order_by(ProductType.sort_order, ProductType.id)
         .all()
     )
 
@@ -5556,6 +5556,8 @@ def create_product_type(body: ProductTypeCreate, db: Session = Depends(get_db)):
     if existing:
         raise HTTPException(status_code=400, detail="A product type with that key already exists.")
 
+    next_sort_order = db.query(func.coalesce(func.max(ProductType.sort_order), -1)).scalar()
+
     printed_product_template_id, online_product_template_id = resolve_template_pair(
         "product",
         body.product_template_id,
@@ -5566,6 +5568,7 @@ def create_product_type(body: ProductTypeCreate, db: Session = Depends(get_db)):
     product_type = ProductType(
         key=key,
         label=label,
+        sort_order=int(next_sort_order) + 1,
         supports_graph=bool(body.supports_graph),
         graph_kind=(body.graph_kind or "").strip() or None,
         supports_graph_overlays=bool(body.supports_graph_overlays),
@@ -7490,6 +7493,7 @@ def start_regenerate_all_product_type_pdfs_job():
                 .options(
                     selectinload(ProductType.series).selectinload(Series.products).joinedload(Product.product_type),
                 )
+                .order_by(ProductType.sort_order, ProductType.id)
                 .all()
             )
             total = len(product_types)

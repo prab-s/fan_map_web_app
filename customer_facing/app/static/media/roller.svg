@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-label="Roller illustration">
+  <defs>
+    <linearGradient id="roller-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#111827"/>
+      <stop offset="100%" stop-color="#065f46"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="360" rx="28" fill="url(#roller-bg)"/>
+  <circle cx="164" cy="176" r="72" fill="rgba(255,255,255,0.08)"/>
+  <circle cx="320" cy="176" r="72" fill="rgba(255,255,255,0.12)"/>
+  <circle cx="476" cy="176" r="72" fill="rgba(255,255,255,0.08)"/>
+  <path d="M110 228 C 210 124, 430 124, 530 228" fill="none" stroke="#e2e8f0" stroke-width="14" stroke-linecap="round"/>
+  <path d="M140 118 L500 118" fill="none" stroke="#34d399" stroke-width="10" stroke-linecap="round"/>
+  <path d="M160 264 L480 264" fill="none" stroke="rgba(255,255,255,0.45)" stroke-width="10" stroke-linecap="round"/>
+</svg>

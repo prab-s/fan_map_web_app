@@ -1,6 +1,7 @@
 import os
 import hashlib
 import colorsys
+from pathlib import Path
 
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -86,7 +87,10 @@ def init_db():
     _ensure_product_type_parameter_preset_columns(engine)
     _remove_deprecated_product_type_secondary_axis_label(engine)
     _ensure_user_columns(engine)
+    _migrate_silencer_product_type_to_attenuator(engine)
+    _migrate_silencer_product_type_pdfs(engine)
     _seed_product_types(engine)
+    _ensure_product_type_sort_order(engine)
     _migrate_legacy_map_points(engine)
 
 
@@ -245,6 +249,7 @@ def _ensure_product_type_columns(target_engine):
     missing_columns = {
         "supports_graph_overlays": f"BOOLEAN NOT NULL DEFAULT {boolean_false_sql}",
         "supports_band_graph_style": f"BOOLEAN NOT NULL DEFAULT {boolean_false_sql}",
+        "sort_order": "INTEGER NOT NULL DEFAULT 0",
         "graph_line_value_label": "VARCHAR(128)",
         "graph_line_value_unit": "VARCHAR(64)",
         "graph_x_axis_label": "VARCHAR(128)",
@@ -313,6 +318,7 @@ def _seed_product_types(target_engine):
         {
             "key": "fan",
             "label": "Fan",
+            "sort_order": 0,
             "supports_graph": True,
             "graph_kind": "fan_map",
             "supports_graph_overlays": True,
@@ -335,30 +341,9 @@ def _seed_product_types(target_engine):
             ],
         },
         {
-            "key": "silencer",
-            "label": "Silencer",
-            "supports_graph": True,
-            "graph_kind": "silencer_loss",
-            "supports_graph_overlays": False,
-            "supports_band_graph_style": False,
-            "graph_line_value_label": "Diameter",
-            "graph_line_value_unit": "mm",
-            "graph_x_axis_label": "Volume Flow",
-            "graph_x_axis_unit": "L/s",
-            "graph_y_axis_label": "Pressure Loss",
-            "graph_y_axis_unit": "Pa",
-            "product_template_id": None,
-            "band_graph_background_color": "#ffffff",
-            "band_graph_label_text_color": "#000000",
-            "band_graph_faded_opacity": 0.18,
-            "band_graph_permissible_label_color": "#000000",
-            "groups": [
-                ("Silencer", [("Diameter", "mm"), ("Length", "mm"), ("Casing", None), ("Media", None), ("Weight", "kg")]),
-            ],
-        },
-        {
             "key": "speed_controller",
             "label": "Speed Controller",
+            "sort_order": 1,
             "supports_graph": False,
             "graph_kind": None,
             "supports_graph_overlays": False,
@@ -376,6 +361,29 @@ def _seed_product_types(target_engine):
             "band_graph_permissible_label_color": "#000000",
             "groups": [
                 ("Controller", [("Power Supply", None), ("Current", "A"), ("Mounting", None), ("Protection", None)]),
+            ],
+        },
+        {
+            "key": "attenuator",
+            "label": "Attenuator",
+            "sort_order": 2,
+            "supports_graph": True,
+            "graph_kind": "silencer_loss",
+            "supports_graph_overlays": False,
+            "supports_band_graph_style": False,
+            "graph_line_value_label": "Diameter",
+            "graph_line_value_unit": "mm",
+            "graph_x_axis_label": "Volume Flow",
+            "graph_x_axis_unit": "L/s",
+            "graph_y_axis_label": "Pressure Loss",
+            "graph_y_axis_unit": "Pa",
+            "product_template_id": None,
+            "band_graph_background_color": "#ffffff",
+            "band_graph_label_text_color": "#000000",
+            "band_graph_faded_opacity": 0.18,
+            "band_graph_permissible_label_color": "#000000",
+            "groups": [
+                ("Attenuator", [("Diameter", "mm"), ("Length", "mm"), ("Casing", None), ("Media", None), ("Weight", "kg")]),
             ],
         },
     ]
@@ -396,6 +404,7 @@ def _seed_product_types(target_engine):
                         INSERT INTO product_types (
                             key,
                             label,
+                            sort_order,
                             supports_graph,
                             graph_kind,
                             supports_graph_overlays,
@@ -415,6 +424,7 @@ def _seed_product_types(target_engine):
                         VALUES (
                             :key,
                             :label,
+                            :sort_order,
                             :supports_graph,
                             :graph_kind,
                             :supports_graph_overlays,
@@ -436,6 +446,7 @@ def _seed_product_types(target_engine):
                     {
                         "key": seed["key"],
                         "label": seed["label"],
+                        "sort_order": seed["sort_order"],
                         "supports_graph": seed["supports_graph"],
                         "graph_kind": seed["graph_kind"],
                         "supports_graph_overlays": seed["supports_graph_overlays"],
@@ -464,6 +475,7 @@ def _seed_product_types(target_engine):
                         UPDATE product_types
                         SET
                             label = :label,
+                            sort_order = :sort_order,
                             supports_graph = :supports_graph,
                             graph_kind = :graph_kind,
                             supports_graph_overlays = :supports_graph_overlays,
@@ -484,6 +496,7 @@ def _seed_product_types(target_engine):
                     {
                         "id": existing,
                         "label": seed["label"],
+                        "sort_order": seed["sort_order"],
                         "supports_graph": seed["supports_graph"],
                         "graph_kind": seed["graph_kind"],
                         "supports_graph_overlays": seed["supports_graph_overlays"],
@@ -647,6 +660,100 @@ def _seed_product_types(target_engine):
                 ),
                 {"product_type_id": fan_product_type_id},
             )
+
+
+def _migrate_silencer_product_type_to_attenuator(target_engine):
+    inspector = inspect(target_engine)
+    if "product_types" not in set(inspector.get_table_names()):
+        return
+
+    with target_engine.begin() as connection:
+        attenuator_id = connection.execute(
+            text("SELECT id FROM product_types WHERE key = :key"),
+            {"key": "attenuator"},
+        ).scalar()
+        silencer_id = connection.execute(
+            text("SELECT id FROM product_types WHERE key = :key"),
+            {"key": "silencer"},
+        ).scalar()
+
+        if silencer_id is not None and attenuator_id is None:
+            connection.execute(
+                text(
+                    """
+                    UPDATE product_types
+                    SET key = :new_key,
+                        label = :label
+                    WHERE id = :id
+                    """
+                ),
+                {"id": silencer_id, "new_key": "attenuator", "label": "Attenuator"},
+            )
+            attenuator_id = silencer_id
+        elif attenuator_id is not None:
+            connection.execute(
+                text(
+                    """
+                    UPDATE product_types
+                    SET label = :label
+                    WHERE id = :id
+                    """
+                ),
+                {"id": attenuator_id, "label": "Attenuator"},
+            )
+
+        if attenuator_id is not None:
+            connection.execute(
+                text(
+                    """
+                    UPDATE product_type_parameter_group_presets
+                    SET group_name = :new_name
+                    WHERE product_type_id = :product_type_id AND group_name = :old_name
+                    """
+                ),
+                {
+                    "product_type_id": attenuator_id,
+                    "old_name": "Silencer",
+                    "new_name": "Attenuator",
+                },
+            )
+
+
+def _migrate_silencer_product_type_pdfs(target_engine):
+    if target_engine.dialect.name != "sqlite":
+        return
+
+    pdf_dir = Path(DEFAULT_DATA_DIR) / "product_type_pdfs"
+    legacy_pdf = pdf_dir / "product_type_printed_silencer.pdf"
+    renamed_pdf = pdf_dir / "product_type_printed_attenuator.pdf"
+    if legacy_pdf.exists():
+        pdf_dir.mkdir(parents=True, exist_ok=True)
+        if renamed_pdf.exists():
+            legacy_pdf.unlink()
+        else:
+            legacy_pdf.replace(renamed_pdf)
+
+
+def _ensure_product_type_sort_order(target_engine):
+    inspector = inspect(target_engine)
+    if "product_types" not in set(inspector.get_table_names()):
+        return
+
+    with target_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                UPDATE product_types
+                SET sort_order = CASE
+                    WHEN key = 'fan' THEN 0
+                    WHEN key = 'speed_controller' THEN 1
+                    WHEN key = 'attenuator' THEN 2
+                    WHEN sort_order = 0 THEN 1000 + id
+                    ELSE sort_order
+                END
+                """
+            )
+        )
 
 
 def _ensure_user_columns(target_engine):
@@ -949,6 +1056,7 @@ def _remove_deprecated_product_type_secondary_axis_label(target_engine):
                     id INTEGER PRIMARY KEY,
                     key VARCHAR(64) NOT NULL UNIQUE,
                     label VARCHAR(255) NOT NULL,
+                    sort_order INTEGER NOT NULL DEFAULT 0,
                     supports_graph BOOLEAN NOT NULL DEFAULT 0,
                     graph_kind VARCHAR(64),
                     supports_graph_overlays BOOLEAN NOT NULL DEFAULT 0,
@@ -973,6 +1081,7 @@ def _remove_deprecated_product_type_secondary_axis_label(target_engine):
                     id,
                     key,
                     label,
+                    sort_order,
                     supports_graph,
                     graph_kind,
                     supports_graph_overlays,
@@ -991,6 +1100,7 @@ def _remove_deprecated_product_type_secondary_axis_label(target_engine):
                     id,
                     key,
                     label,
+                    sort_order,
                     supports_graph,
                     graph_kind,
                     supports_graph_overlays,

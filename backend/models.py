@@ -233,6 +233,7 @@ class ProductType(Base):
     id = Column(Integer, primary_key=True, index=True)
     key = Column(String(64), nullable=False, unique=True, index=True)
     label = Column(String(255), nullable=False)
+    sort_order = Column(Integer, nullable=False, default=0)
     supports_graph = Column(Boolean, nullable=False, default=False)
     graph_kind = Column(String(64), nullable=True)
     supports_graph_overlays = Column(Boolean, nullable=False, default=False)
