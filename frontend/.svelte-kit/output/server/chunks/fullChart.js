@@ -245,7 +245,7 @@ function formatGraphLineValue(value, graphConfig, line = null) {
   const unit = String(graphConfig?.graph_line_value_unit ?? "").trim();
   return unit ? `${numericText} ${unit}` : numericText;
 }
-function resolveBandColor(line, index) {
+function resolveBandColor(line, index = 0) {
   return normalizeOptionalColor(line?.band_color) ?? RPM_BAND_FALLBACK_COLORS[index % RPM_BAND_FALLBACK_COLORS.length];
 }
 function normalizeFlowValues(values) {
@@ -807,9 +807,13 @@ function buildRpmBandPolygonSeries(rpmCurveEntries, rpmLines, chartTheme, permis
   const shouldClipToPermissibleUse = clipRpmAreaToPermissibleUse && permissibleBoundaryData.length > 0;
   const flows = buildBandSampleFlows(rpmCurveEntries, permissibleBoundaryData);
   if (!flows.length) return [];
+  const lineByRpm = new Map(
+    rpmLines.map((line) => [Number(line?.rpm), line]).filter(([rpm]) => Number.isFinite(rpm))
+  );
   let previousLineData = null;
   return rpmCurveEntries.flatMap(([rpm, lineData], index) => {
-    const bandColor = resolveBandColor(rpmLines[index], index);
+    const rpmLine = lineByRpm.get(Number(rpm)) ?? rpmLines[index] ?? null;
+    const bandColor = resolveBandColor(rpmLine, index);
     const fullCurrentCurve = buildBandTopValues(
       lineData,
       flows,
@@ -1002,13 +1006,14 @@ function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, per
   const rpms = Object.keys(byRpm).filter((key) => key !== "").map((rpm) => Number(rpm)).filter((rpm) => !Number.isNaN(rpm)).sort((a, b) => a - b);
   const series = [];
   const rpmCurveEntries = [];
+  const useBandLineColors = normalizedGraphMode === "product" && showRpmBandShading;
   for (const [idx, rpm] of rpms.entries()) {
     const rpmLine = lineByRpm.get(Number(rpm)) ?? null;
     const pointsAtRpm = byRpm[String(rpm)] ?? [];
     const hasMultiplePoints = pointsAtRpm.length > 1;
     const bandColor = resolveBandColor(rpmLine, idx);
     const isSeriesGraphLine = Boolean(rpmLine?.line_role);
-    const lineColor = isSeriesGraphLine ? bandColor : CHART_STYLE.rpmLineColor;
+    const lineColor = useBandLineColors ? bandColor : isSeriesGraphLine ? bandColor : CHART_STYLE.rpmLineColor;
     const lineShadowColor = isSeriesGraphLine ? "rgba(255, 255, 255, 1)" : void 0;
     const rawLineData = pointsAtRpm.map((point) => [point.value[0], point.value[1]]).sort((a, b) => a[0] - b[0]);
     const displayLineData = !includeDragHandles && hasMultiplePoints ? buildSmoothedCurveSamples(rawLineData) : rawLineData;
@@ -1205,7 +1210,7 @@ function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, per
         data: displayLineData,
         showSymbol: false,
         lineStyle: { width: 0, opacity: 0 },
-        areaStyle: { color: resolveBandColor(rpmLines[idx], idx) },
+        areaStyle: { color: bandColor },
         emphasis: { disabled: true },
         tooltip: { show: false },
         z: Math.max(0, rpms.length - idx - 1)
