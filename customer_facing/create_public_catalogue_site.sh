@@ -1990,7 +1990,7 @@ cat > "$ROOT_DIR/app/static/js/product-graph.js" <<'EOF'
 EOF
 
 cat > "$ROOT_DIR/Containerfile" <<'EOF'
-FROM python:3.13-slim
+FROM mcr.microsoft.com/devcontainers/python:3.13-bookworm
 
 WORKDIR /app
 

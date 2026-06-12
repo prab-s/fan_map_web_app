@@ -874,6 +874,15 @@ export function getSetupLogsStreamUrl(afterId = 0) {
   return `${API_BASE}/setup/logs/stream${sp.toString() ? `?${sp.toString()}` : ''}`;
 }
 
+export async function getCustomerFacingLogsRecent(limit = 200, publicOnly = true) {
+  const sp = new URLSearchParams({
+    limit: String(limit),
+    public_only: publicOnly ? 'true' : 'false'
+  });
+  const r = await apiFetch(`/customer-facing/logs/recent?${sp.toString()}`);
+  return r.json();
+}
+
 export async function downloadMaintenanceJobFile(jobId) {
   const r = await apiFetch(`/maintenance/jobs/${jobId}/download`);
   const blob = await r.blob();

@@ -7,6 +7,7 @@
   import FileManager from '$lib/FileManager.svelte';
   import JobProgressPanel from '$lib/JobProgressPanel.svelte';
   import SetupLogConsole from '$lib/SetupLogConsole.svelte';
+  import CustomerFacingDeviceConsole from '$lib/CustomerFacingDeviceConsole.svelte';
   import {
     changePassword,
     createUser,
@@ -52,6 +53,7 @@
   let maintenanceErrorToast = '';
   let maintenanceErrorToastTimeout = null;
   let liveLogsOpen = false;
+  let customerDeviceLogsOpen = false;
   let dbBackupFile = null;
   let mediaBackupFile = null;
   let maintenanceJob = null;
@@ -1126,30 +1128,53 @@
     </div>
 
     {#if $auth.is_admin}
-      <div class="card shadow-sm">
-        <div class="card-body bg-body-secondary bg-opacity-10">
-          <div class="d-flex justify-content-between align-items-start gap-2">
-            <div>
-              <p class="small text-uppercase text-body-secondary fw-semibold mb-1">Debug</p>
-              <h2 class="h4 mb-1">Live Logs</h2>
-              <p class="text-body-secondary mb-0">
-                Open a live terminal-style feed of the backend logs from this page.
-              </p>
-            </div>
-            <button class="btn btn-outline-primary btn-sm" type="button" on:click={() => (liveLogsOpen = !liveLogsOpen)}>
-              {liveLogsOpen ? 'Hide Logs' : 'Show Logs'}
-            </button>
+    <div class="card shadow-sm">
+      <div class="card-body bg-body-secondary bg-opacity-10">
+        <div class="d-flex justify-content-between align-items-start gap-2">
+          <div>
+            <p class="small text-uppercase text-body-secondary fw-semibold mb-1">Debug</p>
+            <h2 class="h4 mb-1">Live Logs</h2>
+            <p class="text-body-secondary mb-0">
+              Open a live terminal-style feed of the backend logs from this page.
+            </p>
           </div>
-
-          {#if liveLogsOpen}
-            <div class="mt-3">
-              <SetupLogConsole />
-            </div>
-          {/if}
+          <button class="btn btn-outline-primary btn-sm" type="button" on:click={() => (liveLogsOpen = !liveLogsOpen)}>
+            {liveLogsOpen ? 'Hide Logs' : 'Show Logs'}
+          </button>
         </div>
+
+        {#if liveLogsOpen}
+          <div class="mt-3">
+            <SetupLogConsole />
+          </div>
+        {/if}
       </div>
-    {/if}
-  </div>
+    </div>
+
+    <div class="card shadow-sm mt-4">
+      <div class="card-body bg-body-secondary bg-opacity-10">
+        <div class="d-flex justify-content-between align-items-start gap-2">
+          <div>
+            <p class="small text-uppercase text-body-secondary fw-semibold mb-1">Debug</p>
+            <h2 class="h4 mb-1">Customer-Facing Devices</h2>
+            <p class="text-body-secondary mb-0">
+              A deduped view of recent browser telemetry from the public site, grouped by unique device fingerprint.
+            </p>
+          </div>
+          <button class="btn btn-outline-primary btn-sm" type="button" on:click={() => (customerDeviceLogsOpen = !customerDeviceLogsOpen)}>
+            {customerDeviceLogsOpen ? 'Hide Devices' : 'Show Devices'}
+          </button>
+        </div>
+
+        {#if customerDeviceLogsOpen}
+          <div class="mt-3">
+            <CustomerFacingDeviceConsole />
+          </div>
+        {/if}
+      </div>
+    </div>
+  {/if}
+</div>
 </div>
 
 {#if $auth.is_admin}

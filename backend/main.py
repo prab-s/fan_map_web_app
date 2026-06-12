@@ -2,12 +2,14 @@ import asyncio
 import csv
 import base64
 import datetime
+import httpx
+import json
+import ipaddress
 import math
 import hashlib
 import html
 from collections import deque
 import io
-import json
 import logging
 import os
 import re
@@ -18,6 +20,7 @@ import subprocess
 import tempfile
 import threading
 import zipfile
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -124,6 +127,7 @@ from backend.schemas import (
     BulkImageImportResponse,
     ProductTypePdfResponse,
     SetupLogEntryResponse,
+    PublicAccessLogEntryResponse,
 )
 
 SAFE_CHARS_RE = re.compile(r"[^a-z0-9]+")
@@ -262,6 +266,191 @@ def attach_in_memory_log_handler():
 
 
 attach_in_memory_log_handler()
+
+
+def _strip_ip_port(value: str) -> str:
+    candidate = (value or "").strip().strip('"').strip("'")
+    if not candidate:
+        return ""
+    if candidate.startswith("[") and "]" in candidate:
+        return candidate[1 : candidate.index("]")]
+    if candidate.count(":") == 1:
+        host, port = candidate.rsplit(":", 1)
+        if port.isdigit():
+            return host
+    return candidate
+
+
+def _parse_ip_address(value: str) -> ipaddress._BaseAddress | None:
+    candidate = _strip_ip_port(value)
+    if not candidate or candidate.lower() == "unknown":
+        return None
+    try:
+        return ipaddress.ip_address(candidate)
+    except ValueError:
+        return None
+
+
+def _iter_forwarded_ips(request: Request):
+    forwarded = request.headers.get("forwarded", "")
+    if forwarded:
+        for entry in forwarded.split(","):
+            for part in entry.split(";"):
+                key, separator, raw_value = part.partition("=")
+                if not separator or key.strip().lower() != "for":
+                    continue
+                yield raw_value.strip()
+                break
+
+    x_forwarded_for = request.headers.get("x-forwarded-for", "")
+    if x_forwarded_for:
+        for value in x_forwarded_for.split(","):
+            yield value.strip()
+
+
+def _extract_public_client_ip(request: Request) -> str | None:
+    peer = _parse_ip_address(request.client.host if request.client else "")
+    if peer is not None and peer.is_global:
+        return str(peer)
+
+    if peer is None or peer.is_private or peer.is_loopback or peer.is_link_local:
+        for candidate in _iter_forwarded_ips(request):
+            parsed = _parse_ip_address(candidate)
+            if parsed is not None and parsed.is_global:
+                return str(parsed)
+
+    return None
+
+
+def _request_path_with_query(request: Request) -> str:
+    if request.url.query:
+        return f"{request.url.path}?{request.url.query}"
+    return request.url.path
+
+
+def _route_group_for_path(path: str) -> str:
+    path = path or ""
+    if path == "/api/health":
+        return "health"
+    if path == "/api/client-telemetry":
+        return "telemetry"
+    if path.startswith("/api/public/"):
+        return "public-api"
+    if path.startswith("/api/"):
+        return "internal-api"
+    return "other"
+
+
+def _split_host_port(value: str) -> tuple[str, int | None]:
+    candidate = _strip_ip_port(value)
+    if not candidate:
+        return "", None
+    if candidate.startswith("[") and "]" in candidate:
+        candidate = candidate[1 : candidate.index("]")]
+    if candidate.count(":") == 1:
+        host, port = candidate.rsplit(":", 1)
+        if port.isdigit():
+            return host, int(port)
+    return candidate, None
+
+
+def _extract_public_client(request: Request) -> dict[str, object]:
+    peer_host = request.client.host if request.client else ""
+    peer_port = request.client.port if request.client else None
+    forwarded_for = request.headers.get("forwarded", "")
+    x_forwarded_for = request.headers.get("x-forwarded-for", "")
+    x_real_ip = request.headers.get("x-real-ip", "")
+    public_host = ""
+    public_port = None
+    public_source = ""
+    forwarded_chain: list[str] = []
+
+    forwarded_values: list[str] = []
+    if forwarded_for:
+        for entry in forwarded_for.split(","):
+            for part in entry.split(";"):
+                key, separator, raw_value = part.partition("=")
+                if not separator or key.strip().lower() != "for":
+                    continue
+                forwarded_values.append(raw_value.strip())
+                forwarded_chain.append(raw_value.strip())
+                break
+
+    if x_forwarded_for:
+        for value in x_forwarded_for.split(","):
+            cleaned = value.strip()
+            if cleaned:
+                forwarded_chain.append(cleaned)
+                forwarded_values.append(cleaned)
+
+    for candidate in forwarded_values:
+        host, port = _split_host_port(candidate)
+        parsed = _parse_ip_address(host)
+        if parsed is not None and parsed.is_global:
+            public_host = str(parsed)
+            public_port = port
+            public_source = "forwarded"
+            break
+
+    if not public_host:
+        peer = _parse_ip_address(peer_host)
+        if peer is not None and peer.is_global:
+            public_host = str(peer)
+            public_port = peer_port
+            public_source = "peer"
+
+    device_type = "desktop"
+    user_agent = request.headers.get("user-agent", "")
+    sec_ch_ua_mobile = request.headers.get("sec-ch-ua-mobile", "")
+    if sec_ch_ua_mobile.strip().lower() in {'?1', '1', 'true'}:
+        device_type = "mobile"
+    elif "ipad" in user_agent.lower() or "tablet" in user_agent.lower():
+        device_type = "tablet"
+    elif "mobile" in user_agent.lower():
+        device_type = "mobile"
+
+    return {
+        "peer_host": peer_host,
+        "peer_port": peer_port,
+        "public_host": public_host,
+        "public_port": public_port,
+        "public_source": public_source,
+        "forwarded_chain": forwarded_chain,
+        "forwarded_for": forwarded_for,
+        "x_forwarded_for": x_forwarded_for,
+        "x_real_ip": x_real_ip,
+        "host": request.headers.get("host", ""),
+        "scheme": request.url.scheme,
+        "method": request.method,
+        "path": _request_path_with_query(request),
+        "user_agent": user_agent,
+        "referer": request.headers.get("referer", ""),
+        "accept_language": request.headers.get("accept-language", ""),
+        "origin": request.headers.get("origin", ""),
+        "sec_ch_ua": request.headers.get("sec-ch-ua", ""),
+        "sec_ch_ua_mobile": sec_ch_ua_mobile,
+        "sec_ch_ua_platform": request.headers.get("sec-ch-ua-platform", ""),
+        "sec_fetch_site": request.headers.get("sec-fetch-site", ""),
+        "sec_fetch_mode": request.headers.get("sec-fetch-mode", ""),
+        "sec_fetch_dest": request.headers.get("sec-fetch-dest", ""),
+        "sec_fetch_user": request.headers.get("sec-fetch-user", ""),
+        "device_type": device_type,
+    }
+
+
+def _log_request_event(site: str, request: Request, status_code: int | None = None, duration_ms: float | None = None):
+    payload = {
+        "site": site,
+        "event": "request",
+        "route_group": _route_group_for_path(request.url.path),
+        "logged_at": datetime.datetime.now(tz=APP_TIMEZONE).isoformat(timespec="seconds"),
+        **_extract_public_client(request),
+    }
+    if status_code is not None:
+        payload["status"] = status_code
+    if duration_ms is not None:
+        payload["duration_ms"] = round(duration_ms, 1)
+    logger.info("public-access %s", json.dumps(payload, ensure_ascii=True, sort_keys=True, separators=(",", ":")))
 
 
 def trace_product_filter(message: str, *args):
@@ -5070,6 +5259,84 @@ def setup_log_sse_payload(entry: SetupLogEntryResponse) -> str:
     return f"event: log\ndata: {entry.model_dump_json()}\n\n"
 
 
+PUBLIC_ACCESS_LOG_PREFIX = "public-access "
+
+
+def parse_public_access_log_entry(entry: SetupLogEntryResponse) -> PublicAccessLogEntryResponse | None:
+    message = entry.message or ""
+    if not message.startswith(PUBLIC_ACCESS_LOG_PREFIX):
+        return None
+
+    payload_text = message[len(PUBLIC_ACCESS_LOG_PREFIX) :].strip()
+    payload: dict[str, object] = {}
+    if payload_text:
+        try:
+            parsed = json.loads(payload_text)
+            if isinstance(parsed, dict):
+                payload = parsed
+        except json.JSONDecodeError:
+            payload = {"raw": payload_text}
+
+    return PublicAccessLogEntryResponse(**entry.model_dump(), payload=payload)
+
+
+def get_recent_public_access_log_entries(limit: int = 200, *, site: str | None = None, route_group: str | None = None) -> list[PublicAccessLogEntryResponse]:
+    with LOG_BUFFER_LOCK:
+        entries = list(LOG_BUFFER)[-max(int(limit), 0) :]
+
+    filtered: list[PublicAccessLogEntryResponse] = []
+    for entry in entries:
+        parsed = parse_public_access_log_entry(serialize_setup_log_entry(entry))
+        if parsed is None:
+            continue
+        payload_site = str(parsed.payload.get("site") or "")
+        payload_route_group = str(parsed.payload.get("route_group") or "")
+        if site and payload_site != site:
+            continue
+        if route_group and payload_route_group != route_group:
+            continue
+        filtered.append(parsed)
+    return filtered
+
+
+async def fetch_customer_facing_recent_logs(limit: int = 200, public_only: bool = False) -> list[PublicAccessLogEntryResponse]:
+    if not PUBLIC_CATALOGUE_SITE_URL or not CMS_API_TOKEN:
+        raise HTTPException(status_code=503, detail="Customer-facing logs are unavailable because the site token is not configured.")
+
+    query = urllib.parse.urlencode(
+        {
+            "limit": max(int(limit), 1),
+            "public_only": "true" if public_only else "false",
+        }
+    )
+    url = f"{PUBLIC_CATALOGUE_SITE_URL}/api/logs/recent?{query}"
+
+    headers = {"Authorization": f"Bearer {CMS_API_TOKEN}"}
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get(url, headers=headers)
+            response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        detail = exc.response.text.strip() or f"Customer-facing log request failed with status {exc.response.status_code}."
+        raise HTTPException(status_code=exc.response.status_code, detail=detail) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="Customer-facing logs are unavailable right now.") from exc
+
+    payload = response.json()
+    if not isinstance(payload, list):
+        raise HTTPException(status_code=502, detail="Customer-facing log payload was invalid.")
+
+    entries: list[PublicAccessLogEntryResponse] = []
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        try:
+            entries.append(PublicAccessLogEntryResponse(**item))
+        except Exception:
+            continue
+    return entries
+
+
 def _copy_media_directories(staging_data_dir: Path, progress_callback=None, *, label_prefix: str = "Collecting", exclude_backup_dir: bool = False):
     backup_stage_total = len(DATA_BACKUP_DIRS) + 1
     for offset, media_dir in enumerate(DATA_BACKUP_DIRS, start=1):
@@ -5486,9 +5753,61 @@ def startup():
     ensure_bootstrap_admin()
 
 
+@app.middleware("http")
+async def log_public_requests(request: Request, call_next):
+    started = time.perf_counter()
+    response = None
+    try:
+        response = await call_next(request)
+        return response
+    finally:
+        if _extract_public_client(request).get("public_host"):
+            status_code = getattr(response, "status_code", 500)
+            duration_ms = (time.perf_counter() - started) * 1000.0
+            _log_request_event("internal", request, status_code=status_code, duration_ms=duration_ms)
+
+
 # --- Health ---
 @app.get("/api/health", tags=["Public"])
 def health():
+    return {"ok": True}
+
+
+@app.post("/api/client-telemetry", tags=["Public"])
+async def client_telemetry(request: Request):
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+
+    page_url = str(payload.get("page_url") or "")
+    parsed_page = urllib.parse.urlparse(page_url)
+    telemetry = {
+        "event": "browser-telemetry",
+        "site": "internal",
+        "route_group": "internal-browser-telemetry" if parsed_page.path.startswith(("/editor", "/viewer", "/template-builder", "/bulk-import", "/setup")) else "public-browser-telemetry",
+        "logged_at": datetime.datetime.now(tz=APP_TIMEZONE).isoformat(timespec="seconds"),
+        **_extract_public_client(request),
+        "telemetry": {
+            "page_url": page_url,
+            "referrer": str(payload.get("referrer") or ""),
+            "screen_width": payload.get("screen_width"),
+            "screen_height": payload.get("screen_height"),
+            "viewport_width": payload.get("viewport_width"),
+            "viewport_height": payload.get("viewport_height"),
+            "device_pixel_ratio": payload.get("device_pixel_ratio"),
+            "color_depth": payload.get("color_depth"),
+            "timezone": str(payload.get("timezone") or ""),
+            "timezone_offset": payload.get("timezone_offset"),
+            "language": str(payload.get("language") or ""),
+            "languages": payload.get("languages") or [],
+            "platform": str(payload.get("platform") or ""),
+            "user_agent": str(payload.get("user_agent") or request.headers.get("user-agent", "")),
+            "device_type": str(payload.get("device_type") or ""),
+            "touch_points": payload.get("touch_points"),
+        },
+    }
+    logger.info("public-access %s", json.dumps(telemetry, ensure_ascii=True, sort_keys=True, separators=(",", ":")))
     return {"ok": True}
 
 
@@ -7728,6 +8047,23 @@ def get_maintenance_job(job_id: str):
 @app.get("/api/setup/logs/recent", response_model=list[SetupLogEntryResponse], dependencies=[Depends(require_admin_user)], tags=["Setup"], summary="Get recent setup logs")
 def get_setup_logs_recent(limit: int = Query(200, ge=1, le=500)):
     return get_recent_setup_log_entries(limit)
+
+
+@app.get("/api/public-access/logs/recent", response_model=list[PublicAccessLogEntryResponse], dependencies=[Depends(require_admin_user)], tags=["Setup"], summary="Get recent public-access logs")
+def get_public_access_logs_recent(
+    limit: int = Query(200, ge=1, le=500),
+    site: str | None = Query(default=None),
+    route_group: str | None = Query(default=None),
+):
+    return get_recent_public_access_log_entries(limit, site=site, route_group=route_group)
+
+
+@app.get("/api/customer-facing/logs/recent", response_model=list[PublicAccessLogEntryResponse], dependencies=[Depends(require_admin_user)], tags=["Setup"], summary="Get recent customer-facing logs")
+async def get_customer_facing_logs_recent(
+    limit: int = Query(200, ge=1, le=500),
+    public_only: bool = Query(default=True),
+):
+    return await fetch_customer_facing_recent_logs(limit=limit, public_only=public_only)
 
 
 @app.get("/api/setup/logs/stream", dependencies=[Depends(require_admin_user)], tags=["Setup"], summary="Stream setup logs")

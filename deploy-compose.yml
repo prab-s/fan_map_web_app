@@ -58,8 +58,8 @@ services:
   customer_facing:
     profiles: ["catalogue"]
     build:
-      context: .
-      dockerfile: customer_facing/Containerfile
+      context: ./customer_facing
+      dockerfile: Containerfile
     image: vent-tech-catalogue
     container_name: vent-tech-catalogue
     restart: unless-stopped

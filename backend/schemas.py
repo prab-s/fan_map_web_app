@@ -646,6 +646,10 @@ class SetupLogEntryResponse(BaseModel):
     formatted: str
 
 
+class PublicAccessLogEntryResponse(SetupLogEntryResponse):
+    payload: dict[str, object] = Field(default_factory=dict)
+
+
 class MaintenanceJobResponse(BaseModel):
     id: str
     job_type: str

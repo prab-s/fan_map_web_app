@@ -1,6 +1,8 @@
 <script>
   import 'bootstrap/dist/css/bootstrap.min.css';
   import '../app.css';
+  import { afterNavigate } from '$app/navigation';
+  import { browser } from '$app/environment';
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import { auth } from '$lib/auth.js';
@@ -16,7 +18,9 @@
   let templateBuilderActive = false;
   let bulkImportActive = false;
   let setupActive = false;
+  let telemetrySentForPath = '';
   const PUBLIC_ROUTE_PREFIXES = ['/series', '/products'];
+  const TELEMETRY_ENDPOINT = '/api/client-telemetry';
 
   $: currentPath = $page.url.pathname;
   $: isPublicRoute = PUBLIC_ROUTE_PREFIXES.some((prefix) => currentPath === prefix || currentPath.startsWith(`${prefix}/`));
@@ -30,7 +34,66 @@
   onMount(() => {
     initTheme();
     auth.refresh();
+    sendBrowserTelemetry();
   });
+
+  afterNavigate(() => {
+    sendBrowserTelemetry();
+  });
+
+  function getDeviceType() {
+    if (!browser) return 'desktop';
+    const ua = navigator.userAgent.toLowerCase();
+    if (navigator.userAgentData?.mobile) return 'mobile';
+    if (ua.includes('ipad') || ua.includes('tablet')) return 'tablet';
+    if (ua.includes('mobile')) return 'mobile';
+    return 'desktop';
+  }
+
+  function buildTelemetryPayload() {
+    if (!browser) return null;
+    return {
+      page_url: window.location.href,
+      referrer: document.referrer || '',
+      screen_width: window.screen?.width ?? null,
+      screen_height: window.screen?.height ?? null,
+      viewport_width: window.innerWidth ?? null,
+      viewport_height: window.innerHeight ?? null,
+      device_pixel_ratio: window.devicePixelRatio ?? null,
+      color_depth: window.screen?.colorDepth ?? null,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+      timezone_offset: new Date().getTimezoneOffset(),
+      language: navigator.language || '',
+      languages: Array.isArray(navigator.languages) ? navigator.languages : [],
+      platform: navigator.userAgentData?.platform || navigator.platform || '',
+      user_agent: navigator.userAgent || '',
+      device_type: getDeviceType(),
+      touch_points: navigator.maxTouchPoints ?? 0
+    };
+  }
+
+  function sendBrowserTelemetry() {
+    if (!browser) return;
+    if (telemetrySentForPath === currentPath) return;
+    telemetrySentForPath = currentPath;
+
+    const payload = buildTelemetryPayload();
+    if (!payload) return;
+
+    const body = JSON.stringify(payload);
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon(TELEMETRY_ENDPOINT, new Blob([body], { type: 'application/json' }));
+      return;
+    }
+
+    fetch(TELEMETRY_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+      credentials: 'include',
+      keepalive: true
+    }).catch(() => {});
+  }
 
   async function submitLogin() {
     const ok = await auth.login(username, password);

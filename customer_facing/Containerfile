@@ -1,28 +1,15 @@
-FROM docker.io/library/node:25-bookworm-slim AS public-graph-builder
-
-WORKDIR /work
-
-COPY frontend/ ./frontend/
-COPY customer_facing/app/static/js/ ./customer_facing/app/static/js/
-
-WORKDIR /work/frontend
-RUN npm ci --prefer-offline --no-audit --no-fund
-RUN node scripts/build_public_product_graph_renderer.mjs
-
-
-FROM python:3.13-slim
+FROM mcr.microsoft.com/devcontainers/python:3.13-bookworm
 
 WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-COPY customer_facing/requirements.txt ./requirements.txt
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY customer_facing/app ./app
-COPY customer_facing/vent-tech-catalogue.env.example ./.env.example
-COPY --from=public-graph-builder /work/customer_facing/app/static/js/product-graph.js ./app/static/js/product-graph.js
+COPY app ./app
+COPY vent-tech-catalogue.env.example ./.env.example
 
 EXPOSE 8004
 

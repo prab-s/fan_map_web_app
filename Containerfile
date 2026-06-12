@@ -1,5 +1,5 @@
 # ---------- Frontend build stage ----------
-FROM docker.io/library/node:25-bookworm-slim AS frontend-builder
+FROM mcr.microsoft.com/devcontainers/javascript-node:22-bookworm AS frontend-builder
 
 WORKDIR /app/frontend
 
@@ -11,7 +11,7 @@ RUN npm run build
 
 
 # ---------- Final runtime stage ----------
-FROM docker.io/library/python:3.13-slim
+FROM mcr.microsoft.com/devcontainers/python:3.13-bookworm
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
