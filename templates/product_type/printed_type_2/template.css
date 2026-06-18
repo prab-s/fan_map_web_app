@@ -78,6 +78,25 @@ body.printed-type-2-template {
   object-fit: cover;
 }
 
+/* Page 2: series collage with overlay */
+.series-collage-page {
+  position: relative;
+  padding: 0;
+}
+
+.series-collage-page__image {
+  position: absolute;
+  inset: 0;
+}
+
+.series-collage-page__image {
+  z-index: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 /* Legacy cover styles retained for compatibility with older builds */
 .cover-page {
   background:
@@ -230,52 +249,10 @@ body.printed-type-2-template {
   line-height: 1;
 }
 
-/* Legacy Page 2 contact spread selectors retained for GrapeJS compatibility */
-.contact-spread {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  background: #fff;
-}
-
-.contact-spread__image-panel {
-  position: relative;
-  background:
-    linear-gradient(rgba(0, 55, 112, 0.83), rgba(0, 55, 112, 0.83)),
-    linear-gradient(135deg, #0b3a73, #061f43);
-}
-
-.contact-spread__bg {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  opacity: 0.22;
-}
-
-.contact-spread__content-panel {
-  padding: 0 10mm 10mm;
-  background: #fff;
-}
-
-.contact-spread__header {
-  height: 22mm;
-  margin: 0 -6mm 5mm;
-  padding: 5mm 6mm;
-  color: #fff;
-  background:
-    linear-gradient(rgba(0, 41, 92, 0.92), rgba(0, 41, 92, 0.92)),
-    linear-gradient(90deg, #002a63, #074989);
-}
-
-.contact-spread__logo {
-  font-size: 4mm;
-  font-weight: 900;
-  letter-spacing: 0.04em;
-}
-
-.contact-spread__header h1 {
-  margin: 1mm 0 0;
-  font-size: 7mm;
-  line-height: 1;
+.contact-intro {
+  display: flex;
+  justify-content: center;
+  margin: 2mm 0 3mm;
 }
 
 .contact-phone {
@@ -304,7 +281,7 @@ body.printed-type-2-template {
 
 .contact-cards {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 2mm;
   padding: 3mm;
   margin-bottom: 3mm;
@@ -327,7 +304,7 @@ body.printed-type-2-template {
 }
 
 .locations-panel {
-  padding: 3mm 8mm;
+  padding: 3mm 8mm 4mm;
   border-radius: 4mm;
   background: #fff3f2;
 }
@@ -341,15 +318,9 @@ body.printed-type-2-template {
   font-size: 3.6mm;
 }
 
-.locations-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4mm;
-}
-
 .location-block h3 {
   margin: 0 0 1.5mm;
-  font-size: 3.2mm;
+  font-size: 3.5mm;
   color: #9f1220;
 }
 
@@ -357,6 +328,37 @@ body.printed-type-2-template {
   margin: 0 0 1mm;
   font-size: 2.5mm;
   line-height: 1.25;
+}
+
+.contact-media-row {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 2mm;
+  margin-top: 3mm;
+}
+
+.contact-media-card {
+  margin: 0;
+  overflow: hidden;
+  border-radius: 3mm;
+  background: #fff;
+  border: 0.25mm solid rgba(160, 18, 32, 0.18);
+}
+
+.contact-media-card__image {
+  display: block;
+  width: 100%;
+  height: 54mm;
+  object-fit: cover;
+}
+
+.contact-media-card__caption {
+  padding: 1.5mm 2mm;
+  text-align: center;
+  font-size: 2.7mm;
+  font-weight: 700;
+  color: #8c5357;
+  background: #fff8f7;
 }
 
 .location-image-row,
@@ -532,7 +534,8 @@ body.printed-type-2-template {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 18mm;
+  width: 22mm;
+  flex: 0 0 22mm;
   padding: 1.1mm 2mm;
   border: 0.35mm solid var(--line);
   border-radius: 999px;

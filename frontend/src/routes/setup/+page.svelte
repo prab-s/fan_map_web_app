@@ -8,6 +8,7 @@
   import JobProgressPanel from '$lib/JobProgressPanel.svelte';
   import SetupLogConsole from '$lib/SetupLogConsole.svelte';
   import CustomerFacingDeviceConsole from '$lib/CustomerFacingDeviceConsole.svelte';
+  import InternalFacingDeviceConsole from '$lib/InternalFacingDeviceConsole.svelte';
   import {
     changePassword,
     createUser,
@@ -54,6 +55,7 @@
   let maintenanceErrorToastTimeout = null;
   let liveLogsOpen = false;
   let customerDeviceLogsOpen = false;
+  let internalDeviceLogsOpen = false;
   let dbBackupFile = null;
   let mediaBackupFile = null;
   let maintenanceJob = null;
@@ -1169,6 +1171,29 @@
         {#if customerDeviceLogsOpen}
           <div class="mt-3">
             <CustomerFacingDeviceConsole />
+          </div>
+        {/if}
+      </div>
+    </div>
+
+    <div class="card shadow-sm mt-4">
+      <div class="card-body bg-body-secondary bg-opacity-10">
+        <div class="d-flex justify-content-between align-items-start gap-2">
+          <div>
+            <p class="small text-uppercase text-body-secondary fw-semibold mb-1">Debug</p>
+            <h2 class="h4 mb-1">Internal-Facing Devices</h2>
+            <p class="text-body-secondary mb-0">
+              A deduped view of recent `public-access` logs from the internal app, grouped by unique device fingerprint.
+            </p>
+          </div>
+          <button class="btn btn-outline-primary btn-sm" type="button" on:click={() => (internalDeviceLogsOpen = !internalDeviceLogsOpen)}>
+            {internalDeviceLogsOpen ? 'Hide Devices' : 'Show Devices'}
+          </button>
+        </div>
+
+        {#if internalDeviceLogsOpen}
+          <div class="mt-3">
+            <InternalFacingDeviceConsole />
           </div>
         {/if}
       </div>

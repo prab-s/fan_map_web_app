@@ -293,9 +293,13 @@
       '{{product_type.label}}': previewProductType?.label || 'Product Type',
       '{{product_type.key}}': previewProductType?.key || 'product-type',
       '{{product_type.contents_icon_url}}': createPreviewPlaceholder('Contents icon preview'),
+      '{{product_type.contact_map_image_url}}': createPreviewPlaceholder('Map preview'),
+      '{{product_type.contact_shopfront_image_url}}': createPreviewPlaceholder('Shop front preview'),
+      '{{product_type.series_collage_image_url}}': createPreviewPlaceholder('Series collage preview'),
       '{{product_type.series_names}}': safeJoinText(previewSeriesNames),
       '{{product_type.series_names_html}}': renderSeriesNamesPreview(previewSeriesNames),
       '{{product_type.series_legend_html}}': renderSeriesLegendPreview(previewSeriesNames),
+      '{{product_type.series_collage_html}}': renderSeriesCollagePreview(previewSeriesGroups),
       '{{product_type.series_groups_html}}': renderSeriesGroupsPreview(previewSeriesGroups),
       '{{product_type.contents_html}}': renderSeriesGroupsPreview(previewSeriesGroups),
       '{{product_type.series_groups}}': previewSeriesGroups.length
@@ -369,6 +373,22 @@
           </article>`
       )
       .join('')}</section>`;
+  }
+
+  function renderSeriesCollagePreview(seriesGroups) {
+    const seriesWithImages = (seriesGroups || []).filter((series) => series.first_product_image_uri);
+    if (!seriesWithImages.length) {
+      return '<div class="series-collage-page__fallback">No series images available.</div>';
+    }
+
+    return `<div class="series-collage-page__grid">${seriesWithImages
+      .map(
+        (series) => `
+          <figure class="series-collage-page__tile">
+            <img class="series-collage-page__image" src="${escapeHtml(series.first_product_image_uri)}" alt="${escapeHtml(series.name || 'Series')} primary series image" />
+          </figure>`
+      )
+      .join('')}</div>`;
   }
 
   function prepareBodyForEditor(bodyHtml) {

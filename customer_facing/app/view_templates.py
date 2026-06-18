@@ -35,9 +35,9 @@ templates.env.globals["site_contact"] = {
     "gerald_email": "gerald@venttech.co.nz",
     "mahendra_email": "mahendra@venttech.co.nz",
     "admin_email": "admin@venttech.co.nz",
-    "gerald_phone": "0220 697 270",
-    "mahendra_phone": "0275 560 197",
-    "admin_phone": "0459 51403",
+    "gerald_phone": "022 0697 270",
+    "mahendra_phone": "027 5560 197",
+    "admin_phone": "04 595 1403",
     "request_quote_url": "mailto:admin@venttech.co.nz?subject=Vent-Tech%20quote%20request",
 }
 templates.env.filters["format_numeric_value"] = format_numeric_value

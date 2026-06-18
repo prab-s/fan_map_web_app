@@ -883,6 +883,14 @@ export async function getCustomerFacingLogsRecent(limit = 200, publicOnly = true
   return r.json();
 }
 
+export async function getPublicAccessLogsRecent(limit = 200, site = 'internal', routeGroup = '') {
+  const sp = new URLSearchParams({ limit: String(limit) });
+  if (site) sp.set('site', site);
+  if (routeGroup) sp.set('route_group', routeGroup);
+  const r = await apiFetch(`/public-access/logs/recent?${sp.toString()}`);
+  return r.json();
+}
+
 export async function downloadMaintenanceJobFile(jobId) {
   const r = await apiFetch(`/maintenance/jobs/${jobId}/download`);
   const blob = await r.blob();

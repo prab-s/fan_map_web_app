@@ -41,6 +41,7 @@ from sqlalchemy.orm import Session, selectinload, joinedload
 from pypdf import PdfReader, PdfWriter
 from reportlab.lib.colors import Color, HexColor
 from reportlab.pdfgen import canvas
+from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageOps
 
 from backend.database import (
     DEFAULT_DATA_DIR,
@@ -240,6 +241,11 @@ class NonUvicornLogFilter(logging.Filter):
         return not str(record.name or "").startswith("uvicorn")
 
 
+class SuppressPublicAccessStreamFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        return not str(record.getMessage() or "").startswith(PUBLIC_ACCESS_LOG_PREFIX)
+
+
 def attach_in_memory_log_handler():
     global LOG_HANDLER_ATTACHED
     if LOG_HANDLER_ATTACHED:
@@ -253,9 +259,14 @@ def attach_in_memory_log_handler():
     stream_handler.setLevel(APP_LOG_LEVEL)
     stream_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
     stream_handler.addFilter(NonUvicornLogFilter())
+    stream_handler.addFilter(SuppressPublicAccessStreamFilter())
 
     root_logger = logging.getLogger()
     root_logger.setLevel(APP_LOG_LEVEL)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("PIL").setLevel(logging.WARNING)
+    logging.getLogger("PIL.PngImagePlugin").setLevel(logging.WARNING)
     root_logger.addHandler(handler)
     root_logger.addHandler(stream_handler)
     for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
@@ -4290,6 +4301,16 @@ def product_primary_image_uri(product: Product) -> str:
     return first_image_path.as_uri()
 
 
+def series_primary_image_uri(series: Series) -> str:
+    ordered_images = sorted(series.series_images or [], key=lambda img: (img.sort_order, img.id))
+    if not ordered_images:
+        return ""
+    first_image_path = series_image_path(series.id, ordered_images[0].file_name)
+    if not first_image_path.is_file():
+        return ""
+    return first_image_path.as_uri()
+
+
 def build_product_type_contents_icon_url(product_type: ProductType) -> str:
     explicit_url = (product_type.contents_icon_url or "").strip()
     if explicit_url:
@@ -4352,7 +4373,7 @@ def build_product_type_series_names_html(series_names: list[str]) -> str:
     return '<ul class="series-names">' + items + "</ul>"
 
 
-def build_product_type_series_legend_html(series_summaries: list[dict]) -> str:
+def build_product_type_series_legend_html(series_summaries: list[dict], include_page_ranges: bool = True) -> str:
     if not series_summaries:
         return '<p class="placeholder">No series are linked to this product type yet.</p>'
 
@@ -4360,27 +4381,32 @@ def build_product_type_series_legend_html(series_summaries: list[dict]) -> str:
     for summary in series_summaries:
         series_name = html.escape(str(summary.get("name") or "Series"))
         series_color = html.escape(str(summary.get("series_tab_color") or SERIES_TAB_FALLBACK_COLOR))
-        page_range = ""
-        page_start = summary.get("page_start")
-        page_end = summary.get("page_end")
-        if page_start and page_end:
-            page_range = f"Pages {page_start} to {page_end}"
-        elif page_start:
-            page_range = f"Starts at page {page_start}"
         product_count = int(summary.get("product_count") or 0)
+        page_range_suffix = ""
+        if include_page_ranges:
+            page_start = summary.get("page_start")
+            page_end = summary.get("page_end")
+            if page_start and page_end:
+                page_range_suffix = f" · Pages {page_start} to {page_end}"
+            elif page_start:
+                page_range_suffix = f" · Starts at page {page_start}"
         items.append(
             '<li class="series-legend__item">'
             f'<span class="series-legend__swatch" style="background:{series_color};"></span>'
             '<div class="series-legend__text">'
             f'<div class="series-legend__name">{series_name}</div>'
-            f'<div class="series-legend__meta">{product_count} products{(" · " + html.escape(page_range)) if page_range else ""}</div>'
+            f'<div class="series-legend__meta">{product_count} products{html.escape(page_range_suffix)}</div>'
             "</div></li>"
         )
 
     return '<ul class="series-legend">' + "".join(items) + "</ul>"
 
 
-def build_product_type_series_groups_html(product_type: ProductType, series_summaries: list[dict]) -> str:
+def build_product_type_series_groups_html(
+    product_type: ProductType,
+    series_summaries: list[dict],
+    include_page_ranges: bool = True,
+) -> str:
     if not series_summaries:
         return '<p class="placeholder">No series are linked to this product type yet.</p>'
 
@@ -4392,10 +4418,13 @@ def build_product_type_series_groups_html(product_type: ProductType, series_summ
         image_uri = html.escape(str(summary.get("first_product_image_uri") or ""))
         page_start = int(summary.get("page_start") or 0)
         page_end = int(summary.get("page_end") or 0)
-        if page_start and page_end:
-            page_range_text = f"Pages {page_start}-{page_end}"
-        elif page_start:
-            page_range_text = f"Page {page_start}"
+        if include_page_ranges:
+            if page_start and page_end:
+                page_range_text = f"Pages {page_start}-{page_end}"
+            elif page_start:
+                page_range_text = f"Page {page_start}"
+            else:
+                page_range_text = "Pages pending"
         else:
             page_range_text = "Pages pending"
         page_range_html = html.escape(page_range_text)
@@ -4460,6 +4489,7 @@ def build_product_type_series_pdf_summaries(
                 "id": series.id,
                 "name": series.name,
                 "series_tab_color": series.series_tab_color or SERIES_TAB_FALLBACK_COLOR,
+                "primary_series_image_uri": series_primary_image_uri(series),
                 "series_description_html": render_richtext_html(series.description1_html),
                 "first_product_image_uri": product_primary_image_uri(ordered_products[0]) if ordered_products else "",
                 "page_count": pdf_page_count(source_path) if source_path is not None else 0,
@@ -4482,49 +4512,163 @@ def build_product_type_series_pdf_summaries(
     return series_summaries, source_paths
 
 
+def _series_collage_target_dimensions() -> tuple[int, int]:
+    return 1800, 2546
+
+
+def _series_collage_load_image(image_uri: str) -> Image.Image | None:
+    try:
+        parsed = urllib.parse.urlparse(image_uri)
+        if parsed.scheme != "file":
+            return None
+        image_path = Path(urllib.request.url2pathname(parsed.path))
+        if not image_path.is_file():
+            return None
+        with Image.open(image_path) as image:
+            return image.convert("RGB").copy()
+    except Exception:
+        return None
+
+
+def build_product_type_series_collage_image_uri(series_summaries: list[dict], temp_dir: Path) -> str:
+    collage_source_items: list[tuple[str, str]] = []
+    for summary in series_summaries:
+        image_uri = str(summary.get("primary_series_image_uri") or "").strip()
+        if image_uri:
+            collage_source_items.append((image_uri, str(summary.get("name") or "Series").strip() or "Series"))
+
+    collage_width, collage_height = _series_collage_target_dimensions()
+    collage_path = temp_dir / "product_type_series_collage.jpg"
+
+    def apply_overlay_layers(base_image: Image.Image) -> Image.Image:
+        canvas = base_image.convert("RGBA")
+        overlay = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+        overlay_draw = ImageDraw.Draw(overlay)
+        overlay_draw.rectangle(
+            (0, 0, canvas.width, canvas.height),
+            fill=(255, 0, 0, 112),
+        )
+
+        vignette = Image.new("L", canvas.size, 0)
+        vignette_draw = ImageDraw.Draw(vignette)
+        vignette_draw.ellipse(
+            (
+                int(canvas.width * 0.05),
+                int(canvas.height * 0.06),
+                int(canvas.width * 0.95),
+                int(canvas.height * 0.94),
+            ),
+            fill=255,
+        )
+        vignette = vignette.filter(ImageFilter.GaussianBlur(radius=max(canvas.size) * 0.10))
+        vignette_rgba = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+        vignette_rgba.putalpha(vignette.point(lambda value: int((255 - value) * 0.88)))
+
+        return Image.alpha_composite(Image.alpha_composite(canvas, overlay), vignette_rgba).convert("RGB")
+
+    if not collage_source_items:
+        collage = Image.new("RGB", (collage_width, collage_height), (12, 12, 14))
+        draw = ImageDraw.Draw(collage)
+        message = "No series images available"
+        font = ImageFont.load_default()
+        text_bbox = draw.textbbox((0, 0), message, font=font)
+        text_width = text_bbox[2] - text_bbox[0]
+        text_height = text_bbox[3] - text_bbox[1]
+        draw.text(
+            ((collage_width - text_width) / 2, (collage_height - text_height) / 2),
+            message,
+            fill=(225, 228, 234),
+            font=font,
+        )
+        apply_overlay_layers(collage).save(collage_path, format="JPEG", quality=82)
+        return collage_path.as_uri()
+
+    image_count = len(collage_source_items)
+    columns = max(2, min(6, math.ceil(math.sqrt(image_count * 1.15))))
+    rows = math.ceil(image_count / columns)
+    gap = 20
+    tile_width = max(1, (collage_width - (gap * (columns + 1))) // columns)
+    tile_height = max(1, (collage_height - (gap * (rows + 1))) // rows)
+    resample_filter = getattr(getattr(Image, "Resampling", Image), "LANCZOS")
+    background = Image.new("RGB", (collage_width, collage_height), (10, 10, 12))
+
+    for index, (image_uri, series_name) in enumerate(collage_source_items):
+        source_image = _series_collage_load_image(image_uri)
+        col = index % columns
+        row = index // columns
+        left = gap + (col * (tile_width + gap))
+        top = gap + (row * (tile_height + gap))
+        tile_box = (left, top, left + tile_width, top + tile_height)
+
+        if source_image is None:
+            tile = Image.new("RGB", (tile_width, tile_height), (30, 18, 20))
+            draw = ImageDraw.Draw(tile)
+            font = ImageFont.load_default()
+            label = series_name[:40] or "Series"
+            label_bbox = draw.textbbox((0, 0), label, font=font)
+            label_width = label_bbox[2] - label_bbox[0]
+            label_height = label_bbox[3] - label_bbox[1]
+            draw.text(
+                ((tile_width - label_width) / 2, (tile_height - label_height) / 2),
+                label,
+                fill=(225, 225, 225),
+                font=font,
+            )
+            background.paste(tile, tile_box)
+            continue
+
+        fitted = ImageOps.fit(source_image, (tile_width, tile_height), method=resample_filter)
+        background.paste(fitted, tile_box)
+
+    apply_overlay_layers(background).save(collage_path, format="JPEG", quality=82)
+    return collage_path.as_uri()
+
+
 def render_product_type_intro_with_page_ranges(
     product_type: ProductType,
     temp_dir: Path,
     series_summaries: list[dict],
     series_names_html: str,
     series_legend_html: str,
+    series_collage_image_uri: str,
 ) -> tuple[Path, int, str, str]:
     intro_base_path = temp_dir / f"product_type_printed_{sanitize_name(product_type.key or product_type.label or 'unknown')}_intro.pdf"
     intro_page_count = 0
     rendered_series_groups_html = ""
     intro_stylesheet_text = ""
 
-    for _ in range(3):
-        rendered_series_groups_html = build_product_type_series_groups_html(product_type, series_summaries)
-        intro_html, intro_stylesheet_text = build_product_type_pdf_html(
-            product_type,
-            series_names_html,
-            rendered_series_groups_html,
-            series_legend_html,
-        )
-        render_pdf_from_html(intro_html, intro_base_path, intro_stylesheet_text)
-        next_intro_page_count = pdf_page_count(intro_base_path)
+    rendered_series_groups_html = build_product_type_series_groups_html(product_type, series_summaries, include_page_ranges=False)
+    intro_html, intro_stylesheet_text = build_product_type_pdf_html(
+        product_type,
+        series_names_html,
+        rendered_series_groups_html,
+        series_legend_html,
+        series_collage_image_uri,
+    )
+    render_pdf_from_html(intro_html, intro_base_path, intro_stylesheet_text)
+    intro_page_count = pdf_page_count(intro_base_path)
 
-        next_page_start = next_intro_page_count + 1
-        ranges_changed = False
-        for summary in series_summaries:
-            series_page_count = int(summary.get("page_count") or 0)
-            if series_page_count > 0:
-                page_end = next_page_start + series_page_count - 1
-                if summary.get("page_start") != next_page_start or summary.get("page_end") != page_end:
-                    ranges_changed = True
-                summary["page_start"] = next_page_start
-                summary["page_end"] = page_end
-                next_page_start = page_end + 1
-            else:
-                if summary.get("page_start") != 0 or summary.get("page_end") != 0:
-                    ranges_changed = True
-                summary["page_start"] = 0
-                summary["page_end"] = 0
+    next_page_start = intro_page_count + 1
+    for summary in series_summaries:
+        series_page_count = int(summary.get("page_count") or 0)
+        if series_page_count > 0:
+            summary["page_start"] = next_page_start
+            summary["page_end"] = next_page_start + series_page_count - 1
+            next_page_start = summary["page_end"] + 1
+        else:
+            summary["page_start"] = 0
+            summary["page_end"] = 0
 
-        intro_page_count = next_intro_page_count
-        if not ranges_changed:
-            break
+    rendered_series_groups_html = build_product_type_series_groups_html(product_type, series_summaries, include_page_ranges=True)
+    intro_html, intro_stylesheet_text = build_product_type_pdf_html(
+        product_type,
+        series_names_html,
+        rendered_series_groups_html,
+        series_legend_html,
+        series_collage_image_uri,
+    )
+    render_pdf_from_html(intro_html, intro_base_path, intro_stylesheet_text)
+    intro_page_count = pdf_page_count(intro_base_path)
 
     return intro_base_path, intro_page_count, rendered_series_groups_html, intro_stylesheet_text
 
@@ -4538,6 +4682,7 @@ def build_product_type_pdf_html(
     series_names_html: str,
     series_groups_html: str,
     series_legend_html: str,
+    series_collage_image_uri: str,
 ) -> tuple[str, str]:
     template_id = resolve_product_type_pdf_template_id(product_type) or "product_type-default"
     template_definition = get_template_definition(template_id, "product_type")
@@ -4561,6 +4706,9 @@ def build_product_type_pdf_html(
         "{{product_type.contents_icon_url}}": build_product_type_contents_icon_url(product_type),
         "{{product_type.cover_image_url}}": build_template_asset_uri(template_path, asset_config.get("cover_image", "")),
         "{{product_type.intermediate_image_url}}": build_template_asset_uri(template_path, asset_config.get("intermediate_image", "")),
+        "{{product_type.contact_map_image_url}}": build_template_asset_uri(template_path, asset_config.get("contact_map_image_url", "")),
+        "{{product_type.contact_shopfront_image_url}}": build_template_asset_uri(template_path, asset_config.get("contact_shopfront_image_url", "")),
+        "{{product_type.series_collage_image_url}}": series_collage_image_uri,
         "{{product_type.series_names}}": html.escape(", ".join(product_type.series_names or [])),
         "{{product_type.series_names_html}}": series_names_html,
         "{{product_type.series_legend_html}}": series_legend_html,
@@ -4578,12 +4726,14 @@ def build_product_type_pdf_base(product_type: ProductType, temp_dir: Path) -> tu
     series_summaries, series_base_paths = build_product_type_series_pdf_summaries(product_type)
     series_names_html = build_product_type_series_names_html(product_type.series_names or [])
     series_legend_html = build_product_type_series_legend_html(series_summaries)
+    series_collage_image_uri = build_product_type_series_collage_image_uri(series_summaries, temp_dir)
     intro_base_path, intro_page_count, series_groups_html, _ = render_product_type_intro_with_page_ranges(
         product_type,
         temp_dir,
         series_summaries,
         series_names_html,
         series_legend_html,
+        series_collage_image_uri,
     )
 
     merged_base_path = temp_dir / f"product_type_printed_{sanitize_name(product_type.key or product_type.label or 'unknown')}_base.pdf"
@@ -4596,6 +4746,7 @@ def build_product_type_pdf_base(product_type: ProductType, temp_dir: Path) -> tu
         "series_groups_html": series_groups_html,
         "contents_html": series_groups_html,
         "series_legend_html": series_legend_html,
+        "series_collage_image_uri": series_collage_image_uri,
     }
 
 
@@ -4603,12 +4754,14 @@ def build_product_type_pdf_context_metadata(product_type: ProductType, temp_dir:
     series_summaries, _ = build_product_type_series_pdf_summaries(product_type, strict=False)
     series_names_html = build_product_type_series_names_html(product_type.series_names or [])
     series_legend_html = build_product_type_series_legend_html(series_summaries)
+    series_collage_image_uri = build_product_type_series_collage_image_uri(series_summaries, temp_dir)
     _, intro_page_count, series_groups_html, _ = render_product_type_intro_with_page_ranges(
         product_type,
         temp_dir,
         series_summaries,
         series_names_html,
         series_legend_html,
+        series_collage_image_uri,
     )
 
     return {
@@ -4619,6 +4772,7 @@ def build_product_type_pdf_context_metadata(product_type: ProductType, temp_dir:
         "series_groups_html": series_groups_html,
         "contents_html": series_groups_html,
         "series_legend_html": series_legend_html,
+        "series_collage_image_uri": series_collage_image_uri,
     }
 
 
