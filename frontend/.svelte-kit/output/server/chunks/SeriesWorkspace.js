@@ -40,12 +40,14 @@ function SeriesMediaPanel($$renderer, $$props) {
 }
 function SeriesWorkspace($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
+    let filteredSeriesRecords;
     let initialMode = fallback($$props["initialMode"], "create");
     let initialSeriesId = fallback($$props["initialSeriesId"], "");
     let productTypes = [];
     let seriesRecords = [];
     let templateRegistry = { series_templates: [] };
     let selectedSeriesId = "";
+    let seriesProductTypeFilter = "";
     let saving = false;
     let error = "";
     let success = "";
@@ -54,6 +56,7 @@ function SeriesWorkspace($$renderer, $$props) {
     let pendingImageFiles = [];
     let appliedInitialSeriesId = null;
     let appliedSeriesEditorUrlId = "";
+    let hydratedSeriesId = "";
     function resetDraft(series = null) {
       return {
         id: series?.id ?? null,
@@ -68,6 +71,30 @@ function SeriesWorkspace($$renderer, $$props) {
       };
     }
     let seriesDraft = resetDraft();
+    function hydrateSelectedSeries(seriesId = selectedSeriesId) {
+      const normalizedSeriesId = seriesId == null || seriesId === "" ? "" : String(seriesId);
+      if (!normalizedSeriesId) {
+        hydratedSeriesId = "";
+        if (seriesDraft.id) {
+          seriesDraft = resetDraft();
+          seriesImages = [];
+        }
+        return;
+      }
+      const selected = seriesRecords.find((item) => String(item.id) === normalizedSeriesId);
+      if (!selected) {
+        return;
+      }
+      if (hydratedSeriesId === normalizedSeriesId && String(seriesDraft.id || "") === normalizedSeriesId) {
+        return;
+      }
+      hydratedSeriesId = normalizedSeriesId;
+      seriesDraft = resetDraft(selected);
+      seriesImages = selected.series_images || [];
+      if (!seriesProductTypeFilter) {
+        seriesProductTypeFilter = selected.product_type_key || "";
+      }
+    }
     function syncSeriesEditorUrl(seriesId) {
       if (typeof window === "undefined") return;
       const nextSeriesId = seriesId == null || seriesId === "" ? "" : String(seriesId);
@@ -114,6 +141,7 @@ function SeriesWorkspace($$renderer, $$props) {
       if (!window.confirm("Delete this series image?")) return;
       seriesImages = await deleteSeriesImage(seriesDraft.id, image.id);
     }
+    filteredSeriesRecords = seriesProductTypeFilter ? seriesRecords.filter((item) => String(item.product_type_key || "") === String(seriesProductTypeFilter)) : seriesRecords;
     {
       const nextInitialSeriesId = initialSeriesId !== "" && initialSeriesId != null ? String(initialSeriesId) : "";
       if (nextInitialSeriesId !== appliedInitialSeriesId) {
@@ -124,23 +152,20 @@ function SeriesWorkspace($$renderer, $$props) {
           if (mode !== "create") {
             mode = "edit";
           }
-          const selected = seriesRecords.find((item) => String(item.id) === nextInitialSeriesId);
-          if (selected) {
-            seriesDraft = resetDraft(selected);
-            seriesImages = selected.series_images || [];
-          } else {
-            seriesDraft = resetDraft();
-            seriesImages = [];
-          }
+          hydrateSelectedSeries(nextInitialSeriesId);
         } else if (mode !== "create" || seriesDraft.id) {
           seriesDraft = resetDraft();
           seriesImages = [];
+          hydratedSeriesId = "";
         }
       }
     }
     if (mode === "edit" && String(selectedSeriesId) !== String(appliedSeriesEditorUrlId)) {
       appliedSeriesEditorUrlId = String(selectedSeriesId || "");
       syncSeriesEditorUrl(selectedSeriesId);
+    }
+    if (mode === "edit" && selectedSeriesId) {
+      hydrateSelectedSeries();
     }
     let $$settled = true;
     let $$inner_renderer;
@@ -167,7 +192,30 @@ function SeriesWorkspace($$renderer, $$props) {
       $$renderer3.push(`<!--]--> <div class="card shadow-sm"><div class="card-body">`);
       if (mode === "edit") {
         $$renderer3.push("<!--[0-->");
-        $$renderer3.push(`<div class="row g-3 mb-3"><div class="col-12 col-md-6"><label class="form-label" for="series-select">Select series</label> `);
+        $$renderer3.push(`<div class="series-picker-panel border rounded-3 p-3 mb-3"><div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-end gap-2 mb-3"><div><h3 class="h6 mb-1">Choose series</h3> <p class="text-body-secondary small mb-0">Use the filter to narrow the list, then pick the series you want to edit.
+                  The series' own product type is still edited in the form below.</p></div></div> <div class="row g-3"><div class="col-12 col-md-4"><label class="form-label" for="series-product-type-filter">Filter by product type</label> `);
+        $$renderer3.select(
+          {
+            class: "form-select",
+            id: "series-product-type-filter",
+            value: seriesProductTypeFilter
+          },
+          ($$renderer4) => {
+            $$renderer4.option({ value: "" }, ($$renderer5) => {
+              $$renderer5.push(`All product types`);
+            });
+            $$renderer4.push(`<!--[-->`);
+            const each_array = ensure_array_like(productTypes);
+            for (let $$index = 0, $$length = each_array.length; $$index < $$length; $$index++) {
+              let productType = each_array[$$index];
+              $$renderer4.option({ value: productType.key }, ($$renderer5) => {
+                $$renderer5.push(`${escape_html(productType.label)}`);
+              });
+            }
+            $$renderer4.push(`<!--]-->`);
+          }
+        );
+        $$renderer3.push(`</div> <div class="col-12 col-md-8"><label class="form-label" for="series-select">Select series</label> `);
         $$renderer3.select(
           {
             class: "form-select",
@@ -179,9 +227,9 @@ function SeriesWorkspace($$renderer, $$props) {
               $$renderer5.push(`-- Choose option --`);
             });
             $$renderer4.push(`<!--[-->`);
-            const each_array = ensure_array_like(seriesRecords);
-            for (let $$index = 0, $$length = each_array.length; $$index < $$length; $$index++) {
-              let series = each_array[$$index];
+            const each_array_1 = ensure_array_like(filteredSeriesRecords);
+            for (let $$index_1 = 0, $$length = each_array_1.length; $$index_1 < $$length; $$index_1++) {
+              let series = each_array_1[$$index_1];
               $$renderer4.option({ value: series.id }, ($$renderer5) => {
                 $$renderer5.push(`${escape_html(series.name)}`);
               });
@@ -189,7 +237,7 @@ function SeriesWorkspace($$renderer, $$props) {
             $$renderer4.push(`<!--]-->`);
           }
         );
-        $$renderer3.push(`</div></div>`);
+        $$renderer3.push(`</div></div></div>`);
       } else {
         $$renderer3.push("<!--[-1-->");
       }
@@ -205,9 +253,9 @@ function SeriesWorkspace($$renderer, $$props) {
             $$renderer5.push(`-- Choose option --`);
           });
           $$renderer4.push(`<!--[-->`);
-          const each_array_1 = ensure_array_like(productTypes);
-          for (let $$index_1 = 0, $$length = each_array_1.length; $$index_1 < $$length; $$index_1++) {
-            let productType = each_array_1[$$index_1];
+          const each_array_2 = ensure_array_like(productTypes);
+          for (let $$index_2 = 0, $$length = each_array_2.length; $$index_2 < $$length; $$index_2++) {
+            let productType = each_array_2[$$index_2];
             $$renderer4.option({ value: productType.key }, ($$renderer5) => {
               $$renderer5.push(`${escape_html(productType.label)}`);
             });
@@ -227,9 +275,9 @@ function SeriesWorkspace($$renderer, $$props) {
             $$renderer5.push(`No template`);
           });
           $$renderer4.push(`<!--[-->`);
-          const each_array_2 = ensure_array_like(templateRegistry.series_templates ?? []);
-          for (let $$index_2 = 0, $$length = each_array_2.length; $$index_2 < $$length; $$index_2++) {
-            let template = each_array_2[$$index_2];
+          const each_array_3 = ensure_array_like(templateRegistry.series_templates ?? []);
+          for (let $$index_3 = 0, $$length = each_array_3.length; $$index_3 < $$length; $$index_3++) {
+            let template = each_array_3[$$index_3];
             $$renderer4.option({ value: template.id }, ($$renderer5) => {
               $$renderer5.push(`${escape_html(template.label)}`);
             });
@@ -249,9 +297,9 @@ function SeriesWorkspace($$renderer, $$props) {
             $$renderer5.push(`No template`);
           });
           $$renderer4.push(`<!--[-->`);
-          const each_array_3 = ensure_array_like(templateRegistry.series_templates ?? []);
-          for (let $$index_3 = 0, $$length = each_array_3.length; $$index_3 < $$length; $$index_3++) {
-            let template = each_array_3[$$index_3];
+          const each_array_4 = ensure_array_like(templateRegistry.series_templates ?? []);
+          for (let $$index_4 = 0, $$length = each_array_4.length; $$index_4 < $$length; $$index_4++) {
+            let template = each_array_4[$$index_4];
             $$renderer4.option({ value: template.id }, ($$renderer5) => {
               $$renderer5.push(`${escape_html(template.label)}`);
             });

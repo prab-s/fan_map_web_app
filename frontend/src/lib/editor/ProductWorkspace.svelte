@@ -388,6 +388,12 @@
     };
   }
 
+  function syncEditExistingFiltersFromProduct(product = currentProduct) {
+    if (!product) return;
+    editExistingProductTypeKey = product.product_type_key || "";
+    editExistingSeriesId = product.series_id == null ? "" : String(product.series_id);
+  }
+
   function seriesForType(productTypeKey) {
     return seriesRecords
       .filter((series) => series.product_type_key === productTypeKey)
@@ -3499,6 +3505,7 @@
       products.find((product) => Number(product.id) === nextProductId) || null;
     if (selectedProduct) {
       editProduct(selectedProduct);
+      syncEditExistingFiltersFromProduct(selectedProduct);
     }
     selectedProductId = nextProductId;
     editingProductId = nextProductId;
@@ -3509,6 +3516,7 @@
       if (currentProduct) {
         editProduct(currentProduct);
         editingProductId = currentProduct.id;
+        syncEditExistingFiltersFromProduct(currentProduct);
       } else {
         editingProductId = null;
       }
@@ -3703,6 +3711,7 @@
     parameterGroups = (product.parameter_groups ?? []).map((group) =>
       createGroupDraft(group),
     );
+    syncEditExistingFiltersFromProduct(product);
     editProductDetailsOpen = true;
     editGroupedSpecificationsOpen = true;
     editFanAcousticTableOpen = true;

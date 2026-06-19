@@ -596,6 +596,13 @@ export async function startRegenerateAllProductTypePdfsJob() {
   return r.json();
 }
 
+export async function startRefreshCustomerFacingCacheJob() {
+  const r = await apiFetch('/maintenance/jobs/customer-facing-cache/refresh', {
+    method: 'POST'
+  });
+  return r.json();
+}
+
 export async function deleteAllGraphImages() {
   const r = await apiFetch('/maintenance/graph-images', {
     method: 'DELETE'

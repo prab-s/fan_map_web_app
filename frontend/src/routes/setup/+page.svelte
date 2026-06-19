@@ -26,6 +26,7 @@
     startRegenerateAllProductPdfsJob,
     startRegenerateAllSeriesPdfsJob,
     startRegenerateAllProductTypePdfsJob,
+    startRefreshCustomerFacingCacheJob,
     startRestoreDataBackupBundleJob,
     startRestoreDatabaseBackupBundleJob,
     updateProductType,
@@ -1214,19 +1215,45 @@
       </p>
     </div>
 
-    <div class="row g-4 mt-0">
-      <div class="col-12">
-        <div class="card shadow-sm h-100">
-          <div class="card-body bg-body-secondary bg-opacity-10">
+      <div class="row g-4 mt-0">
+        <div class="col-12">
+          <div class="card shadow-sm h-100">
+            <div class="card-body bg-body-secondary bg-opacity-10">
           <p class="small text-uppercase text-body-secondary fw-semibold mb-1">Maintenance</p>
           <h2 class="h4">Operational Tools</h2>
           <p class="text-body-secondary">
             Run special admin-only tasks that are otherwise only exposed through the API.
           </p>
 
-          {#if maintenanceJob && !isPdfMaintenanceJob() && !isGraphImageMaintenanceJob()}
+          {#if maintenanceJob && !isPdfMaintenanceJob() && !isGraphImageMaintenanceJob() && maintenanceJob.job_type !== 'refresh_customer_facing_cache'}
             <JobProgressPanel job={maintenanceJob} label={`Maintenance job: ${maintenanceJob.job_type}`} />
           {/if}
+          <div class="card border mb-3">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                <div>
+                  <h3 class="h6 mb-1">Customer-Facing Refresh</h3>
+                  <p class="mb-0 text-body-secondary">
+                    Manually ask the public catalogue site to refresh its local cache so recent product, series, and product type edits appear sooner.
+                  </p>
+                </div>
+                <button
+                  class="btn btn-primary btn-sm"
+                  type="button"
+                  on:click={() =>
+                    runMaintenanceJob(startRefreshCustomerFacingCacheJob, {
+                      successMessage: 'Customer-facing catalogue refresh requested.'
+                    })}
+                  disabled={maintenanceLoading}
+                >
+                  Refresh Customer-Facing Site
+                </button>
+              </div>
+              {#if maintenanceJob && maintenanceJob.job_type === 'refresh_customer_facing_cache'}
+                <JobProgressPanel job={maintenanceJob} label="Customer-facing catalogue refresh" />
+              {/if}
+            </div>
+          </div>
           <div class="card border mb-3">
             <div class="card-body">
               <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">

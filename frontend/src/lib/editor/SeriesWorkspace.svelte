@@ -21,6 +21,7 @@
   let seriesRecords = [];
   let templateRegistry = { product_templates: [], series_templates: [] };
   let selectedSeriesId = '';
+  let seriesProductTypeFilter = '';
   let saving = false;
   let error = '';
   let success = '';
@@ -29,6 +30,7 @@
   let pendingImageFiles = [];
   let appliedInitialSeriesId = null;
   let appliedSeriesEditorUrlId = '';
+  let hydratedSeriesId = '';
 
   function resetDraft(series = null) {
     return {
@@ -45,6 +47,37 @@
   }
 
   let seriesDraft = resetDraft();
+  $: filteredSeriesRecords = seriesProductTypeFilter
+    ? seriesRecords.filter((item) => String(item.product_type_key || '') === String(seriesProductTypeFilter))
+    : seriesRecords;
+
+  function hydrateSelectedSeries(seriesId = selectedSeriesId) {
+    const normalizedSeriesId = seriesId == null || seriesId === '' ? '' : String(seriesId);
+    if (!normalizedSeriesId) {
+      hydratedSeriesId = '';
+      if (seriesDraft.id) {
+        seriesDraft = resetDraft();
+        seriesImages = [];
+      }
+      return;
+    }
+
+    const selected = seriesRecords.find((item) => String(item.id) === normalizedSeriesId);
+    if (!selected) {
+      return;
+    }
+
+    if (hydratedSeriesId === normalizedSeriesId && String(seriesDraft.id || '') === normalizedSeriesId) {
+      return;
+    }
+
+    hydratedSeriesId = normalizedSeriesId;
+    seriesDraft = resetDraft(selected);
+    seriesImages = selected.series_images || [];
+    if (!seriesProductTypeFilter) {
+      seriesProductTypeFilter = selected.product_type_key || '';
+    }
+  }
 
   function syncSeriesEditorUrl(seriesId) {
     if (typeof window === 'undefined') return;
@@ -54,9 +87,23 @@
     void goto(nextUrl, { replaceState: true, noScroll: true, keepFocus: true });
   }
 
+  function clearSeriesSelection() {
+    selectedSeriesId = '';
+    seriesDraft = resetDraft();
+    seriesImages = [];
+    hydratedSeriesId = '';
+    performanceColumnGroups = [];
+    pendingImageFiles = [];
+    syncSeriesEditorUrl('');
+  }
+
   $: if (mode === 'edit' && String(selectedSeriesId) !== String(appliedSeriesEditorUrlId)) {
     appliedSeriesEditorUrlId = String(selectedSeriesId || '');
     syncSeriesEditorUrl(selectedSeriesId);
+  }
+
+  $: if (mode === 'edit' && selectedSeriesId) {
+    hydrateSelectedSeries();
   }
 
   function seriesViewerUrl(seriesId = seriesDraft.id) {
@@ -75,17 +122,11 @@
         if (mode !== 'create') {
           mode = 'edit';
         }
-        const selected = seriesRecords.find((item) => String(item.id) === nextInitialSeriesId);
-        if (selected) {
-          seriesDraft = resetDraft(selected);
-          seriesImages = selected.series_images || [];
-        } else {
-          seriesDraft = resetDraft();
-          seriesImages = [];
-        }
+        hydrateSelectedSeries(nextInitialSeriesId);
       } else if (mode !== 'create' || seriesDraft.id) {
         seriesDraft = resetDraft();
         seriesImages = [];
+        hydratedSeriesId = '';
       }
     }
   }
@@ -93,9 +134,11 @@
   function startCreate() {
     mode = 'create';
     selectedSeriesId = '';
+    seriesProductTypeFilter = '';
     seriesDraft = resetDraft();
     seriesImages = [];
     pendingImageFiles = [];
+    hydratedSeriesId = '';
     error = '';
     success = '';
   }
@@ -103,9 +146,11 @@
   function startEdit() {
     mode = 'edit';
     selectedSeriesId = '';
+    seriesProductTypeFilter = '';
     seriesDraft = resetDraft();
     seriesImages = [];
     pendingImageFiles = [];
+    hydratedSeriesId = '';
     error = '';
     success = '';
   }
@@ -113,9 +158,11 @@
   function cancelEditing() {
     mode = initialMode;
     selectedSeriesId = '';
+    seriesProductTypeFilter = '';
     seriesDraft = resetDraft();
     seriesImages = [];
     pendingImageFiles = [];
+    hydratedSeriesId = '';
     syncSeriesEditorUrl('');
     error = '';
     success = '';
@@ -124,16 +171,11 @@
   async function loadData() {
     try {
       [productTypes, seriesRecords, templateRegistry] = await Promise.all([getProductTypes(), getSeries(), getTemplates()]);
-      if (selectedSeriesId && mode === 'edit') {
-        const selected = seriesRecords.find((item) => String(item.id) === String(selectedSeriesId));
-        if (selected) {
-          seriesDraft = resetDraft(selected);
-          seriesImages = selected.series_images || [];
-        } else if (!initialSeriesId) {
-          selectedSeriesId = '';
-          seriesDraft = resetDraft();
-          seriesImages = [];
-        }
+      if (mode === 'edit' && selectedSeriesId) {
+        hydrateSelectedSeries();
+      } else if (!selectedSeriesId && !initialSeriesId) {
+        seriesDraft = resetDraft();
+        seriesImages = [];
       }
     } catch (e) {
       error = e.message;
@@ -206,12 +248,8 @@
   onMount(async () => {
     await loadData();
     if (selectedSeriesId) {
-      const selected = seriesRecords.find((item) => String(item.id) === String(selectedSeriesId));
-      if (selected) {
-        mode = 'edit';
-        seriesDraft = resetDraft(selected);
-        seriesImages = selected.series_images || [];
-      }
+      mode = 'edit';
+      hydrateSelectedSeries();
     }
   });
 
@@ -270,33 +308,60 @@
     <div class="card shadow-sm">
       <div class="card-body">
         {#if mode === 'edit'}
-          <div class="row g-3 mb-3">
-            <div class="col-12 col-md-6">
-              <label class="form-label" for="series-select">Select series</label>
-              <select
-                class="form-select"
-                id="series-select"
-                bind:value={selectedSeriesId}
-                on:change={(event) => {
-                  const selected = seriesRecords.find((item) => String(item.id) === event.currentTarget.value);
-                  seriesDraft = resetDraft(selected);
-                  seriesImages = selected?.series_images || [];
-                  performanceColumnGroups = [];
-                  pendingImageFiles = [];
-                  syncSeriesEditorUrl(event.currentTarget.value);
-                  if (event.currentTarget.value) {
-                    void loadPerformanceColumns(event.currentTarget.value).catch((e) => {
-                      error = e.message;
-                    });
-                  }
-                }}
-              >
-                <option value="">-- Choose option --</option>
-                {#each seriesRecords as series}
-                  <option value={series.id}>{series.name}</option>
-                {/each}
-              </select>
+          <div class="series-picker-panel border rounded-3 p-3 mb-3">
+            <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-end gap-2 mb-3">
+              <div>
+                <h3 class="h6 mb-1">Choose series</h3>
+                <p class="text-body-secondary small mb-0">
+                  Use the filter to narrow the list, then pick the series you want to edit.
+                  The series' own product type is still edited in the form below.
+                </p>
+              </div>
             </div>
+            <div class="row g-3">
+              <div class="col-12 col-md-4">
+                <label class="form-label" for="series-product-type-filter">Filter by product type</label>
+                <select
+                  class="form-select"
+                  id="series-product-type-filter"
+                  bind:value={seriesProductTypeFilter}
+                  on:change={(event) => {
+                    seriesProductTypeFilter = event.currentTarget.value;
+                    clearSeriesSelection();
+                  }}
+                >
+                  <option value="">All product types</option>
+                  {#each productTypes as productType}
+                    <option value={productType.key}>{productType.label}</option>
+                  {/each}
+                </select>
+              </div>
+              <div class="col-12 col-md-8">
+                <label class="form-label" for="series-select">Select series</label>
+                <select
+                  class="form-select"
+                  id="series-select"
+                  bind:value={selectedSeriesId}
+                  on:change={(event) => {
+                    mode = 'edit';
+                    hydrateSelectedSeries(event.currentTarget.value);
+                    performanceColumnGroups = [];
+                    pendingImageFiles = [];
+                    syncSeriesEditorUrl(event.currentTarget.value);
+                    if (event.currentTarget.value) {
+                      void loadPerformanceColumns(event.currentTarget.value).catch((e) => {
+                        error = e.message;
+                      });
+                    }
+                  }}
+                >
+                  <option value="">-- Choose option --</option>
+                  {#each filteredSeriesRecords as series}
+                    <option value={series.id}>{series.name}</option>
+                  {/each}
+                </select>
+              </div>
+          </div>
           </div>
         {/if}
 

@@ -18,6 +18,7 @@
   let success = '';
   let mode = initialMode;
   let destroyed = false;
+  let hydratedProductTypeId = '';
 
   function syncProductTypeEditorUrl(productTypeId) {
     if (typeof window === 'undefined') return;
@@ -61,10 +62,34 @@
 
   $: selectedProductType = productTypes.find((item) => String(item.id) === String(selectedProductTypeId)) || null;
 
+  function hydrateSelectedProductType(productTypeId = selectedProductTypeId) {
+    const normalizedProductTypeId = productTypeId == null || productTypeId === '' ? '' : String(productTypeId);
+    if (!normalizedProductTypeId) {
+      hydratedProductTypeId = '';
+      if (productTypeDraft.id) {
+        productTypeDraft = resetDraft();
+      }
+      return;
+    }
+
+    const selected = productTypes.find((item) => String(item.id) === normalizedProductTypeId);
+    if (!selected) {
+      return;
+    }
+
+    if (hydratedProductTypeId === normalizedProductTypeId && String(productTypeDraft.id || '') === normalizedProductTypeId) {
+      return;
+    }
+
+    hydratedProductTypeId = normalizedProductTypeId;
+    productTypeDraft = resetDraft(selected);
+  }
+
   function startCreate() {
     mode = 'create';
     selectedProductTypeId = '';
     productTypeDraft = resetDraft();
+    hydratedProductTypeId = '';
     error = '';
     success = '';
   }
@@ -73,6 +98,7 @@
     mode = 'edit';
     selectedProductTypeId = '';
     productTypeDraft = resetDraft();
+    hydratedProductTypeId = '';
     error = '';
     success = '';
   }
@@ -81,6 +107,7 @@
     mode = initialMode;
     selectedProductTypeId = '';
     productTypeDraft = resetDraft();
+    hydratedProductTypeId = '';
     syncProductTypeEditorUrl('');
     error = '';
     success = '';
@@ -89,6 +116,9 @@
   async function loadProductTypes() {
     try {
       [productTypes, templateRegistry] = await Promise.all([getProductTypes(), getTemplates()]);
+      if (mode === 'edit' && selectedProductTypeId) {
+        hydrateSelectedProductType();
+      }
     } catch (e) {
       error = e.message;
     }
@@ -114,6 +144,10 @@
     if (mode !== 'create') {
       mode = 'edit';
     }
+  }
+
+  $: if (mode === 'edit' && selectedProductTypeId) {
+    hydrateSelectedProductType();
   }
 
   async function saveProductType() {
@@ -228,8 +262,8 @@
                 id="product-type-select"
                 bind:value={selectedProductTypeId}
                 on:change={(event) => {
-                  const selected = productTypes.find((item) => String(item.id) === event.currentTarget.value);
-                  productTypeDraft = resetDraft(selected);
+                  mode = 'edit';
+                  hydrateSelectedProductType(event.currentTarget.value);
                   syncProductTypeEditorUrl(event.currentTarget.value);
                 }}
               >

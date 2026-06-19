@@ -22,6 +22,7 @@ function ProductTypeWorkspace($$renderer, $$props) {
     let saving = false;
     let refreshingPdfJob = null;
     let mode = initialMode;
+    let hydratedProductTypeId = "";
     function productTypeViewerUrl(productTypeId = selectedProductType?.id) {
       const nextProductTypeId = productTypeId == null || productTypeId === "" ? "" : String(productTypeId);
       return nextProductTypeId ? `/viewer/product-type/${encodeURIComponent(nextProductTypeId)}` : "/viewer/product-type";
@@ -50,6 +51,25 @@ function ProductTypeWorkspace($$renderer, $$props) {
       };
     }
     let productTypeDraft = resetDraft();
+    function hydrateSelectedProductType(productTypeId = selectedProductTypeId) {
+      const normalizedProductTypeId = productTypeId == null || productTypeId === "" ? "" : String(productTypeId);
+      if (!normalizedProductTypeId) {
+        hydratedProductTypeId = "";
+        if (productTypeDraft.id) {
+          productTypeDraft = resetDraft();
+        }
+        return;
+      }
+      const selected = productTypes.find((item) => String(item.id) === normalizedProductTypeId);
+      if (!selected) {
+        return;
+      }
+      if (hydratedProductTypeId === normalizedProductTypeId && String(productTypeDraft.id || "") === normalizedProductTypeId) {
+        return;
+      }
+      hydratedProductTypeId = normalizedProductTypeId;
+      productTypeDraft = resetDraft(selected);
+    }
     onDestroy(() => {
     });
     if (initialProductTypeId !== "" && String(selectedProductTypeId) !== String(initialProductTypeId)) {
@@ -59,6 +79,9 @@ function ProductTypeWorkspace($$renderer, $$props) {
       }
     }
     selectedProductType = productTypes.find((item) => String(item.id) === String(selectedProductTypeId)) || null;
+    if (mode === "edit" && selectedProductTypeId) {
+      hydrateSelectedProductType();
+    }
     head("1b6bpt1", $$renderer2, ($$renderer3) => {
       $$renderer3.title(($$renderer4) => {
         $$renderer4.push(`<title>Product Types — Editor</title>`);

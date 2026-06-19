@@ -4976,21 +4976,57 @@ def notify_public_catalogue_cache_refresh():
     def _post_refresh():
         global PUBLIC_CATALOGUE_REFRESH_IN_FLIGHT
         try:
-            request = urllib.request.Request(
-                f"{PUBLIC_CATALOGUE_SITE_URL}/api/cache/refresh",
-                data=b"",
-                method="POST",
-                headers={"Authorization": f"Bearer {CMS_API_TOKEN}"},
-            )
-            with urllib.request.urlopen(request, timeout=5):
-                pass
-        except (urllib.error.URLError, ValueError) as exc:
+            _request_public_catalogue_cache_refresh()
+        except (urllib.error.HTTPError, urllib.error.URLError, ValueError) as exc:
             logger.warning("Catalogue cache refresh notification failed: %s", exc)
         finally:
             with PUBLIC_CATALOGUE_REFRESH_LOCK:
                 PUBLIC_CATALOGUE_REFRESH_IN_FLIGHT = False
 
     threading.Thread(target=_post_refresh, daemon=True).start()
+
+
+def _request_public_catalogue_cache_refresh():
+    request = urllib.request.Request(
+        f"{PUBLIC_CATALOGUE_SITE_URL}/api/cache/refresh",
+        data=b"",
+        method="POST",
+        headers={"Authorization": f"Bearer {CMS_API_TOKEN}"},
+    )
+    with urllib.request.urlopen(request, timeout=5) as response:
+        payload = response.read().decode("utf-8").strip()
+
+    if not payload:
+        return {}
+
+    try:
+        parsed = json.loads(payload)
+    except json.JSONDecodeError:
+        return {"raw_response": payload}
+
+    return parsed if isinstance(parsed, dict) else {"raw_response": payload}
+
+
+def refresh_public_catalogue_cache():
+    if not PUBLIC_CATALOGUE_SITE_URL or not CMS_API_TOKEN:
+        raise HTTPException(
+            status_code=503,
+            detail="Customer-facing catalogue refresh is unavailable because the site URL or token is not configured.",
+        )
+
+    try:
+        return _request_public_catalogue_cache_refresh()
+    except urllib.error.HTTPError as exc:
+        try:
+            detail = exc.read().decode("utf-8").strip()
+        except Exception:
+            detail = ""
+        raise HTTPException(
+            status_code=exc.code,
+            detail=detail or f"Customer-facing catalogue refresh failed with status {exc.code}.",
+        ) from exc
+    except (urllib.error.URLError, ValueError) as exc:
+        raise HTTPException(status_code=502, detail="Customer-facing catalogue refresh is unavailable right now.") from exc
 
 
 def value_in_window(value: float, minimum: float | None, maximum: float | None) -> bool:
@@ -7993,6 +8029,34 @@ def start_regenerate_all_product_type_pdfs_job():
         }
 
     return serialize_maintenance_job(start_maintenance_job("regenerate_all_product_type_pdfs", work))
+
+
+@app.post(
+    "/api/maintenance/jobs/customer-facing-cache/refresh",
+    response_model=MaintenanceJobResponse,
+    dependencies=[Depends(get_current_user)],
+    tags=["Maintenance"],
+    summary="Refresh the customer-facing catalogue cache",
+)
+def start_refresh_customer_facing_cache_job():
+    def work(progress):
+        progress("Sending refresh request to the customer-facing site", 1, 1)
+        payload = refresh_public_catalogue_cache()
+        product_types = payload.get("product_types")
+        series = payload.get("series")
+        products = payload.get("products")
+        summary_parts = ["Customer-facing catalogue cache refreshed."]
+        if isinstance(product_types, int) and isinstance(series, int) and isinstance(products, int):
+            summary_parts.append(f"Loaded {product_types} product types, {series} series, and {products} products.")
+        return {
+            "result_message": " ".join(summary_parts),
+            "progress_message": "Customer-facing catalogue cache refreshed.",
+            "progress_current": 1,
+            "progress_total": 1,
+            "progress_percent": 100.0,
+        }
+
+    return serialize_maintenance_job(start_maintenance_job("refresh_customer_facing_cache", work))
 
 
 @app.delete("/api/maintenance/graph-images", response_model=GraphImageMaintenanceResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"])
