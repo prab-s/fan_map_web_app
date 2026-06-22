@@ -11,14 +11,13 @@
 <body class="series-template series-template--type-2">
   <main class="series-document" style="--series-accent: {{series.series_tab_color}};">
     <section class="series-page series-cover-page">
-      <div class="series-cover-page__content">
-        <div class="series-cover-page__eyebrow">{{series.product_type_label}}</div>
-        <h1 class="series-cover-page__title">{{series.name}}</h1>
-        <h3 class="series-cover-page__subtitle">{{series.product_count}} products/sizes</h3>
-        <div class="series-cover-page__image-wrap drawing-image">
-          {{series.primary_series_image_html}}
-        </div>
-      </div>
+      <img src="{{series.cover_left_page_image_url}}" alt="{{series.name}} cover page"
+        class="series-cover-page__image" />
+    </section>
+
+    <section class="series-page series-cover-page">
+      <img src="{{series.cover_right_page_image_url}}" alt="{{series.name}} cover page"
+        class="series-cover-page__image" />
     </section>
 
     <section class="page">
@@ -61,7 +60,8 @@
             <div class="series-graph series-graph--live" data-series-graph style="--series-graph-height: 80mm;">
               <script type="application/json" class="series-graph__payload">{{series.graph_payload_json}}</script>
               <div class="series-graph__mount"></div>
-              <img src="{{series.graph_image_url}}" alt="{{series.name}} series graph" class="graph-image series-graph__fallback" />
+              <img src="{{series.graph_image_url}}" alt="{{series.name}} series graph"
+                class="graph-image series-graph__fallback" />
             </div>
           </section>
         </aside>
@@ -94,35 +94,29 @@
       <footer class="footer-area">
         <div class="footer-brand-row">
           <div class="footer-brand footer-brand--left">
-            <img
-              src="{{series.company_logo_url}}"
-              alt="Vent-Tech"
-              class="footer-logo"
-            />
+            <img src="{{series.company_logo_url}}" alt="Vent-Tech" class="footer-logo" />
           </div>
-          <div class="footer-site">www.venttech.co.nz</div>
-        </div>
 
-        <div class="footer-contact-row">
-          <div class="footer-contact">
+          <div class="footer-contact-col">
             <span class="footer-contact__item footer-contact__item--phone">
               <span class="footer-contact__icon" aria-hidden="true">&#9742;</span>
               <span class="footer-contact__label">Ph:</span>
               <span class="footer-contact__value">04 595 1404</span>
             </span>
-            <span class="footer-contact__divider" aria-hidden="true">|</span>
             <span class="footer-contact__item footer-contact__item--email">
               <span class="footer-contact__icon" aria-hidden="true">&#9993;</span>
               <span class="footer-contact__label">Email:</span>
               <span class="footer-contact__value footer-contact__value--accent">admin@venttech.co.nz</span>
             </span>
           </div>
-          <div class="footer-badge">{{series.name}}</div>
+
+          <div class="footer-site">www.venttech.co.nz</div>
         </div>
+
       </footer>
     </section>
   </main>
   <script defer src="/series-graph-hydrator.js"></script>
-  </body>
+</body>
 
 </html>

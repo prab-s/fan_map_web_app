@@ -40,6 +40,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload, joinedload
 from pypdf import PdfReader, PdfWriter
 from reportlab.lib.colors import Color, HexColor
+from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageOps
 
@@ -3005,6 +3006,21 @@ def merge_pdf_files(source_paths: list[Path], output_path: Path) -> None:
         writer.write(handle)
 
 
+def _pdf_first_page_size(pdf_path: Path) -> tuple[float, float]:
+    reader = PdfReader(str(pdf_path))
+    if not reader.pages:
+        return float(A4[0]), float(A4[1])
+    first_page = reader.pages[0]
+    return float(first_page.mediabox.width), float(first_page.mediabox.height)
+
+
+def _append_pdf_pages(writer: PdfWriter, pdf_path: Path) -> int:
+    reader = PdfReader(str(pdf_path))
+    for page in reader.pages:
+        writer.add_page(page)
+    return len(reader.pages)
+
+
 def _build_pdf_overlay(page_width: float, page_height: float, page_number: int, tabs: list[dict]) -> PdfReader:
     from io import BytesIO
 
@@ -3695,37 +3711,65 @@ def series_pdf_templates_match(series: Series) -> bool:
     return pdf_template_signature(resolve_series_pdf_template_definition(series, "printed")) == pdf_template_signature(resolve_series_pdf_template_definition(series, "online"))
 
 
-def generate_product_pdf_variant(product: Product, variant: str, output_path: Path | None = None) -> Path:
+def generate_product_pdf_variant(
+    product: Product,
+    variant: str,
+    output_path: Path | None = None,
+    progress_callback=None,
+) -> Path:
     output_path = output_path or product_pdf_path(product, variant)
     with tempfile.TemporaryDirectory(prefix="product-pdf-") as temp_dir_name:
         temp_dir = Path(temp_dir_name)
         base_path = temp_dir / f"product_{variant}_{product_slug(product)}_base.pdf"
+        if progress_callback:
+            progress_callback(f"Rendering {variant} product HTML for {product.model or 'product'}", 1, 3)
         html_content, stylesheet_text = build_product_pdf_html(product, variant)
+        if progress_callback:
+            progress_callback(f"Writing {variant} product PDF for {product.model or 'product'}", 2, 3)
         render_pdf_from_html(html_content, base_path, stylesheet_text)
+        if progress_callback:
+            progress_callback(f"Copying {variant} product PDF for {product.model or 'product'}", 3, 3)
         shutil.copyfile(base_path, output_path)
 
     return output_path
 
 
-def generate_product_pdf(product: Product, variant: str) -> Path:
-    return generate_product_pdf_variant(product, variant)
+def generate_product_pdf(product: Product, variant: str, progress_callback=None) -> Path:
+    return generate_product_pdf_variant(product, variant, progress_callback=progress_callback)
 
 
-def generate_product_pdfs(product: Product) -> tuple[Path, Path]:
+def generate_product_pdfs(product: Product, progress_callback=None) -> tuple[Path, Path]:
     printed_output_path = product_pdf_path(product, "printed")
     online_output_path = product_pdf_path(product, "online")
     printed_signature = pdf_template_signature(resolve_product_pdf_template_definition(product, "printed"))
     online_signature = pdf_template_signature(resolve_product_pdf_template_definition(product, "online"))
 
     if printed_signature == online_signature:
-        generated_path = generate_product_pdf_variant(product, "printed", printed_output_path)
+        generated_path = generate_product_pdf_variant(
+            product,
+            "printed",
+            printed_output_path,
+            progress_callback=_make_progress_window(progress_callback, 1, 3) if progress_callback else None,
+        )
         if online_output_path != generated_path:
+            if progress_callback:
+                progress_callback(f"Copying rendered product PDF to online file for {product.model or 'product'}", 3, 3)
             shutil.copyfile(generated_path, online_output_path)
         return generated_path, online_output_path
 
     return (
-        generate_product_pdf_variant(product, "printed", printed_output_path),
-        generate_product_pdf_variant(product, "online", online_output_path),
+        generate_product_pdf_variant(
+            product,
+            "printed",
+            printed_output_path,
+            progress_callback=_make_progress_window(progress_callback, 1, 2) if progress_callback else None,
+        ),
+        generate_product_pdf_variant(
+            product,
+            "online",
+            online_output_path,
+            progress_callback=_make_progress_window(progress_callback, 2, 3) if progress_callback else None,
+        ),
     )
 
 
@@ -3954,6 +3998,251 @@ def render_series_image_html(
     return f'<img src="{html.escape(image_path.as_uri())}" alt="{html.escape(alt_text)}" class="{html.escape(css_class)}" />'
 
 
+def _build_series_outline_image_path(series: Series, image_index: int, temp_dir: Path) -> Path | None:
+    ordered_images = sorted(series.series_images or [], key=lambda image: (image.sort_order, image.id))
+    if image_index < 1 or len(ordered_images) < image_index:
+        return None
+
+    image = ordered_images[image_index - 1]
+    image_path = series_image_path(series.id, image.file_name)
+    if not image_path.is_file():
+        return None
+
+    outline_path = temp_dir / f"series_{series_slug(series)}_outline_{image_index}.png"
+    if outline_path.is_file():
+        return outline_path
+
+    try:
+        with Image.open(image_path) as source:
+            source = source.convert("RGB")
+            # Cap the working size so the outline pass stays fast even for large uploads.
+            scale = min(1.0, 1200 / max(source.size or (1, 1)))
+            target_size = (
+                max(1, int(source.width * scale)),
+                max(1, int(source.height * scale)),
+            )
+            fitted = ImageOps.contain(source, target_size)
+            grayscale = ImageOps.autocontrast(fitted.convert("L"))
+            edges = grayscale.filter(ImageFilter.FIND_EDGES)
+            edges = ImageOps.autocontrast(edges)
+            edges = edges.point(lambda value: 255 if value > 18 else 0)
+            edges = edges.filter(ImageFilter.MaxFilter(3))
+            edges = edges.filter(ImageFilter.GaussianBlur(radius=0.45))
+
+            outline = Image.new("RGBA", fitted.size, (255, 255, 255, 0))
+            outline.putalpha(edges)
+            outline.save(outline_path, format="PNG")
+            return outline_path
+    except Exception:
+        return None
+
+
+SERIES_COVER_PAGE_WIDTH_PX = 1800
+SERIES_COVER_PAGE_HEIGHT_PX = 2546
+SERIES_COVER_BACKGROUND_OPACITY = 26
+SERIES_COVER_TITLE_STRIP_ALPHA = 232
+SERIES_COVER_FONT_CANDIDATES = [
+    Path("/usr/share/fonts/truetype/space-grotesk/SpaceGrotesk-Bold.ttf"),
+    Path("/usr/share/fonts/opentype/urw-base35/NimbusSans-Bold.otf"),
+    Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"),
+]
+
+
+def _load_series_cover_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    for font_path in SERIES_COVER_FONT_CANDIDATES:
+        if font_path.is_file():
+            try:
+                return ImageFont.truetype(str(font_path), size=size)
+            except Exception:
+                continue
+    return ImageFont.load_default()
+
+
+def _fit_cover_text_font(draw: ImageDraw.ImageDraw, text: str, max_width: int, start_size: int, min_size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    for size in range(start_size, min_size - 1, -2):
+        font = _load_series_cover_font(size)
+        bbox = draw.textbbox((0, 0), text, font=font, spacing=0, align="center")
+        if (bbox[2] - bbox[0]) <= max_width:
+            return font
+    return _load_series_cover_font(min_size)
+
+
+def _draw_shadowed_centered_text(
+    draw: ImageDraw.ImageDraw,
+    center_x: int,
+    center_y: int,
+    text: str,
+    font: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+    fill: tuple[int, int, int, int],
+    shadow_fill: tuple[int, int, int, int] = (0, 0, 0, 110),
+) -> None:
+    bbox = draw.textbbox((0, 0), text, font=font, spacing=0, align="center")
+    text_width = bbox[2] - bbox[0]
+    text_height = bbox[3] - bbox[1]
+    x = center_x - (text_width / 2)
+    y = center_y - (text_height / 2)
+    draw.text((x + 2, y + 2), text, font=font, fill=shadow_fill, spacing=0, align="center")
+    draw.text((x, y), text, font=font, fill=fill, spacing=0, align="center")
+
+
+def _series_cover_background(size: tuple[int, int]) -> Image.Image:
+    width, height = size
+    canvas = Image.new("RGBA", size, (18, 5, 8, 255))
+    wash = Image.new("RGBA", size, (88, 12, 22, 115))
+    return Image.alpha_composite(canvas, wash)
+
+
+def _build_series_cover_background_image_path(series: Series, temp_dir: Path) -> Path | None:
+    output_path = temp_dir / f"series_{series_slug(series)}_cover_background.png"
+    if output_path.is_file():
+        return output_path
+
+    ordered_images = sorted(series.series_images or [], key=lambda image: (image.sort_order, image.id))
+    if not ordered_images:
+        return None
+
+    image = ordered_images[0]
+    image_path = series_image_path(series.id, image.file_name)
+    if not image_path.is_file():
+        return None
+
+    try:
+        with Image.open(image_path) as source:
+            source = source.convert("RGB")
+            fitted = ImageOps.fit(
+                source,
+                (SERIES_COVER_PAGE_WIDTH_PX, SERIES_COVER_PAGE_HEIGHT_PX),
+                method=getattr(getattr(Image, "Resampling", Image), "LANCZOS"),
+            )
+            fitted = ImageOps.invert(ImageOps.autocontrast(fitted.convert("L"))).convert("RGBA")
+            fitted = fitted.filter(ImageFilter.GaussianBlur(radius=1.0))
+            fitted.putalpha(SERIES_COVER_BACKGROUND_OPACITY)
+
+            canvas_image = Image.new("RGBA", (SERIES_COVER_PAGE_WIDTH_PX, SERIES_COVER_PAGE_HEIGHT_PX), (18, 4, 8, 255))
+            canvas_image.alpha_composite(fitted)
+
+            red_wash = Image.new("RGBA", (SERIES_COVER_PAGE_WIDTH_PX, SERIES_COVER_PAGE_HEIGHT_PX), (92, 10, 22, 120))
+            canvas_image = Image.alpha_composite(canvas_image, red_wash)
+
+            canvas_image.save(output_path, format="PNG")
+            return output_path
+    except Exception:
+        return None
+
+
+def _hex_color_to_rgb(hex_color: str) -> tuple[int, int, int]:
+    value = (hex_color or "").strip().lstrip("#")
+    if len(value) == 3:
+        value = "".join(ch * 2 for ch in value)
+    if len(value) != 6:
+        return 204, 16, 36
+    try:
+        return int(value[0:2], 16), int(value[2:4], 16), int(value[4:6], 16)
+    except ValueError:
+        return 204, 16, 36
+
+
+def _build_series_cover_page_image_path(series: Series, image_index: int, temp_dir: Path, include_title: bool) -> Path | None:
+    page_role = "left" if include_title else "right"
+    output_path = temp_dir / f"series_{series_slug(series)}_cover_{page_role}_{image_index}.png"
+    if output_path.is_file():
+        return output_path
+
+    outline_path = _build_series_outline_image_path(series, image_index, temp_dir)
+    background_path = _build_series_cover_background_image_path(series, temp_dir)
+    title_text = series.name or ""
+    eyebrow_text = series.product_type_label or ""
+
+    try:
+        if background_path is not None and background_path.is_file():
+            with Image.open(background_path) as background_image:
+                canvas_image = background_image.convert("RGBA").copy()
+        else:
+            canvas_image = _series_cover_background((SERIES_COVER_PAGE_WIDTH_PX, SERIES_COVER_PAGE_HEIGHT_PX))
+        draw = ImageDraw.Draw(canvas_image)
+
+        if include_title:
+            strip_top = int(SERIES_COVER_PAGE_HEIGHT_PX * 0.15)
+            strip_bottom = int(SERIES_COVER_PAGE_HEIGHT_PX * 0.30)
+            strip_fill = (*_hex_color_to_rgb(series.series_tab_color or SERIES_TAB_FALLBACK_COLOR), SERIES_COVER_TITLE_STRIP_ALPHA)
+            strip_overlay = Image.new("RGBA", (SERIES_COVER_PAGE_WIDTH_PX, SERIES_COVER_PAGE_HEIGHT_PX), (0, 0, 0, 0))
+            strip_draw = ImageDraw.Draw(strip_overlay)
+            strip_draw.rectangle((0, strip_top, SERIES_COVER_PAGE_WIDTH_PX, strip_bottom), fill=strip_fill)
+            strip_draw.line((0, strip_top, SERIES_COVER_PAGE_WIDTH_PX, strip_top), fill=(255, 255, 255, 70), width=3)
+            strip_draw.line((0, strip_bottom, SERIES_COVER_PAGE_WIDTH_PX, strip_bottom), fill=(0, 0, 0, 85), width=3)
+            canvas_image = Image.alpha_composite(canvas_image, strip_overlay)
+            draw = ImageDraw.Draw(canvas_image)
+
+            eyebrow_font = _fit_cover_text_font(draw, eyebrow_text, int(SERIES_COVER_PAGE_WIDTH_PX * 0.68), 52, 30) if eyebrow_text else _load_series_cover_font(44)
+            title_font = _fit_cover_text_font(draw, title_text, int(SERIES_COVER_PAGE_WIDTH_PX * 0.74), 140, 72) if title_text else _load_series_cover_font(112)
+            _draw_shadowed_centered_text(
+                draw,
+                SERIES_COVER_PAGE_WIDTH_PX // 2,
+                int(SERIES_COVER_PAGE_HEIGHT_PX * 0.17),
+                eyebrow_text,
+                eyebrow_font,
+                (255, 255, 255, 255),
+                shadow_fill=(0, 0, 0, 90),
+            )
+            _draw_shadowed_centered_text(
+                draw,
+                SERIES_COVER_PAGE_WIDTH_PX // 2,
+                int(SERIES_COVER_PAGE_HEIGHT_PX * 0.24),
+                title_text,
+                title_font,
+                (255, 255, 255, 255),
+                shadow_fill=(0, 0, 0, 140),
+            )
+
+        image_box = (
+            int(SERIES_COVER_PAGE_WIDTH_PX * 0.12),
+            int(SERIES_COVER_PAGE_HEIGHT_PX * (0.60 if include_title else 0.18)),
+            int(SERIES_COVER_PAGE_WIDTH_PX * 0.88),
+            int(SERIES_COVER_PAGE_HEIGHT_PX * 0.95),
+        )
+        box_width = max(1, image_box[2] - image_box[0])
+        box_height = max(1, image_box[3] - image_box[1])
+        if outline_path is not None and outline_path.is_file():
+            with Image.open(outline_path) as source:
+                fitted = ImageOps.contain(source.convert("RGBA"), (box_width, box_height))
+                fitted_x = image_box[0] + ((box_width - fitted.width) // 2)
+                fitted_y = image_box[1] + ((box_height - fitted.height) // 2)
+                shadow = Image.new("RGBA", fitted.size, (0, 0, 0, 0))
+                shadow.putalpha(fitted.getchannel("A"))
+                shadow = shadow.filter(ImageFilter.GaussianBlur(radius=10))
+                canvas_image.alpha_composite(shadow, (fitted_x + 10, fitted_y + 12))
+                canvas_image.alpha_composite(fitted, (fitted_x, fitted_y))
+        else:
+            fallback_draw = ImageDraw.Draw(canvas_image)
+            fallback_draw.rounded_rectangle(
+                image_box,
+                radius=30,
+                outline=(255, 255, 255, 48),
+                width=4,
+                fill=(255, 255, 255, 12),
+            )
+
+        canvas_image.save(output_path, format="PNG")
+        return output_path
+    except Exception:
+        return None
+
+
+def render_series_outline_image_html(
+    series: Series,
+    image_index: int,
+    css_class: str,
+    alt_text: str,
+    placeholder_text: str,
+    temp_dir: Path,
+    placeholder_class: str = "series-image-placeholder",
+) -> str:
+    outline_path = _build_series_outline_image_path(series, image_index, temp_dir)
+    if outline_path is None:
+        return f'<div class="{html.escape(placeholder_class)}">{html.escape(placeholder_text)}</div>'
+    return f'<img src="{html.escape(outline_path.as_uri())}" alt="{html.escape(alt_text)}" class="{html.escape(css_class)}" />'
+
+
 def render_series_products_summary_table(series: Series) -> str:
     ordered_products = sorted(series.products or [], key=lambda product: (product.model or "").lower())
     if not ordered_products:
@@ -4159,7 +4448,7 @@ def generate_series_graph(series: Series) -> Path:
     return final_path
 
 
-def build_series_pdf_html(series: Series, variant: str) -> tuple[str, str]:
+def build_series_pdf_html(series: Series, variant: str, temp_dir: Path) -> tuple[str, str]:
     template_id = series.printed_template_id if variant == "printed" else series.online_template_id
     template_definition = get_template_definition(template_id or series.template_id or "series-default", "series")
     if template_definition is None:
@@ -4189,36 +4478,33 @@ def build_series_pdf_html(series: Series, variant: str) -> tuple[str, str]:
         performance_column_labels.append("—")
 
     logo_uri = ""
-    logo_path = project_root / "templates" / "product" / "default" / "vent-tech-customer_site_logo.png"
+    logo_path = project_root / "templates" / "product" / "default" / "vent-tech-customer_site_logo_grey_bg.png"
     if logo_path.is_file():
         logo_uri = logo_path.resolve().as_uri()
+
+    left_cover_page_path = _build_series_cover_page_image_path(series, 1, temp_dir, include_title=True)
+    right_cover_page_path = _build_series_cover_page_image_path(series, 2, temp_dir, include_title=False)
 
     replacements = {
         "{{series.name}}": html.escape(series.name or ""),
         "{{series.product_type_label}}": html.escape(series.product_type_label or ""),
         "{{series.series_tab_color}}": html.escape(series.series_tab_color or SERIES_TAB_FALLBACK_COLOR),
-        "{{series.cover_image_html}}": render_series_image_html(
-            series,
-            image_index=1,
-            css_class="series-cover__image",
-            alt_text=f"{series.name or ''} primary series image",
-            placeholder_text="No primary series image available",
-            placeholder_class="series-cover__placeholder",
-        ),
         "{{series.primary_series_image_html}}": render_series_image_html(
             series,
             image_index=1,
             css_class="series-image-card__image series-image-card__image--primary",
             alt_text=f"{series.name or ''} primary series image",
-            placeholder_text="No primary series image available",
+            placeholder_text="Series image unavailable",
         ),
         "{{series.secondary_series_image_html}}": render_series_image_html(
             series,
             image_index=2,
             css_class="series-image-card__image series-image-card__image--secondary",
             alt_text=f"{series.name or ''} secondary series image",
-            placeholder_text="No secondary series image available",
+            placeholder_text="Series image unavailable",
         ),
+        "{{series.cover_left_page_image_url}}": left_cover_page_path.as_uri() if left_cover_page_path else "",
+        "{{series.cover_right_page_image_url}}": right_cover_page_path.as_uri() if right_cover_page_path else "",
         "{{series.description1_html}}": render_richtext_html(series.description1_html),
         "{{series.description2_html}}": render_richtext_html(series.description2_html),
         "{{series.description3_html}}": render_richtext_html(series.description3_html),
@@ -4242,52 +4528,100 @@ def build_series_pdf_html(series: Series, variant: str) -> tuple[str, str]:
     return rendered, stylesheet_text
 
 
-def build_series_pdf_base(series: Series, variant: str, temp_dir: Path) -> tuple[Path, int]:
+def build_series_pdf_base(series: Series, variant: str, temp_dir: Path, progress_callback=None) -> tuple[Path, int]:
     cover_base_path = temp_dir / f"series_{variant}_{series_slug(series)}_cover.pdf"
-    cover_html, cover_stylesheet_text = build_series_pdf_html(series, variant)
+    cover_html, cover_stylesheet_text = build_series_pdf_html(series, variant, temp_dir)
+    if progress_callback:
+        progress_callback(f"Rendering {variant} series cover for {series.name or 'series'}", 1, max(len(series.products or []) + 4, 5))
     render_pdf_from_html(cover_html, cover_base_path, cover_stylesheet_text)
 
     product_base_paths: list[Path] = []
-    for product in sorted(series.products or [], key=lambda item: (item.model or "").casefold()):
+    ordered_products = sorted(series.products or [], key=lambda item: (item.model or "").casefold())
+    total_steps = max(len(ordered_products) + 4, 5)
+    for index, product in enumerate(ordered_products, start=1):
         product_base_path = temp_dir / f"product_{variant}_{product_slug(product)}_series_base.pdf"
         product_html, product_stylesheet_text = build_product_pdf_html(product, variant)
+        if progress_callback:
+            progress_callback(
+                f"Rendering {variant} product {index} of {len(ordered_products)} for {series.name or 'series'}",
+                index + 1,
+                total_steps,
+            )
         render_pdf_from_html(product_html, product_base_path, product_stylesheet_text)
         product_base_paths.append(product_base_path)
 
     merged_base_path = temp_dir / f"series_{variant}_{series_slug(series)}_base.pdf"
+    if progress_callback:
+        progress_callback(f"Merging {variant} series PDF pages for {series.name or 'series'}", len(ordered_products) + 2, total_steps)
     merge_pdf_files([cover_base_path, *product_base_paths], merged_base_path)
-    return merged_base_path, pdf_page_count(merged_base_path)
+    page_count = pdf_page_count(merged_base_path)
+    if page_count % 2 == 1:
+        aligned_base_path = temp_dir / f"series_{variant}_{series_slug(series)}_aligned.pdf"
+        if progress_callback:
+            progress_callback(f"Adding buffer page for {series.name or 'series'}", len(ordered_products) + 3, total_steps)
+        writer = PdfWriter()
+        _append_pdf_pages(writer, merged_base_path)
+        writer.add_blank_page(width=SEPARATOR_PAGE_WIDTH_PT, height=SEPARATOR_PAGE_HEIGHT_PT)
+        with aligned_base_path.open("wb") as handle:
+            writer.write(handle)
+        merged_base_path = aligned_base_path
+        page_count += 1
+    if progress_callback:
+        progress_callback(f"Finalising {variant} series PDF for {series.name or 'series'}", len(ordered_products) + 4, total_steps)
+    return merged_base_path, page_count
 
 
-def generate_series_pdf_variant(series: Series, variant: str, output_path: Path | None = None) -> Path:
+def generate_series_pdf_variant(
+    series: Series,
+    variant: str,
+    output_path: Path | None = None,
+    progress_callback=None,
+) -> Path:
     output_path = output_path or series_pdf_path(series, variant)
     with tempfile.TemporaryDirectory(prefix="series-pdf-") as temp_dir_name:
         temp_dir = Path(temp_dir_name)
-        base_path, _ = build_series_pdf_base(series, variant, temp_dir)
+        base_path, _ = build_series_pdf_base(series, variant, temp_dir, progress_callback=progress_callback)
         shutil.copyfile(base_path, output_path)
 
     return output_path
 
 
-def generate_series_pdf(series: Series, variant: str) -> Path:
-    return generate_series_pdf_variant(series, variant)
+def generate_series_pdf(series: Series, variant: str, progress_callback=None) -> Path:
+    return generate_series_pdf_variant(series, variant, progress_callback=progress_callback)
 
 
-def generate_series_pdfs(series: Series) -> tuple[Path, Path]:
+def generate_series_pdfs(series: Series, progress_callback=None) -> tuple[Path, Path]:
     printed_output_path = series_pdf_path(series, "printed")
     online_output_path = series_pdf_path(series, "online")
     printed_signature = pdf_template_signature(resolve_series_pdf_template_definition(series, "printed"))
     online_signature = pdf_template_signature(resolve_series_pdf_template_definition(series, "online"))
 
     if printed_signature == online_signature:
-        generated_path = generate_series_pdf_variant(series, "printed", printed_output_path)
+        generated_path = generate_series_pdf_variant(
+            series,
+            "printed",
+            printed_output_path,
+            progress_callback=_make_progress_window(progress_callback, 1, 70) if progress_callback else None,
+        )
         if online_output_path != generated_path:
+            if progress_callback:
+                progress_callback(f"Copying rendered series PDF to online file for {series.name or 'series'}", 95, 100)
             shutil.copyfile(generated_path, online_output_path)
         return generated_path, online_output_path
 
     return (
-        generate_series_pdf_variant(series, "printed", printed_output_path),
-        generate_series_pdf_variant(series, "online", online_output_path),
+        generate_series_pdf_variant(
+            series,
+            "printed",
+            printed_output_path,
+            progress_callback=_make_progress_window(progress_callback, 1, 45) if progress_callback else None,
+        ),
+        generate_series_pdf_variant(
+            series,
+            "online",
+            online_output_path,
+            progress_callback=_make_progress_window(progress_callback, 46, 90) if progress_callback else None,
+        ),
     )
 
 
@@ -4309,6 +4643,16 @@ def series_primary_image_uri(series: Series) -> str:
     if not first_image_path.is_file():
         return ""
     return first_image_path.as_uri()
+
+
+def series_secondary_image_uri(series: Series) -> str:
+    ordered_images = sorted(series.series_images or [], key=lambda img: (img.sort_order, img.id))
+    if len(ordered_images) < 2:
+        return ""
+    second_image_path = series_image_path(series.id, ordered_images[1].file_name)
+    if not second_image_path.is_file():
+        return ""
+    return second_image_path.as_uri()
 
 
 def build_product_type_contents_icon_url(product_type: ProductType) -> str:
@@ -4467,12 +4811,15 @@ def resolve_product_type_series_pdf_source(series: Series) -> Path | None:
 def build_product_type_series_pdf_summaries(
     product_type: ProductType,
     strict: bool = True,
+    progress_callback=None,
 ) -> tuple[list[dict], list[Path]]:
     ordered_series = sorted(product_type.series or [], key=lambda item: (item.name or "").casefold())
     series_summaries: list[dict] = []
     source_paths: list[Path] = []
 
     for series in ordered_series:
+        if progress_callback:
+            progress_callback(f"Inspecting series {series.name or 'Series'} for product type {product_type.label}", len(series_summaries) + 1, max(len(ordered_series), 1))
         ordered_products = sorted(series.products or [], key=lambda item: (item.model or "").casefold())
         source_path = resolve_product_type_series_pdf_source(series)
         if source_path is None:
@@ -4490,6 +4837,7 @@ def build_product_type_series_pdf_summaries(
                 "name": series.name,
                 "series_tab_color": series.series_tab_color or SERIES_TAB_FALLBACK_COLOR,
                 "primary_series_image_uri": series_primary_image_uri(series),
+                "secondary_series_image_uri": series_secondary_image_uri(series),
                 "series_description_html": render_richtext_html(series.description1_html),
                 "first_product_image_uri": product_primary_image_uri(ordered_products[0]) if ordered_products else "",
                 "page_count": pdf_page_count(source_path) if source_path is not None else 0,
@@ -4510,6 +4858,24 @@ def build_product_type_series_pdf_summaries(
         )
 
     return series_summaries, source_paths
+
+
+SEPARATOR_PAGE_WIDTH_PT = float(A4[0])
+SEPARATOR_PAGE_HEIGHT_PT = float(A4[1])
+
+
+def _append_product_type_series_pdfs(
+    writer: PdfWriter,
+    series_base_paths: list[Path],
+    current_page_count: int,
+    progress_callback=None,
+) -> int:
+    total = max(len(series_base_paths), 1)
+    for index, series_base_path in enumerate(series_base_paths, start=1):
+        if progress_callback:
+            progress_callback(f"Appending series PDF {index} of {total}", index, total)
+        current_page_count += _append_pdf_pages(writer, series_base_path)
+    return current_page_count
 
 
 def _series_collage_target_dimensions() -> tuple[int, int]:
@@ -4631,6 +4997,7 @@ def render_product_type_intro_with_page_ranges(
     series_names_html: str,
     series_legend_html: str,
     series_collage_image_uri: str,
+    progress_callback=None,
 ) -> tuple[Path, int, str, str]:
     intro_base_path = temp_dir / f"product_type_printed_{sanitize_name(product_type.key or product_type.label or 'unknown')}_intro.pdf"
     intro_page_count = 0
@@ -4645,16 +5012,24 @@ def render_product_type_intro_with_page_ranges(
         series_legend_html,
         series_collage_image_uri,
     )
+    if progress_callback:
+        progress_callback(f"Rendering product type intro for {product_type.label}", 1, 2)
     render_pdf_from_html(intro_html, intro_base_path, intro_stylesheet_text)
     intro_page_count = pdf_page_count(intro_base_path)
 
-    next_page_start = intro_page_count + 1
+    current_page_count = intro_page_count
     for summary in series_summaries:
         series_page_count = int(summary.get("page_count") or 0)
+        summary["buffer_page"] = 0
+
+        if series_page_count > 0 and current_page_count % 2 == 1:
+            current_page_count += 1
+            summary["buffer_page"] = current_page_count
+
         if series_page_count > 0:
-            summary["page_start"] = next_page_start
-            summary["page_end"] = next_page_start + series_page_count - 1
-            next_page_start = summary["page_end"] + 1
+            summary["page_start"] = current_page_count + 1
+            current_page_count += series_page_count
+            summary["page_end"] = current_page_count
         else:
             summary["page_start"] = 0
             summary["page_end"] = 0
@@ -4667,6 +5042,8 @@ def render_product_type_intro_with_page_ranges(
         series_legend_html,
         series_collage_image_uri,
     )
+    if progress_callback:
+        progress_callback(f"Rendering product type intro with page ranges for {product_type.label}", 2, 2)
     render_pdf_from_html(intro_html, intro_base_path, intro_stylesheet_text)
     intro_page_count = pdf_page_count(intro_base_path)
 
@@ -4722,8 +5099,11 @@ def build_product_type_pdf_html(
     return rendered, stylesheet_text
 
 
-def build_product_type_pdf_base(product_type: ProductType, temp_dir: Path) -> tuple[Path, dict]:
-    series_summaries, series_base_paths = build_product_type_series_pdf_summaries(product_type)
+def build_product_type_pdf_base(product_type: ProductType, temp_dir: Path, progress_callback=None) -> tuple[Path, dict]:
+    series_summaries, series_base_paths = build_product_type_series_pdf_summaries(
+        product_type,
+        progress_callback=_make_progress_window(progress_callback, 1, 20) if progress_callback else None,
+    )
     series_names_html = build_product_type_series_names_html(product_type.series_names or [])
     series_legend_html = build_product_type_series_legend_html(series_summaries)
     series_collage_image_uri = build_product_type_series_collage_image_uri(series_summaries, temp_dir)
@@ -4734,13 +5114,33 @@ def build_product_type_pdf_base(product_type: ProductType, temp_dir: Path) -> tu
         series_names_html,
         series_legend_html,
         series_collage_image_uri,
+        progress_callback=_make_progress_window(progress_callback, 21, 40) if progress_callback else None,
     )
 
     merged_base_path = temp_dir / f"product_type_printed_{sanitize_name(product_type.key or product_type.label or 'unknown')}_base.pdf"
-    merge_pdf_files([intro_base_path, *series_base_paths], merged_base_path)
+    merged_writer = PdfWriter()
+    current_page_count = _append_pdf_pages(merged_writer, intro_base_path)
+
+    if series_summaries and current_page_count % 2 == 1:
+        merged_writer.add_blank_page(width=SEPARATOR_PAGE_WIDTH_PT, height=SEPARATOR_PAGE_HEIGHT_PT)
+        current_page_count += 1
+
+    if series_summaries:
+        current_page_count = _append_product_type_series_pdfs(
+            merged_writer,
+            series_base_paths,
+            current_page_count,
+            progress_callback=_make_progress_window(progress_callback, 41, 90) if progress_callback else None,
+        )
+
+    merged_base_path.parent.mkdir(parents=True, exist_ok=True)
+    with merged_base_path.open("wb") as handle:
+        if progress_callback:
+            progress_callback(f"Writing product type PDF for {product_type.label}", 91, 100)
+        merged_writer.write(handle)
     return merged_base_path, {
         "intro_page_count": intro_page_count,
-        "page_count": intro_page_count + sum(int(summary["page_count"] or 0) for summary in series_summaries),
+        "page_count": current_page_count,
         "series_summaries": series_summaries,
         "series_names_html": series_names_html,
         "series_groups_html": series_groups_html,
@@ -4764,9 +5164,15 @@ def build_product_type_pdf_context_metadata(product_type: ProductType, temp_dir:
         series_collage_image_uri,
     )
 
+    current_page_count = intro_page_count
+    if series_summaries and current_page_count % 2 == 1:
+        current_page_count += 1
+    for summary in series_summaries:
+        current_page_count += int(summary.get("page_count") or 0)
+
     return {
         "intro_page_count": intro_page_count,
-        "page_count": intro_page_count + sum(int(summary["page_count"] or 0) for summary in series_summaries),
+        "page_count": current_page_count,
         "series_summaries": series_summaries,
         "series_names_html": series_names_html,
         "series_groups_html": series_groups_html,
@@ -4793,6 +5199,8 @@ def build_product_type_page_decorations(metadata: dict) -> list[dict]:
         decorations.append({"tabs": []})
 
     for active_summary in series_summaries:
+        if int(active_summary.get("buffer_page") or 0):
+            decorations.append({"tabs": []})
         active_id = active_summary.get("id")
         page_count = int(active_summary.get("page_count") or 0)
         for _ in range(page_count):
@@ -4811,18 +5219,22 @@ def build_product_type_page_decorations(metadata: dict) -> list[dict]:
     return decorations
 
 
-def generate_product_type_pdf_with_metadata(product_type: ProductType) -> tuple[Path, dict]:
+def generate_product_type_pdf_with_metadata(product_type: ProductType, progress_callback=None) -> tuple[Path, dict]:
     output_path = product_type_pdf_path(product_type, "printed")
     with tempfile.TemporaryDirectory(prefix="product-type-pdf-") as temp_dir_name:
         temp_dir = Path(temp_dir_name)
-        base_path, metadata = build_product_type_pdf_base(product_type, temp_dir)
+        base_path, metadata = build_product_type_pdf_base(
+            product_type,
+            temp_dir,
+            progress_callback=progress_callback,
+        )
         page_decorations = build_product_type_page_decorations(metadata)
         stamp_pdf_file(base_path, output_path, page_decorations)
     return output_path, metadata
 
 
-def generate_product_type_pdf(product_type: ProductType) -> Path:
-    output_path, _ = generate_product_type_pdf_with_metadata(product_type)
+def generate_product_type_pdf(product_type: ProductType, progress_callback=None) -> Path:
+    output_path, _ = generate_product_type_pdf_with_metadata(product_type, progress_callback=progress_callback)
     return output_path
 
 
@@ -5675,6 +6087,26 @@ def start_maintenance_job(job_type: str, work):
     return job
 
 
+def _make_progress_window(progress_callback, start_percent: int, end_percent: int):
+    start_percent = max(0, min(100, int(start_percent)))
+    end_percent = max(start_percent, min(100, int(end_percent)))
+    span = max(0, end_percent - start_percent)
+
+    def windowed_progress(message: str, current: int | None = None, total: int | None = None):
+        if progress_callback is None:
+            return
+        if current is None or total in (None, 0):
+            progress_callback(message, start_percent, 100)
+            return
+        if total <= 1 or span == 0:
+            mapped = end_percent
+        else:
+            mapped = start_percent + round(((current - 1) / (total - 1)) * span)
+        progress_callback(message, mapped, 100)
+
+    return windowed_progress
+
+
 def create_data_backup_bundle(progress_callback=None) -> Path:
     timestamp = backend_now().strftime("%Y%m%d_%H%M%S")
     archive_name = f"fan_graphs_media_data_backup_{timestamp}.zip"
@@ -6331,7 +6763,7 @@ def start_refresh_product_type_pdf_job(product_type_id: int):
         product_type_label = product_type.label
 
     def work(progress):
-        progress(f"Loading product type data for {product_type_label}", 1, 4)
+        progress(f"Loading product type data for {product_type_label}", 1, 100)
         with SessionLocal() as db:
             product_type = (
                 db.query(ProductType)
@@ -6347,25 +6779,25 @@ def start_refresh_product_type_pdf_job(product_type_id: int):
             try:
                 progress(
                     f"Reusing existing series PDFs and building the product type contents page for {product_type.label}",
-                    2,
-                    4,
+                    20,
+                    100,
                 )
-                generate_product_type_pdf(product_type)
+                generate_product_type_pdf(product_type, progress_callback=_make_progress_window(progress, 20, 90))
             except Exception as exc:
                 logger.exception("[maintenance:refresh_product_type_pdf_%s] render failed for %s", product_type_id, product_type.label)
                 raise_job_phase_error(f"Product type {product_type.label}", "PDF rendering", exc)
 
-            progress(f"Merging existing series PDFs into the final product type PDF for {product_type.label}", 3, 4)
+            progress(f"Merging existing series PDFs into the final product type PDF for {product_type.label}", 95, 100)
             db.refresh(product_type)
             db.commit()
 
-        progress(f"Refreshing product type context for {product_type_label}", 4, 4)
+        progress(f"Refreshing product type context for {product_type_label}", 100, 100)
         notify_public_catalogue_cache_refresh()
         return {
             "result_message": f"Generated product type PDF for {product_type_label}.",
             "progress_message": f"Generated product type PDF for {product_type_label}.",
-            "progress_current": 4,
-            "progress_total": 4,
+            "progress_current": 100,
+            "progress_total": 100,
             "progress_percent": 100.0,
         }
 
@@ -6917,16 +7349,16 @@ def start_refresh_series_pdf_job(series_id: int):
                 raise HTTPException(status_code=404, detail="Series not found")
 
             db.refresh(series)
-            progress(f"Loading series data for {series.name}", 1, 4)
+            progress(f"Loading series data for {series.name}", 1, 100)
             if series.product_type and series.product_type.supports_graph and series_has_graph_capable_line_data(series):
                 try:
-                    progress(f"Refreshing series graph image for {series.name}", 2, 4)
+                    progress(f"Refreshing series graph image for {series.name}", 10, 100)
                     generate_series_graph(series)
                 except Exception as exc:
                     logger.exception("[maintenance:refresh_series_pdf_%s] graph generation failed for %s", series_id, series.name)
                     raise_job_phase_error(f"Series {series.name}", "graph image generation", exc)
             else:
-                progress(f"Series graph not required for {series.name} because there is no graph-capable line data to plot", 2, 4)
+                progress(f"Series graph not required for {series.name} because there is no graph-capable line data to plot", 10, 100)
                 logger.info(
                     "[maintenance:refresh_series_pdf_%s] graph generation skipped for %s because there is no graph-capable line data to plot",
                     series_id,
@@ -6937,15 +7369,15 @@ def start_refresh_series_pdf_job(series_id: int):
                 if series_pdf_templates_match(series):
                     progress(
                         f"Rendering shared series PDF template once for {series.name} because printed and online use the same template",
-                        3,
-                        4,
+                        20,
+                        100,
                     )
-                    generate_series_pdfs(series)
-                    progress(f"Copying the rendered series PDF to both printed and online files for {series.name}", 4, 4)
+                    generate_series_pdfs(series, progress_callback=_make_progress_window(progress, 20, 90))
+                    progress(f"Copying the rendered series PDF to both printed and online files for {series.name}", 95, 100)
                 else:
-                    progress(f"Rendering printed series PDF for {series.name}", 3, 4)
-                    progress(f"Rendering online series PDF for {series.name}", 4, 4)
-                    generate_series_pdfs(series)
+                    progress(f"Rendering printed series PDF for {series.name}", 20, 100)
+                    generate_series_pdfs(series, progress_callback=_make_progress_window(progress, 20, 90))
+                    progress(f"Rendering online series PDF for {series.name}", 90, 100)
             except Exception as exc:
                 logger.exception("[maintenance:refresh_series_pdf_%s] pdf rendering failed for %s", series_id, series.name)
                 raise_job_phase_error(f"Series {series.name}", "PDF rendering", exc)
@@ -6955,8 +7387,8 @@ def start_refresh_series_pdf_job(series_id: int):
         return {
             "result_message": f"Generated series PDFs for {series_name}.",
             "progress_message": f"Generated series PDFs for {series_name}.",
-            "progress_current": 3,
-            "progress_total": 3,
+            "progress_current": 100,
+            "progress_total": 100,
             "progress_percent": 100.0,
         }
 
@@ -7808,31 +8240,31 @@ def start_refresh_product_pdf_job(product_id: int):
     def work(progress):
         with SessionLocal() as db:
             product = require_product(db, product_id)
-            progress(f"Loading product data for {product_label}", 1, 4)
+            progress(f"Loading product data for {product_label}", 1, 100)
             graph_path = Path(product.graph_image_path) if product.graph_image_path else None
             if product.product_type and product.product_type.supports_graph and not (graph_path and graph_path.is_file()):
                 try:
-                    progress(f"Refreshing product graph image for {product_label}", 2, 4)
+                    progress(f"Refreshing product graph image for {product_label}", 10, 100)
                     refresh_graph_for_product(db, product)
                 except Exception as exc:
                     logger.exception("[maintenance:refresh_product_pdf_%s] graph refresh failed for %s", product_id, product_label)
                     raise_job_phase_error(f"Product {product_label}", "graph image generation", exc)
             else:
-                progress(f"Product graph image already available for {product_label}", 2, 4)
+                progress(f"Product graph image already available for {product_label}", 10, 100)
 
             try:
                 if product_pdf_templates_match(product):
                     progress(
                         f"Rendering shared product PDF template once for {product_label} because printed and online use the same template",
-                        3,
-                        4,
+                        20,
+                        100,
                     )
-                    generate_product_pdfs(product)
-                    progress(f"Copying the rendered product PDF to both printed and online files for {product_label}", 4, 4)
+                    generate_product_pdfs(product, progress_callback=_make_progress_window(progress, 20, 90))
+                    progress(f"Copying the rendered product PDF to both printed and online files for {product_label}", 95, 100)
                 else:
-                    progress(f"Rendering printed product PDF for {product_label}", 3, 4)
-                    progress(f"Rendering online product PDF for {product_label}", 4, 4)
-                    generate_product_pdfs(product)
+                    progress(f"Rendering printed product PDF for {product_label}", 20, 100)
+                    generate_product_pdfs(product, progress_callback=_make_progress_window(progress, 20, 90))
+                    progress(f"Rendering online product PDF for {product_label}", 90, 100)
             except Exception as exc:
                 logger.exception("[maintenance:refresh_product_pdf_%s] pdf rendering failed for %s", product_id, product_label)
                 raise_job_phase_error(f"Product {product_label}", "PDF rendering", exc)
@@ -7842,8 +8274,8 @@ def start_refresh_product_pdf_job(product_id: int):
         return {
             "result_message": f"Generated printed and online PDFs for {product_label}.",
             "progress_message": f"Generated printed and online PDFs for {product_label}.",
-            "progress_current": 3,
-            "progress_total": 3,
+            "progress_current": 100,
+            "progress_total": 100,
             "progress_percent": 100.0,
         }
 
@@ -7906,32 +8338,30 @@ def start_regenerate_all_product_pdfs_job():
             total = len(products)
             processed = 0
             for index, product in enumerate(products, start=1):
-                base = (index - 1) * 4
-                total_steps = max(total * 4, 1)
-                progress(f"Loading product {index} of {total}: {product.model}", base + 1, total_steps)
+                progress(f"Loading product {index} of {total}: {product.model}", 1, 100)
                 graph_path = Path(product.graph_image_path) if product.graph_image_path else None
                 if product.product_type and product.product_type.supports_graph and not (graph_path and graph_path.is_file()):
                     try:
-                        progress(f"Refreshing graph image for {product.model}", base + 2, total_steps)
+                        progress(f"Refreshing graph image for {product.model}", 10, 100)
                         refresh_graph_for_product(db, product)
                     except Exception as exc:
                         logger.exception("[maintenance:regenerate_all_product_pdfs] graph refresh failed for %s", product.model)
                         raise_job_phase_error(f"Product {product.model}", "graph image generation", exc)
                 else:
-                    progress(f"Graph image already available for {product.model}", base + 2, total_steps)
+                    progress(f"Graph image already available for {product.model}", 10, 100)
                 try:
                     if product_pdf_templates_match(product):
                         progress(
                             f"Rendering shared product PDF template once for {product.model} because printed and online use the same template",
-                            base + 3,
-                            total_steps,
+                            20,
+                            100,
                         )
-                        generate_product_pdfs(product)
-                        progress(f"Copying the rendered product PDF to both printed and online files for {product.model}", base + 4, total_steps)
+                        generate_product_pdfs(product, progress_callback=_make_progress_window(progress, 20, 90))
+                        progress(f"Copying the rendered product PDF to both printed and online files for {product.model}", 95, 100)
                     else:
-                        progress(f"Rendering printed PDF for {product.model}", base + 3, total_steps)
-                        progress(f"Rendering online PDF for {product.model}", base + 4, total_steps)
-                        generate_product_pdfs(product)
+                        progress(f"Rendering printed PDF for {product.model}", 20, 100)
+                        generate_product_pdfs(product, progress_callback=_make_progress_window(progress, 20, 90))
+                        progress(f"Rendering online PDF for {product.model}", 90, 100)
                 except Exception as exc:
                     logger.exception("[maintenance:regenerate_all_product_pdfs] pdf rendering failed for %s", product.model)
                     raise_job_phase_error(f"Product {product.model}", "PDF rendering", exc)
@@ -7952,18 +8382,16 @@ def start_regenerate_all_series_pdfs_job():
             series_records = db.query(Series).options(joinedload(Series.product_type)).all()
             total = len(series_records)
             for index, series in enumerate(series_records, start=1):
-                base = (index - 1) * 4
-                total_steps = max(total * 4, 1)
-                progress(f"Loading series {index} of {total}: {series.name}", base + 1, total_steps)
+                progress(f"Loading series {index} of {total}: {series.name}", 1, 100)
                 if series.product_type and series.product_type.supports_graph and series_has_graph_capable_line_data(series):
                     try:
-                        progress(f"Refreshing graph image for {series.name}", base + 2, total_steps)
+                        progress(f"Refreshing graph image for {series.name}", 10, 100)
                         generate_series_graph(series)
                     except Exception as exc:
                         logger.exception("[maintenance:regenerate_all_series_pdfs] graph generation failed for %s", series.name)
                         raise_job_phase_error(f"Series {series.name}", "graph image generation", exc)
                 else:
-                    progress(f"Series graph image not required for {series.name} because there is no graph-capable line data to plot", base + 2, total_steps)
+                    progress(f"Series graph image not required for {series.name} because there is no graph-capable line data to plot", 10, 100)
                     logger.info(
                         "[maintenance:regenerate_all_series_pdfs] graph generation skipped for %s because there is no graph-capable line data to plot",
                         series.name,
@@ -7972,15 +8400,15 @@ def start_regenerate_all_series_pdfs_job():
                     if series_pdf_templates_match(series):
                         progress(
                             f"Rendering shared series PDF template once for {series.name} because printed and online use the same template",
-                            base + 3,
-                            total_steps,
+                            20,
+                            100,
                         )
-                        generate_series_pdfs(series)
-                        progress(f"Copying the rendered series PDF to both printed and online files for {series.name}", base + 4, total_steps)
+                        generate_series_pdfs(series, progress_callback=_make_progress_window(progress, 20, 90))
+                        progress(f"Copying the rendered series PDF to both printed and online files for {series.name}", 95, 100)
                     else:
-                        progress(f"Rendering printed PDF for {series.name}", base + 3, total_steps)
-                        progress(f"Rendering online PDF for {series.name}", base + 4, total_steps)
-                        generate_series_pdfs(series)
+                        progress(f"Rendering printed PDF for {series.name}", 20, 100)
+                        generate_series_pdfs(series, progress_callback=_make_progress_window(progress, 20, 90))
+                        progress(f"Rendering online PDF for {series.name}", 90, 100)
                 except Exception as exc:
                     logger.exception("[maintenance:regenerate_all_series_pdfs] pdf rendering failed for %s", series.name)
                     raise_job_phase_error(f"Series {series.name}", "PDF rendering", exc)
@@ -8007,18 +8435,15 @@ def start_regenerate_all_product_type_pdfs_job():
             )
             total = len(product_types)
             for index, product_type in enumerate(product_types, start=1):
-                base = (index - 1) * 4
-                total_steps = max(total * 4, 1)
-                progress(f"Loading product type {index} of {total}: {product_type.label}", base + 1, total_steps)
+                progress(f"Loading product type {index} of {total}: {product_type.label}", 1, 100)
                 try:
                     progress(
                         f"Reusing existing series PDFs and building the product type contents page for {product_type.label}",
-                        base + 2,
-                        total_steps,
+                        20,
+                        100,
                     )
-                    generate_product_type_pdf(product_type)
-                    progress(f"Merging existing series PDFs into the final product type PDF for {product_type.label}", base + 3, total_steps)
-                    progress(f"Refreshing product type context for {product_type.label}", base + 4, total_steps)
+                    generate_product_type_pdf(product_type, progress_callback=_make_progress_window(progress, 20, 90))
+                    progress(f"Refreshing product type context for {product_type.label}", 95, 100)
                 except Exception as exc:
                     logger.exception("[maintenance:regenerate_all_product_type_pdfs] pdf generation failed for %s", product_type.label)
                     raise_job_phase_error(f"Product type {product_type.label}", "PDF rendering", exc)
