@@ -20,6 +20,7 @@ HEALTH_TIMEOUT_SECONDS="${HEALTH_TIMEOUT_SECONDS:-30}"
 COMPOSE_MONITOR_INTERVAL_SECONDS="${COMPOSE_MONITOR_INTERVAL_SECONDS:-5}"
 PODMAN_BIN="${PODMAN_BIN:-podman}"
 APP_DATA_VOLUME="${APP_DATA_VOLUME:-fan_graphs_app_data}"
+APP_TEMPLATES_VOLUME="${APP_TEMPLATES_VOLUME:-fan_graphs_templates}"
 ALPINE_IMAGE="${ALPINE_IMAGE:-docker.io/library/alpine:3.20}"
 COMPOSE_ARGS=(-f "${COMPOSE_FILE}")
 LEGACY_PUBLIC_SERVICE_NAME="${LEGACY_PUBLIC_SERVICE_NAME:-vent-tech-catalogue.service}"
@@ -137,6 +138,23 @@ seed_app_data_volume_if_needed() {
     echo "[$(timestamp)] Seeding the PROD app data volume from the existing host data tree..."
     ./migrate_prod_data_volume.sh
   fi
+}
+
+refresh_templates_volume_from_source() {
+  local template_source="${PWD}/templates"
+  local template_dirs=(product series product_type)
+
+  if [[ ! -d "$template_source" ]]; then
+    return 0
+  fi
+
+  if ! ${PODMAN_BIN} volume inspect "${APP_TEMPLATES_VOLUME}" >/dev/null 2>&1; then
+    ${PODMAN_BIN} volume create "${APP_TEMPLATES_VOLUME}" >/dev/null
+  fi
+
+  echo "[$(timestamp)] Refreshing the PROD template volume from the repo templates directory..."
+  ${PODMAN_BIN} run --rm -v "${APP_TEMPLATES_VOLUME}:/target:Z" "${ALPINE_IMAGE}" sh -lc 'rm -rf /target/* /target/.[!.]* /target/..?* 2>/dev/null || true'
+  tar -C "$template_source" -cf - "${template_dirs[@]}" registry.json | ${PODMAN_BIN} run --rm -i -v "${APP_TEMPLATES_VOLUME}:/target:Z" "${ALPINE_IMAGE}" tar -xf - -C /target
 }
 
 stop_legacy_public_service() {
@@ -372,6 +390,10 @@ log_step_done
 
 log_step "Bringing the old compose stack down"
 ${COMPOSE_BIN} "${COMPOSE_ARGS[@]}" "${COMPOSE_VERBOSE_ARGS[@]}" down --remove-orphans || true
+log_step_done
+
+log_step "Refreshing the template volume"
+refresh_templates_volume_from_source
 log_step_done
 
 log_step "Building images with compose"

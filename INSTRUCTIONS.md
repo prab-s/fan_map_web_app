@@ -525,6 +525,9 @@ Use:
 ./migrate_prod_data_volume.sh
 ```
 
+During `redeploy.sh`, the repo's `templates/` directory is also refreshed into the named
+`fan_graphs_templates` volume so PDF template changes are picked up on deploy.
+
 ## Podman deployment layout
 
 ### Current production stack
