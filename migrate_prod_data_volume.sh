@@ -14,8 +14,9 @@ log() {
 }
 
 PODMAN_BIN="${PODMAN_BIN:-podman}"
-APP_DATA_VOLUME="${APP_DATA_VOLUME:-fan_graphs_app_data}"
-APP_TEMPLATES_VOLUME="${APP_TEMPLATES_VOLUME:-fan_graphs_templates}"
+COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-${PWD##*/}}"
+APP_DATA_VOLUME="${APP_DATA_VOLUME:-${COMPOSE_PROJECT_NAME}_fan_graphs_app_data}"
+APP_TEMPLATES_VOLUME="${APP_TEMPLATES_VOLUME:-${COMPOSE_PROJECT_NAME}_fan_graphs_templates}"
 SOURCE_DIR="${SOURCE_DIR:-data}"
 ALPINE_IMAGE="${ALPINE_IMAGE:-docker.io/library/alpine:3.20}"
 TEMPLATE_DIRS=(product series product_type registry.json)

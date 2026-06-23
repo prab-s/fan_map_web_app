@@ -3636,9 +3636,11 @@ def build_product_pdf_html(product: Product, variant: str) -> tuple[str, str]:
             primary_image_uri = first_image_path.as_uri()
 
     logo_uri = ""
-    logo_path = template_path.parent / "vent-tech-customer_site_logo.png"
+    logo_path = template_path.parent / "vent-tech-customer_site_logo_grey_bg.png"
     if logo_path.is_file():
         logo_uri = logo_path.resolve().as_uri()
+    else:
+        raise RuntimeError(f"Product template logo is missing: {logo_path}")
 
     graph_image_uri = ""
     if product.graph_image_path:
@@ -4042,6 +4044,8 @@ SERIES_COVER_PAGE_HEIGHT_PX = 2546
 SERIES_COVER_BACKGROUND_OPACITY = 26
 SERIES_COVER_TITLE_STRIP_ALPHA = 232
 SERIES_COVER_FONT_CANDIDATES = [
+    Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+    Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
     Path("/usr/share/fonts/truetype/space-grotesk/SpaceGrotesk-Bold.ttf"),
     Path("/usr/share/fonts/opentype/urw-base35/NimbusSans-Bold.otf"),
     Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"),
@@ -4151,7 +4155,6 @@ def _build_series_cover_page_image_path(series: Series, image_index: int, temp_d
     outline_path = _build_series_outline_image_path(series, image_index, temp_dir)
     background_path = _build_series_cover_background_image_path(series, temp_dir)
     title_text = series.name or ""
-    eyebrow_text = series.product_type_label or ""
 
     try:
         if background_path is not None and background_path.is_file():
@@ -4162,37 +4165,31 @@ def _build_series_cover_page_image_path(series: Series, image_index: int, temp_d
         draw = ImageDraw.Draw(canvas_image)
 
         if include_title:
-            strip_top = int(SERIES_COVER_PAGE_HEIGHT_PX * 0.15)
-            strip_bottom = int(SERIES_COVER_PAGE_HEIGHT_PX * 0.30)
-            strip_fill = (*_hex_color_to_rgb(series.series_tab_color or SERIES_TAB_FALLBACK_COLOR), SERIES_COVER_TITLE_STRIP_ALPHA)
-            strip_overlay = Image.new("RGBA", (SERIES_COVER_PAGE_WIDTH_PX, SERIES_COVER_PAGE_HEIGHT_PX), (0, 0, 0, 0))
-            strip_draw = ImageDraw.Draw(strip_overlay)
-            strip_draw.rectangle((0, strip_top, SERIES_COVER_PAGE_WIDTH_PX, strip_bottom), fill=strip_fill)
-            strip_draw.line((0, strip_top, SERIES_COVER_PAGE_WIDTH_PX, strip_top), fill=(255, 255, 255, 70), width=3)
-            strip_draw.line((0, strip_bottom, SERIES_COVER_PAGE_WIDTH_PX, strip_bottom), fill=(0, 0, 0, 85), width=3)
-            canvas_image = Image.alpha_composite(canvas_image, strip_overlay)
-            draw = ImageDraw.Draw(canvas_image)
-
-            eyebrow_font = _fit_cover_text_font(draw, eyebrow_text, int(SERIES_COVER_PAGE_WIDTH_PX * 0.68), 52, 30) if eyebrow_text else _load_series_cover_font(44)
-            title_font = _fit_cover_text_font(draw, title_text, int(SERIES_COVER_PAGE_WIDTH_PX * 0.74), 140, 72) if title_text else _load_series_cover_font(112)
-            _draw_shadowed_centered_text(
-                draw,
-                SERIES_COVER_PAGE_WIDTH_PX // 2,
-                int(SERIES_COVER_PAGE_HEIGHT_PX * 0.17),
-                eyebrow_text,
-                eyebrow_font,
-                (255, 255, 255, 255),
-                shadow_fill=(0, 0, 0, 90),
+            title_font = _fit_cover_text_font(draw, title_text, int(SERIES_COVER_PAGE_WIDTH_PX * 0.78), 132, 68) if title_text else _load_series_cover_font(112)
+            title_bbox = draw.textbbox((0, 0), title_text, font=title_font, spacing=0, align="top") if title_text else (0, 0, 0, 0)
+            title_width = max(0, title_bbox[2] - title_bbox[0])
+            title_height = max(0, title_bbox[3] - title_bbox[1])
+            box_padding_x = 22
+            box_padding_y = 22
+            box_width = min(
+                int(SERIES_COVER_PAGE_WIDTH_PX * 0.86),
+                max(title_width + (box_padding_x * 2), int(SERIES_COVER_PAGE_WIDTH_PX * 0.54)),
             )
-            _draw_shadowed_centered_text(
-                draw,
-                SERIES_COVER_PAGE_WIDTH_PX // 2,
-                int(SERIES_COVER_PAGE_HEIGHT_PX * 0.24),
-                title_text,
-                title_font,
-                (255, 255, 255, 255),
-                shadow_fill=(0, 0, 0, 140),
+            box_height = title_height + (box_padding_y * 2)
+            box_left = (SERIES_COVER_PAGE_WIDTH_PX - box_width) // 2
+            box_top = int(SERIES_COVER_PAGE_HEIGHT_PX * 0.16)
+            box_fill = (*_hex_color_to_rgb(series.series_tab_color or SERIES_TAB_FALLBACK_COLOR), SERIES_COVER_TITLE_STRIP_ALPHA)
+            draw.rounded_rectangle(
+                (box_left, box_top, box_left + box_width, box_top + box_height),
+                radius=18,
+                fill=box_fill,
             )
+            if title_text:
+                title_x = (SERIES_COVER_PAGE_WIDTH_PX // 2) - (title_width // 2) - title_bbox[0]
+                title_y = box_top + box_padding_y - title_bbox[1]
+                shadow_fill = (0, 0, 0, 120)
+                draw.text((title_x + 2, title_y + 2), title_text, font=title_font, fill=shadow_fill, spacing=0, align="top")
+                draw.text((title_x, title_y), title_text, font=title_font, fill=(255, 255, 255, 255), spacing=0, align="top")
 
         image_box = (
             int(SERIES_COVER_PAGE_WIDTH_PX * 0.12),
@@ -4481,6 +4478,8 @@ def build_series_pdf_html(series: Series, variant: str, temp_dir: Path) -> tuple
     logo_path = project_root / "templates" / "product" / "default" / "vent-tech-customer_site_logo_grey_bg.png"
     if logo_path.is_file():
         logo_uri = logo_path.resolve().as_uri()
+    else:
+        raise RuntimeError(f"Series template logo is missing: {logo_path}")
 
     left_cover_page_path = _build_series_cover_page_image_path(series, 1, temp_dir, include_title=True)
     right_cover_page_path = _build_series_cover_page_image_path(series, 2, temp_dir, include_title=False)
@@ -4535,25 +4534,28 @@ def build_series_pdf_base(series: Series, variant: str, temp_dir: Path, progress
         progress_callback(f"Rendering {variant} series cover for {series.name or 'series'}", 1, max(len(series.products or []) + 4, 5))
     render_pdf_from_html(cover_html, cover_base_path, cover_stylesheet_text)
 
-    product_base_paths: list[Path] = []
     ordered_products = sorted(series.products or [], key=lambda item: (item.model or "").casefold())
     total_steps = max(len(ordered_products) + 4, 5)
+    product_pdf_paths: list[Path] = []
     for index, product in enumerate(ordered_products, start=1):
-        product_base_path = temp_dir / f"product_{variant}_{product_slug(product)}_series_base.pdf"
-        product_html, product_stylesheet_text = build_product_pdf_html(product, variant)
+        product_pdf = product_pdf_path(product, variant)
+        if not product_pdf.is_file():
+            raise RuntimeError(
+                f"Missing {variant} product PDF for {product.model or 'product'}: {product_pdf}. "
+                "Generate the product PDFs first."
+            )
+        product_pdf_paths.append(product_pdf)
         if progress_callback:
             progress_callback(
-                f"Rendering {variant} product {index} of {len(ordered_products)} for {series.name or 'series'}",
+                f"Reusing {variant} product {index} of {len(ordered_products)} for {series.name or 'series'}",
                 index + 1,
                 total_steps,
             )
-        render_pdf_from_html(product_html, product_base_path, product_stylesheet_text)
-        product_base_paths.append(product_base_path)
 
     merged_base_path = temp_dir / f"series_{variant}_{series_slug(series)}_base.pdf"
     if progress_callback:
-        progress_callback(f"Merging {variant} series PDF pages for {series.name or 'series'}", len(ordered_products) + 2, total_steps)
-    merge_pdf_files([cover_base_path, *product_base_paths], merged_base_path)
+        progress_callback(f"Merging existing {variant} product PDFs for {series.name or 'series'}", len(ordered_products) + 2, total_steps)
+    merge_pdf_files([cover_base_path, *product_pdf_paths], merged_base_path)
     page_count = pdf_page_count(merged_base_path)
     if page_count % 2 == 1:
         aligned_base_path = temp_dir / f"series_{variant}_{series_slug(series)}_aligned.pdf"
@@ -7368,16 +7370,16 @@ def start_refresh_series_pdf_job(series_id: int):
             try:
                 if series_pdf_templates_match(series):
                     progress(
-                        f"Rendering shared series PDF template once for {series.name} because printed and online use the same template",
+                        f"Merging existing product PDFs into the shared series PDF once for {series.name} because printed and online use the same template",
                         20,
                         100,
                     )
                     generate_series_pdfs(series, progress_callback=_make_progress_window(progress, 20, 90))
-                    progress(f"Copying the rendered series PDF to both printed and online files for {series.name}", 95, 100)
+                    progress(f"Copying the merged series PDF to both printed and online files for {series.name}", 95, 100)
                 else:
-                    progress(f"Rendering printed series PDF for {series.name}", 20, 100)
+                    progress(f"Merging existing product PDFs into the printed series PDF for {series.name}", 20, 100)
                     generate_series_pdfs(series, progress_callback=_make_progress_window(progress, 20, 90))
-                    progress(f"Rendering online series PDF for {series.name}", 90, 100)
+                    progress(f"Merging existing product PDFs into the online series PDF for {series.name}", 90, 100)
             except Exception as exc:
                 logger.exception("[maintenance:refresh_series_pdf_%s] pdf rendering failed for %s", series_id, series.name)
                 raise_job_phase_error(f"Series {series.name}", "PDF rendering", exc)
@@ -8399,16 +8401,16 @@ def start_regenerate_all_series_pdfs_job():
                 try:
                     if series_pdf_templates_match(series):
                         progress(
-                            f"Rendering shared series PDF template once for {series.name} because printed and online use the same template",
+                            f"Merging existing product PDFs into the shared series PDF once for {series.name} because printed and online use the same template",
                             20,
                             100,
                         )
                         generate_series_pdfs(series, progress_callback=_make_progress_window(progress, 20, 90))
-                        progress(f"Copying the rendered series PDF to both printed and online files for {series.name}", 95, 100)
+                        progress(f"Copying the merged series PDF to both printed and online files for {series.name}", 95, 100)
                     else:
-                        progress(f"Rendering printed PDF for {series.name}", 20, 100)
+                        progress(f"Merging existing product PDFs into the printed series PDF for {series.name}", 20, 100)
                         generate_series_pdfs(series, progress_callback=_make_progress_window(progress, 20, 90))
-                        progress(f"Rendering online PDF for {series.name}", 90, 100)
+                        progress(f"Merging existing product PDFs into the online series PDF for {series.name}", 90, 100)
                 except Exception as exc:
                     logger.exception("[maintenance:regenerate_all_series_pdfs] pdf rendering failed for %s", series.name)
                     raise_job_phase_error(f"Series {series.name}", "PDF rendering", exc)

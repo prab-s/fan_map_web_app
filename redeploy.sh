@@ -19,9 +19,12 @@ PUBLIC_HEALTH_URL="${PUBLIC_HEALTH_URL:-http://localhost:8004/}"
 HEALTH_TIMEOUT_SECONDS="${HEALTH_TIMEOUT_SECONDS:-30}"
 COMPOSE_MONITOR_INTERVAL_SECONDS="${COMPOSE_MONITOR_INTERVAL_SECONDS:-5}"
 PODMAN_BIN="${PODMAN_BIN:-podman}"
-APP_DATA_VOLUME="${APP_DATA_VOLUME:-fan_graphs_app_data}"
-APP_TEMPLATES_VOLUME="${APP_TEMPLATES_VOLUME:-fan_graphs_templates}"
+COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-${PWD##*/}}"
+export COMPOSE_PROJECT_NAME
+APP_DATA_VOLUME="${APP_DATA_VOLUME:-${COMPOSE_PROJECT_NAME}_fan_graphs_app_data}"
+APP_TEMPLATES_VOLUME="${APP_TEMPLATES_VOLUME:-${COMPOSE_PROJECT_NAME}_fan_graphs_templates}"
 ALPINE_IMAGE="${ALPINE_IMAGE:-docker.io/library/alpine:3.20}"
+APP_IMAGE="${APP_IMAGE:-localhost/fan-graphs:latest}"
 COMPOSE_ARGS=(-f "${COMPOSE_FILE}")
 LEGACY_PUBLIC_SERVICE_NAME="${LEGACY_PUBLIC_SERVICE_NAME:-vent-tech-catalogue.service}"
 LEGACY_PUBLIC_CONTAINER_NAME="${LEGACY_PUBLIC_CONTAINER_NAME:-vent-tech-catalogue}"
@@ -67,6 +70,8 @@ fail_if_placeholder() {
 fail_if_placeholder "POSTGRES_PASSWORD" "${POSTGRES_PASSWORD:-}"
 fail_if_placeholder "SESSION_SECRET" "${SESSION_SECRET:-}"
 fail_if_placeholder "CMS_API_TOKEN" "${CMS_API_TOKEN:-}"
+fail_if_placeholder "BOOTSTRAP_ADMIN_USERNAME" "${BOOTSTRAP_ADMIN_USERNAME:-}"
+fail_if_placeholder "BOOTSTRAP_ADMIN_PASSWORD" "${BOOTSTRAP_ADMIN_PASSWORD:-}"
 
 rebuild_public_graph_bundle_now() {
   if [[ ! -d frontend/node_modules ]]; then
@@ -140,21 +145,59 @@ seed_app_data_volume_if_needed() {
   fi
 }
 
-refresh_templates_volume_from_source() {
-  local template_source="${PWD}/templates"
+refresh_templates_volume_from_image() {
   local template_dirs=(product series product_type)
-
-  if [[ ! -d "$template_source" ]]; then
-    return 0
-  fi
 
   if ! ${PODMAN_BIN} volume inspect "${APP_TEMPLATES_VOLUME}" >/dev/null 2>&1; then
     ${PODMAN_BIN} volume create "${APP_TEMPLATES_VOLUME}" >/dev/null
   fi
 
-  echo "[$(timestamp)] Refreshing the PROD template volume from the repo templates directory..."
+  echo "[$(timestamp)] Refreshing the PROD template volume from the built app image..."
   ${PODMAN_BIN} run --rm -v "${APP_TEMPLATES_VOLUME}:/target:Z" "${ALPINE_IMAGE}" sh -lc 'rm -rf /target/* /target/.[!.]* /target/..?* 2>/dev/null || true'
-  tar -C "$template_source" -cf - "${template_dirs[@]}" registry.json | ${PODMAN_BIN} run --rm -i -v "${APP_TEMPLATES_VOLUME}:/target:Z" "${ALPINE_IMAGE}" tar -xf - -C /target
+  ${PODMAN_BIN} run --rm "${APP_IMAGE}" sh -lc "tar -C /app/templates -cf - ${template_dirs[*]} registry.json" | ${PODMAN_BIN} run --rm -i -v "${APP_TEMPLATES_VOLUME}:/target:Z" "${ALPINE_IMAGE}" tar -xf - -C /target
+}
+
+verify_template_volume_assets() {
+  local required_assets=(
+    "product/default/template.html"
+    "product/default/template.css"
+    "product/default/vent-tech-customer_site_logo_grey_bg.png"
+  )
+  local missing=()
+  local asset
+
+  for asset in "${required_assets[@]}"; do
+    if ! ${PODMAN_BIN} run --rm -v "${APP_TEMPLATES_VOLUME}:/target:Z" "${ALPINE_IMAGE}" sh -lc "test -f /target/${asset}"; then
+      missing+=("$asset")
+    fi
+  done
+
+  if [[ "${#missing[@]}" -gt 0 ]]; then
+    echo "[$(timestamp)] Template volume is missing required asset(s):"
+    for asset in "${missing[@]}"; do
+      echo "  - ${asset}"
+    done
+    echo "[$(timestamp)] Check that the files are saved in the repo checkout before redeploying."
+    exit 1
+  fi
+}
+
+report_template_volume_assets() {
+  echo "[$(timestamp)] Template volume contents for product/default:"
+  ${PODMAN_BIN} run --rm -v "${APP_TEMPLATES_VOLUME}:/target:Z" "${ALPINE_IMAGE}" sh -lc '
+    for path in \
+      /target/product/default/template.html \
+      /target/product/default/template.css \
+      /target/product/default/vent-tech-customer_site_logo.png \
+      /target/product/default/vent-tech-customer_site_logo_grey_bg.png
+    do
+      if [ -f "$path" ]; then
+        printf "  - %s\n" "${path#/target/}"
+      else
+        printf "  - MISSING %s\n" "${path#/target/}"
+      fi
+    done
+  '
 }
 
 stop_legacy_public_service() {
@@ -392,12 +435,14 @@ log_step "Bringing the old compose stack down"
 ${COMPOSE_BIN} "${COMPOSE_ARGS[@]}" "${COMPOSE_VERBOSE_ARGS[@]}" down --remove-orphans || true
 log_step_done
 
-log_step "Refreshing the template volume"
-refresh_templates_volume_from_source
-log_step_done
-
 log_step "Building images with compose"
 compose_build_with_retry
+log_step_done
+
+log_step "Refreshing the template volume"
+refresh_templates_volume_from_image
+verify_template_volume_assets
+report_template_volume_assets
 log_step_done
 
 log_step "Pruning dangling images"

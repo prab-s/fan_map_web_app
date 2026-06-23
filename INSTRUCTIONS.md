@@ -328,10 +328,15 @@ Purpose:
 - rebuilds the application image
 - starts the Podman Compose deployment stack
 - seeds the PROD app data volume from the existing host `data/` tree when it is still empty
+- refreshes the mounted template volume from the freshly built app image
 - app startup prepares/applies database migrations before `uvicorn` starts
 - waits for the FastAPI health endpoint
 - if the WordPress profile is enabled, waits for WordPress too
 - prints compose status and recent logs if startup times out
+
+Note:
+
+- Podman Compose creates the data/template volumes with the compose project prefix, and the deploy scripts derive the same prefix so they target the live volumes, not a separate stale copy.
 
 Use:
 
@@ -1034,8 +1039,10 @@ If you intentionally want to copy current SIT data into deployment, the intended
 Important:
 
 - this is a data copy, not just a schema migration
-- `./redeploy.sh` runs schema migration/startup, but it does not copy SIT data into deployment by itself
+- `./redeploy.sh` runs schema migration/startup and refreshes templates from the built image, but it does not copy SIT media/data into deployment by itself
 - restoring a SIT archive into deployment overwrites the deployment app database and any media captured in that archive
+
+If you need the cached PDFs rebuilt after a template change, use the Maintenance/Setup PDF regeneration actions in the app instead of deploy-time regeneration.
 
 For larger backup/restore/regeneration tasks, the `Setup` page now uses background maintenance jobs instead of one long blocking browser request. The page starts the job, polls for status, and shows a progress bar. This is the recommended workflow when you want to avoid browser or Cloudflare request timeouts.
 
