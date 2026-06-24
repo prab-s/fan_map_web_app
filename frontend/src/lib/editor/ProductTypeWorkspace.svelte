@@ -1,7 +1,7 @@
 <script>
   import { onDestroy, onMount } from 'svelte';
   import { goto } from '$app/navigation';
-  import { createProductType, getProductTypes, getTemplates, startRefreshProductTypePdfJob, updateProductType } from '$lib/api.js';
+  import { createProductType, deleteProductType, getProductTypes, getTemplates, startRefreshProductTypePdfJob, updateProductType } from '$lib/api.js';
   import JobProgressPanel from '$lib/JobProgressPanel.svelte';
   import SeriesNamesBadgeList from '$lib/editor/SeriesNamesBadgeList.svelte';
   import { runMaintenanceJob } from '$lib/maintenanceJobs.js';
@@ -31,6 +31,26 @@
   function productTypeViewerUrl(productTypeId = selectedProductType?.id) {
     const nextProductTypeId = productTypeId == null || productTypeId === '' ? '' : String(productTypeId);
     return nextProductTypeId ? `/viewer/product-type/${encodeURIComponent(nextProductTypeId)}` : '/viewer/product-type';
+  }
+
+  function describeDeleteImpact(productType) {
+    const seriesCount = Number(productType?.series_count || 0);
+    const productCount = Number(productType?.product_count || 0);
+    const details = [];
+
+    if (seriesCount > 0) {
+      details.push(`${seriesCount} ${seriesCount === 1 ? 'series' : 'series'} will be deleted`);
+    }
+
+    if (productCount > 0) {
+      details.push(`${productCount} ${productCount === 1 ? 'product' : 'products'} will be unassigned from this type`);
+    }
+
+    if (!details.length) {
+      return 'This product type has no linked series or products.';
+    }
+
+    return details.join(' and ') + '.';
   }
 
   function resetDraft(productType = null) {
@@ -194,6 +214,32 @@
 
       await loadProductTypes();
       cancelEditing();
+    } catch (e) {
+      error = e.message;
+    } finally {
+      saving = false;
+    }
+  }
+
+  async function deleteCurrentProductType() {
+    if (!productTypeDraft.id) return;
+    const confirmed = window.confirm(
+      `Delete product type "${productTypeDraft.label || productTypeDraft.key || productTypeDraft.id}"? This cannot be undone.\n\n${describeDeleteImpact(selectedProductType || productTypeDraft)}`
+    );
+    if (!confirmed) return;
+
+    error = '';
+    success = '';
+    saving = true;
+    try {
+      await deleteProductType(productTypeDraft.id);
+      await loadProductTypes();
+      mode = initialMode;
+      selectedProductTypeId = '';
+      productTypeDraft = resetDraft();
+      hydratedProductTypeId = '';
+      syncProductTypeEditorUrl('');
+      success = 'Product type deleted.';
     } catch (e) {
       error = e.message;
     } finally {
@@ -401,6 +447,11 @@
 
         <div class="d-flex flex-wrap gap-2 mt-3">
           <button class="btn btn-primary" on:click={saveProductType} disabled={saving}>{saving ? 'Saving...' : 'Save Product Type'}</button>
+          {#if productTypeDraft.id}
+            <button class="btn btn-outline-danger" type="button" on:click={deleteCurrentProductType} disabled={saving}>
+              Delete Product Type
+            </button>
+          {/if}
           <button class="btn btn-outline-secondary" on:click={cancelEditing}>Cancel</button>
         </div>
       </div>

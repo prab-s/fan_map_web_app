@@ -125,6 +125,8 @@ class ProductTypeResponse(BaseModel):
     key: str
     label: str
     series_names: list[str] = Field(default_factory=list)
+    series_count: int = 0
+    product_count: int = 0
     product_type_pdf_url: Optional[str] = None
     product_type_printed_pdf_url: Optional[str] = None
     supports_graph: bool

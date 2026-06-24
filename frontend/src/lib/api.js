@@ -109,6 +109,13 @@ export async function updateProductType(id, body) {
   return r.json();
 }
 
+export async function deleteProductType(id) {
+  const r = await apiFetch(`/product-types/${id}`, {
+    method: 'DELETE'
+  });
+  return r.json();
+}
+
 export async function updateProductTypePresets(id, body) {
   const r = await apiFetch(`/product-types/${id}/parameter-group-presets`, {
     method: 'PUT',

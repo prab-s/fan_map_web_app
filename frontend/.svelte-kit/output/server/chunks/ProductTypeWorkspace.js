@@ -168,7 +168,14 @@ function ProductTypeWorkspace($$renderer, $$props) {
     } else {
       $$renderer2.push("<!--[-1-->");
     }
-    $$renderer2.push(`<!--]--> <div class="d-flex flex-wrap gap-2 mt-3"><button class="btn btn-primary"${attr("disabled", saving, true)}>${escape_html("Save Product Type")}</button> <button class="btn btn-outline-secondary">Cancel</button></div></div></div></div></div>`);
+    $$renderer2.push(`<!--]--> <div class="d-flex flex-wrap gap-2 mt-3"><button class="btn btn-primary"${attr("disabled", saving, true)}>${escape_html("Save Product Type")}</button> `);
+    if (productTypeDraft.id) {
+      $$renderer2.push("<!--[0-->");
+      $$renderer2.push(`<button class="btn btn-outline-danger" type="button"${attr("disabled", saving, true)}>Delete Product Type</button>`);
+    } else {
+      $$renderer2.push("<!--[-1-->");
+    }
+    $$renderer2.push(`<!--]--> <button class="btn btn-outline-secondary">Cancel</button></div></div></div></div></div>`);
     bind_props($$props, { initialMode, initialProductTypeId });
   });
 }

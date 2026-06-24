@@ -3604,6 +3604,20 @@ def render_image_gallery_html(product: Product, start_index: int = 1) -> str:
     return "".join(items) if items else '<p class="placeholder">No product images available.</p>'
 
 
+def resolve_pdf_logo_uri(project_root: Path, template_path: Path) -> str:
+    logo_filename = "vent-tech-customer_site_logo_grey_bg.png"
+    logo_candidates = [
+        project_root / "templates" / logo_filename,
+        template_path.parent / logo_filename,
+    ]
+    for logo_path in logo_candidates:
+        if logo_path.is_file():
+            return logo_path.resolve().as_uri()
+
+    checked_paths = ", ".join(str(path) for path in logo_candidates)
+    raise RuntimeError(f"PDF template logo is missing: {checked_paths}")
+
+
 def build_product_pdf_html(product: Product, variant: str) -> tuple[str, str]:
     template_id = product.printed_template_id if variant == "printed" else product.online_template_id
     template_definition = get_template_definition(template_id or product.template_id or "product-default", "product")
@@ -3635,12 +3649,7 @@ def build_product_pdf_html(product: Product, variant: str) -> tuple[str, str]:
         if first_image_path.is_file():
             primary_image_uri = first_image_path.as_uri()
 
-    logo_uri = ""
-    logo_path = template_path.parent / "vent-tech-customer_site_logo_grey_bg.png"
-    if logo_path.is_file():
-        logo_uri = logo_path.resolve().as_uri()
-    else:
-        raise RuntimeError(f"Product template logo is missing: {logo_path}")
+    logo_uri = resolve_pdf_logo_uri(project_root, template_path)
 
     graph_image_uri = ""
     if product.graph_image_path:
@@ -4474,12 +4483,7 @@ def build_series_pdf_html(series: Series, variant: str, temp_dir: Path) -> tuple
     while len(performance_column_labels) < SERIES_PERFORMANCE_COLUMN_LIMIT:
         performance_column_labels.append("—")
 
-    logo_uri = ""
-    logo_path = project_root / "templates" / "product" / "default" / "vent-tech-customer_site_logo_grey_bg.png"
-    if logo_path.is_file():
-        logo_uri = logo_path.resolve().as_uri()
-    else:
-        raise RuntimeError(f"Series template logo is missing: {logo_path}")
+    logo_uri = resolve_pdf_logo_uri(project_root, template_path)
 
     left_cover_page_path = _build_series_cover_page_image_path(series, 1, temp_dir, include_title=True)
     right_cover_page_path = _build_series_cover_page_image_path(series, 2, temp_dir, include_title=False)
@@ -5248,6 +5252,12 @@ def delete_product_image_file(image: ProductImage):
 def delete_series_image_file(image: SeriesImage):
     remove_file(series_image_target_path(image.series_id, image.file_name))
     remove_file(SERIES_IMAGES_DIR / _normalize_media_relative_path(image.file_name))
+
+
+def delete_product_type_assets(product_type: ProductType):
+    safe_key = re.sub(r"[^a-z0-9]+", "_", (product_type.key or "").strip().lower()).strip("_") or "unknown"
+    for pdf_path in PRODUCT_TYPE_PDFS_DIR.glob(f"product_type_*_{safe_key}.pdf"):
+        remove_file(pdf_path)
 
 
 def build_graph_config(product_type: ProductType | None) -> dict:
@@ -6461,7 +6471,8 @@ def list_product_types(db: Session = Depends(get_db)):
     return (
         db.query(ProductType)
         .options(
-            selectinload(ProductType.series),
+            selectinload(ProductType.series).selectinload(Series.products),
+            selectinload(ProductType.products),
             selectinload(ProductType.parameter_group_presets).selectinload(
                 ProductTypeParameterGroupPreset.parameter_presets
             ),
@@ -6484,7 +6495,8 @@ def list_public_product_types(db: Session = Depends(get_db)):
     return (
         db.query(ProductType)
         .options(
-            selectinload(ProductType.series),
+            selectinload(ProductType.series).selectinload(Series.products),
+            selectinload(ProductType.products),
             selectinload(ProductType.parameter_group_presets).selectinload(
                 ProductTypeParameterGroupPreset.parameter_presets
             ),
@@ -6624,6 +6636,35 @@ def update_product_type(product_type_id: int, body: ProductTypeUpdate, db: Sessi
     db.refresh(product_type)
     notify_public_catalogue_cache_refresh()
     return product_type
+
+
+@app.delete("/api/product-types/{product_type_id}", dependencies=[Depends(get_current_user)], tags=["Product Types"], summary="Delete a product type")
+def delete_product_type(product_type_id: int, db: Session = Depends(get_db)):
+    product_type = (
+        db.query(ProductType)
+        .options(
+            selectinload(ProductType.series).selectinload(Series.products),
+            selectinload(ProductType.products),
+        )
+        .filter(ProductType.id == product_type_id)
+        .first()
+    )
+    if not product_type:
+        raise HTTPException(status_code=404, detail="Product type not found")
+
+    delete_product_type_assets(product_type)
+
+    for series in list(product_type.series):
+        for product in list(series.products):
+            sync_product_series(product, None)
+
+    for product in list(product_type.products):
+        product.product_type = None
+
+    db.delete(product_type)
+    db.commit()
+    notify_public_catalogue_cache_refresh()
+    return {"deleted": product_type_id}
 
 
 @app.put(

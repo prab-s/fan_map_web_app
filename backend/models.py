@@ -283,6 +283,17 @@ class ProductType(Base):
         return [series.name for series in series_items if series.name]
 
     @property
+    def series_count(self):
+        return len(self.series or [])
+
+    @property
+    def product_count(self):
+        linked_products = list(self.products or [])
+        for series in self.series or []:
+            linked_products.extend(series.products or [])
+        return len(linked_products)
+
+    @property
     def product_type_pdf_url(self):
         return self.product_type_printed_pdf_url
 

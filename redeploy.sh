@@ -147,6 +147,10 @@ seed_app_data_volume_if_needed() {
 
 refresh_templates_volume_from_image() {
   local template_dirs=(product series product_type)
+  local shared_assets=(
+    vent-tech-customer_site_logo.png
+    vent-tech-customer_site_logo_grey_bg.png
+  )
 
   if ! ${PODMAN_BIN} volume inspect "${APP_TEMPLATES_VOLUME}" >/dev/null 2>&1; then
     ${PODMAN_BIN} volume create "${APP_TEMPLATES_VOLUME}" >/dev/null
@@ -154,14 +158,17 @@ refresh_templates_volume_from_image() {
 
   echo "[$(timestamp)] Refreshing the PROD template volume from the built app image..."
   ${PODMAN_BIN} run --rm -v "${APP_TEMPLATES_VOLUME}:/target:Z" "${ALPINE_IMAGE}" sh -lc 'rm -rf /target/* /target/.[!.]* /target/..?* 2>/dev/null || true'
-  ${PODMAN_BIN} run --rm "${APP_IMAGE}" sh -lc "tar -C /app/templates -cf - ${template_dirs[*]} registry.json" | ${PODMAN_BIN} run --rm -i -v "${APP_TEMPLATES_VOLUME}:/target:Z" "${ALPINE_IMAGE}" tar -xf - -C /target
+  ${PODMAN_BIN} run --rm "${APP_IMAGE}" sh -lc "tar -C /app/templates -cf - ${template_dirs[*]} registry.json ${shared_assets[*]}" | ${PODMAN_BIN} run --rm -i -v "${APP_TEMPLATES_VOLUME}:/target:Z" "${ALPINE_IMAGE}" tar -xf - -C /target
 }
 
 verify_template_volume_assets() {
   local required_assets=(
     "product/default/template.html"
     "product/default/template.css"
-    "product/default/vent-tech-customer_site_logo_grey_bg.png"
+  )
+  local shared_logo_assets=(
+    "vent-tech-customer_site_logo.png"
+    "vent-tech-customer_site_logo_grey_bg.png"
   )
   local missing=()
   local asset
@@ -172,12 +179,18 @@ verify_template_volume_assets() {
     fi
   done
 
+  for asset in "${shared_logo_assets[@]}"; do
+    if ! ${PODMAN_BIN} run --rm -v "${APP_TEMPLATES_VOLUME}:/target:Z" "${ALPINE_IMAGE}" sh -lc "test -f /target/${asset}"; then
+      missing+=("$asset")
+    fi
+  done
+
   if [[ "${#missing[@]}" -gt 0 ]]; then
     echo "[$(timestamp)] Template volume is missing required asset(s):"
     for asset in "${missing[@]}"; do
       echo "  - ${asset}"
     done
-    echo "[$(timestamp)] Check that the files are saved in the repo checkout before redeploying."
+    echo "[$(timestamp)] Check that the shared logos are saved in the repo checkout before redeploying."
     exit 1
   fi
 }
@@ -188,8 +201,8 @@ report_template_volume_assets() {
     for path in \
       /target/product/default/template.html \
       /target/product/default/template.css \
-      /target/product/default/vent-tech-customer_site_logo.png \
-      /target/product/default/vent-tech-customer_site_logo_grey_bg.png
+      /target/vent-tech-customer_site_logo.png \
+      /target/vent-tech-customer_site_logo_grey_bg.png
     do
       if [ -f "$path" ]; then
         printf "  - %s\n" "${path#/target/}"
