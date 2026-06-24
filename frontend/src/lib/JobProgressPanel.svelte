@@ -85,10 +85,10 @@
     >
       <div
         class={`progress-bar ${progressPercent == null && isRunning ? 'progress-bar-striped progress-bar-animated' : ''}`}
-        style={`width: ${progressPercent ?? (isCompleted ? 100 : 100)}%`}
+        style={`width: ${(isCompleted ? 100 : progressPercent) ?? 100}%`}
       >
-        {#if progressPercent != null}
-          {progressPercent.toFixed(0)}%
+        {#if isCompleted || progressPercent != null}
+          {(isCompleted ? 100 : progressPercent).toFixed(0)}%
         {:else if isRunning}
           Working...
         {/if}

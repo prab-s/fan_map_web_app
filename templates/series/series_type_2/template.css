@@ -4,7 +4,7 @@
   --muted: #4d4d4d;
   --line: #c7d3e6;
   --mid-blue: rgba(208, 225, 253, 0.8);
-  --mid-red: #ff6d6d;
+  --mid-red: rgb(198, 100, 100);
   --deep-red: #742323;
   --white: #ffffff;
   --paper: #ffffff;
@@ -324,7 +324,7 @@ body.series-template--type-2 {
   width: 100%;
   border-collapse: collapse;
   font-size: 3.15mm;
-  background: rgba(255, 255, 255, 0.35);
+  background: var(--mid-red);
 }
 
 .performance-table__table {
@@ -357,8 +357,13 @@ body.series-template--type-2 {
 }
 
 .performance-table thead th {
-  background: var(--mid-blue);
+  background: var(--deep-red);
   font-weight: 700;
+  color: var(--white);
+}
+
+.performance-table tbody td {
+  color: var(--black);
 }
 
 .performance-table tbody tr:nth-child(even) td {

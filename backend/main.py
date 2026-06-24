@@ -6069,6 +6069,7 @@ def start_maintenance_job(job_type: str, work):
             result_updates.setdefault("progress_message", result.get("progress_message") or "Completed")
             result_updates.setdefault("result_message", result.get("result_message"))
             result_updates.setdefault("result_download_url", result.get("result_download_url"))
+            result_updates["progress_percent"] = 100.0
             result_updates["status"] = "completed"
             result_updates["completed_at"] = backend_now_iso()
             update_maintenance_job(job["id"], **result_updates)
@@ -6107,6 +6108,16 @@ def _make_progress_window(progress_callback, start_percent: int, end_percent: in
         progress_callback(message, mapped, 100)
 
     return windowed_progress
+
+
+def _make_indexed_progress_window(progress_callback, index: int, total: int):
+    total = max(int(total or 0), 1)
+    index = max(1, min(int(index or 1), total))
+    start_percent = round(((index - 1) / total) * 100)
+    end_percent = 100 if index >= total else round((index / total) * 100)
+    if end_percent < start_percent:
+        end_percent = start_percent
+    return _make_progress_window(progress_callback, start_percent, end_percent)
 
 
 def create_data_backup_bundle(progress_callback=None) -> Path:
@@ -6781,15 +6792,15 @@ def start_refresh_product_type_pdf_job(product_type_id: int):
             try:
                 progress(
                     f"Reusing existing series PDFs and building the product type contents page for {product_type.label}",
-                    20,
+                    15,
                     100,
                 )
-                generate_product_type_pdf(product_type, progress_callback=_make_progress_window(progress, 20, 90))
+                generate_product_type_pdf(product_type, progress_callback=_make_progress_window(progress, 15, 95))
             except Exception as exc:
                 logger.exception("[maintenance:refresh_product_type_pdf_%s] render failed for %s", product_type_id, product_type.label)
                 raise_job_phase_error(f"Product type {product_type.label}", "PDF rendering", exc)
 
-            progress(f"Merging existing series PDFs into the final product type PDF for {product_type.label}", 95, 100)
+            progress(f"Merging existing series PDFs into the final product type PDF for {product_type.label}", 96, 100)
             db.refresh(product_type)
             db.commit()
 
@@ -7371,15 +7382,15 @@ def start_refresh_series_pdf_job(series_id: int):
                 if series_pdf_templates_match(series):
                     progress(
                         f"Merging existing product PDFs into the shared series PDF once for {series.name} because printed and online use the same template",
-                        20,
+                        15,
                         100,
                     )
-                    generate_series_pdfs(series, progress_callback=_make_progress_window(progress, 20, 90))
-                    progress(f"Copying the merged series PDF to both printed and online files for {series.name}", 95, 100)
+                    generate_series_pdfs(series, progress_callback=_make_progress_window(progress, 15, 95))
+                    progress(f"Copying the merged series PDF to both printed and online files for {series.name}", 96, 100)
                 else:
-                    progress(f"Merging existing product PDFs into the printed series PDF for {series.name}", 20, 100)
-                    generate_series_pdfs(series, progress_callback=_make_progress_window(progress, 20, 90))
-                    progress(f"Merging existing product PDFs into the online series PDF for {series.name}", 90, 100)
+                    progress(f"Merging existing product PDFs into the printed series PDF for {series.name}", 15, 100)
+                    generate_series_pdfs(series, progress_callback=_make_progress_window(progress, 15, 95))
+                    progress(f"Merging existing product PDFs into the online series PDF for {series.name}", 96, 100)
             except Exception as exc:
                 logger.exception("[maintenance:refresh_series_pdf_%s] pdf rendering failed for %s", series_id, series.name)
                 raise_job_phase_error(f"Series {series.name}", "PDF rendering", exc)
@@ -8258,15 +8269,15 @@ def start_refresh_product_pdf_job(product_id: int):
                 if product_pdf_templates_match(product):
                     progress(
                         f"Rendering shared product PDF template once for {product_label} because printed and online use the same template",
-                        20,
+                        15,
                         100,
                     )
-                    generate_product_pdfs(product, progress_callback=_make_progress_window(progress, 20, 90))
-                    progress(f"Copying the rendered product PDF to both printed and online files for {product_label}", 95, 100)
+                    generate_product_pdfs(product, progress_callback=_make_progress_window(progress, 15, 95))
+                    progress(f"Copying the rendered product PDF to both printed and online files for {product_label}", 96, 100)
                 else:
-                    progress(f"Rendering printed product PDF for {product_label}", 20, 100)
-                    generate_product_pdfs(product, progress_callback=_make_progress_window(progress, 20, 90))
-                    progress(f"Rendering online product PDF for {product_label}", 90, 100)
+                    progress(f"Rendering printed product PDF for {product_label}", 15, 100)
+                    generate_product_pdfs(product, progress_callback=_make_progress_window(progress, 15, 95))
+                    progress(f"Rendering online product PDF for {product_label}", 96, 100)
             except Exception as exc:
                 logger.exception("[maintenance:refresh_product_pdf_%s] pdf rendering failed for %s", product_id, product_label)
                 raise_job_phase_error(f"Product {product_label}", "PDF rendering", exc)
@@ -8340,30 +8351,31 @@ def start_regenerate_all_product_pdfs_job():
             total = len(products)
             processed = 0
             for index, product in enumerate(products, start=1):
-                progress(f"Loading product {index} of {total}: {product.model}", 1, 100)
+                item_progress = _make_indexed_progress_window(progress, index, total)
+                item_progress(f"Loading product {index} of {total}: {product.model}", 1, 100)
                 graph_path = Path(product.graph_image_path) if product.graph_image_path else None
                 if product.product_type and product.product_type.supports_graph and not (graph_path and graph_path.is_file()):
                     try:
-                        progress(f"Refreshing graph image for {product.model}", 10, 100)
+                        item_progress(f"Refreshing graph image for {product.model}", 10, 100)
                         refresh_graph_for_product(db, product)
                     except Exception as exc:
                         logger.exception("[maintenance:regenerate_all_product_pdfs] graph refresh failed for %s", product.model)
                         raise_job_phase_error(f"Product {product.model}", "graph image generation", exc)
                 else:
-                    progress(f"Graph image already available for {product.model}", 10, 100)
+                    item_progress(f"Graph image already available for {product.model}", 10, 100)
                 try:
                     if product_pdf_templates_match(product):
-                        progress(
+                        item_progress(
                             f"Rendering shared product PDF template once for {product.model} because printed and online use the same template",
                             20,
                             100,
                         )
-                        generate_product_pdfs(product, progress_callback=_make_progress_window(progress, 20, 90))
-                        progress(f"Copying the rendered product PDF to both printed and online files for {product.model}", 95, 100)
+                        generate_product_pdfs(product, progress_callback=_make_progress_window(item_progress, 20, 90))
+                        item_progress(f"Copying the rendered product PDF to both printed and online files for {product.model}", 95, 100)
                     else:
-                        progress(f"Rendering printed PDF for {product.model}", 20, 100)
-                        generate_product_pdfs(product, progress_callback=_make_progress_window(progress, 20, 90))
-                        progress(f"Rendering online PDF for {product.model}", 90, 100)
+                        item_progress(f"Rendering printed PDF for {product.model}", 20, 100)
+                        generate_product_pdfs(product, progress_callback=_make_progress_window(item_progress, 20, 90))
+                        item_progress(f"Rendering online PDF for {product.model}", 90, 100)
                 except Exception as exc:
                     logger.exception("[maintenance:regenerate_all_product_pdfs] pdf rendering failed for %s", product.model)
                     raise_job_phase_error(f"Product {product.model}", "PDF rendering", exc)
@@ -8384,33 +8396,34 @@ def start_regenerate_all_series_pdfs_job():
             series_records = db.query(Series).options(joinedload(Series.product_type)).all()
             total = len(series_records)
             for index, series in enumerate(series_records, start=1):
-                progress(f"Loading series {index} of {total}: {series.name}", 1, 100)
+                item_progress = _make_indexed_progress_window(progress, index, total)
+                item_progress(f"Loading series {index} of {total}: {series.name}", 1, 100)
                 if series.product_type and series.product_type.supports_graph and series_has_graph_capable_line_data(series):
                     try:
-                        progress(f"Refreshing graph image for {series.name}", 10, 100)
+                        item_progress(f"Refreshing graph image for {series.name}", 10, 100)
                         generate_series_graph(series)
                     except Exception as exc:
                         logger.exception("[maintenance:regenerate_all_series_pdfs] graph generation failed for %s", series.name)
                         raise_job_phase_error(f"Series {series.name}", "graph image generation", exc)
                 else:
-                    progress(f"Series graph image not required for {series.name} because there is no graph-capable line data to plot", 10, 100)
+                    item_progress(f"Series graph image not required for {series.name} because there is no graph-capable line data to plot", 10, 100)
                     logger.info(
                         "[maintenance:regenerate_all_series_pdfs] graph generation skipped for %s because there is no graph-capable line data to plot",
                         series.name,
                     )
                 try:
                     if series_pdf_templates_match(series):
-                        progress(
+                        item_progress(
                             f"Merging existing product PDFs into the shared series PDF once for {series.name} because printed and online use the same template",
                             20,
                             100,
                         )
-                        generate_series_pdfs(series, progress_callback=_make_progress_window(progress, 20, 90))
-                        progress(f"Copying the merged series PDF to both printed and online files for {series.name}", 95, 100)
+                        generate_series_pdfs(series, progress_callback=_make_progress_window(item_progress, 20, 90))
+                        item_progress(f"Copying the merged series PDF to both printed and online files for {series.name}", 95, 100)
                     else:
-                        progress(f"Merging existing product PDFs into the printed series PDF for {series.name}", 20, 100)
-                        generate_series_pdfs(series, progress_callback=_make_progress_window(progress, 20, 90))
-                        progress(f"Merging existing product PDFs into the online series PDF for {series.name}", 90, 100)
+                        item_progress(f"Merging existing product PDFs into the printed series PDF for {series.name}", 20, 100)
+                        generate_series_pdfs(series, progress_callback=_make_progress_window(item_progress, 20, 90))
+                        item_progress(f"Merging existing product PDFs into the online series PDF for {series.name}", 90, 100)
                 except Exception as exc:
                     logger.exception("[maintenance:regenerate_all_series_pdfs] pdf rendering failed for %s", series.name)
                     raise_job_phase_error(f"Series {series.name}", "PDF rendering", exc)
@@ -8437,15 +8450,16 @@ def start_regenerate_all_product_type_pdfs_job():
             )
             total = len(product_types)
             for index, product_type in enumerate(product_types, start=1):
-                progress(f"Loading product type {index} of {total}: {product_type.label}", 1, 100)
+                item_progress = _make_indexed_progress_window(progress, index, total)
+                item_progress(f"Loading product type {index} of {total}: {product_type.label}", 1, 100)
                 try:
-                    progress(
+                    item_progress(
                         f"Reusing existing series PDFs and building the product type contents page for {product_type.label}",
                         20,
                         100,
                     )
-                    generate_product_type_pdf(product_type, progress_callback=_make_progress_window(progress, 20, 90))
-                    progress(f"Refreshing product type context for {product_type.label}", 95, 100)
+                    generate_product_type_pdf(product_type, progress_callback=_make_progress_window(item_progress, 20, 90))
+                    item_progress(f"Refreshing product type context for {product_type.label}", 95, 100)
                 except Exception as exc:
                     logger.exception("[maintenance:regenerate_all_product_type_pdfs] pdf generation failed for %s", product_type.label)
                     raise_job_phase_error(f"Product type {product_type.label}", "PDF rendering", exc)

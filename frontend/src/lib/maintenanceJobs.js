@@ -7,6 +7,7 @@ function delay(ms) {
 }
 
 export function maintenanceJobProgressPercent(job) {
+  if (job?.status === 'completed') return 100;
   if (job?.progress_percent == null) return null;
   const percent = Number(job.progress_percent);
   if (Number.isNaN(percent)) return null;

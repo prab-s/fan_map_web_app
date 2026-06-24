@@ -2,6 +2,7 @@ import { e as escape_html, c as attr_class, b as attr, i as attr_style, f as bin
 import { o as onDestroy } from "./index-server.js";
 import { f as fallback } from "./equality.js";
 function maintenanceJobProgressPercent(job) {
+  if (job?.status === "completed") return 100;
   if (job?.progress_percent == null) return null;
   const percent = Number(job.progress_percent);
   if (Number.isNaN(percent)) return null;
@@ -112,10 +113,10 @@ function JobProgressPanel($$renderer, $$props) {
       } else {
         $$renderer2.push("<!--[-1-->");
       }
-      $$renderer2.push(`<!--]--> <div class="progress" role="progressbar"${attr("aria-label", label)} aria-valuemin="0" aria-valuemax="100"${attr("aria-valuenow", progressPercent ?? void 0)}><div${attr_class(`progress-bar ${progressPercent == null && isRunning ? "progress-bar-striped progress-bar-animated" : ""}`)}${attr_style(`width: ${progressPercent ?? (isCompleted ? 100 : 100)}%`)}>`);
-      if (progressPercent != null) {
+      $$renderer2.push(`<!--]--> <div class="progress" role="progressbar"${attr("aria-label", label)} aria-valuemin="0" aria-valuemax="100"${attr("aria-valuenow", progressPercent ?? void 0)}><div${attr_class(`progress-bar ${progressPercent == null && isRunning ? "progress-bar-striped progress-bar-animated" : ""}`)}${attr_style(`width: ${(isCompleted ? 100 : progressPercent) ?? 100}%`)}>`);
+      if (isCompleted || progressPercent != null) {
         $$renderer2.push("<!--[0-->");
-        $$renderer2.push(`${escape_html(progressPercent.toFixed(0))}%`);
+        $$renderer2.push(`${escape_html((isCompleted ? 100 : progressPercent).toFixed(0))}%`);
       } else if (isRunning) {
         $$renderer2.push("<!--[1-->");
         $$renderer2.push(`Working...`);

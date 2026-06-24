@@ -3,9 +3,9 @@
   --black: #000000;
   --muted: #4d4d4d;
   --line: #c7d3e6;
-  --mid-blue: rgba(208, 225, 253, 0.8);
-  --mid-red: #ff6d6d;
-  --deep-red: #742323;
+  /* --mid-blue: rgba(208, 225, 253, 0.8); */
+  --mid-red: rgb(198, 100, 100);
+  --deep-red: rgb(116, 35, 35);
   --white: #ffffff;
 }
 
@@ -150,7 +150,7 @@ body.vt-sheet-body {
 }
 
 .spec-list__row:nth-child(even) {
-  background: rgba(208, 225, 253, 0.8);
+  background: rgba(253, 208, 208, 0.8);
 }
 
 .spec-list__row dt,
@@ -279,7 +279,7 @@ body.vt-sheet-body {
 .performance-table thead th,
 .spec-groups thead th,
 .table-slot thead th {
-  background: var(--mid-blue);
+  background: var(--mid-red);
   font-weight: 700;
 }
 
@@ -368,8 +368,8 @@ body.vt-sheet-body {
 
 /* Fan acoustic table: 1. primary heading */
 .fan-acoustic-table thead th.fan-acoustic-table__primary-heading {
-  background: var(--mid-blue);
-  color: var(--black);
+  background: var(--deep-red);
+  color: var(--white);
   font-weight: 800;
 }
 
@@ -392,8 +392,8 @@ body.vt-sheet-body {
 
 /* Fan acoustic table: 4. sound-power subheading */
 .fan-acoustic-table thead th.fan-acoustic-table__sound-power-subhead {
-  background: var(--mid-red);
-  color: var(--black);
+  background: var(--muted);
+  color: var(--line);
   font-weight: 800;
 }
 
