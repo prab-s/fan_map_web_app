@@ -7,11 +7,10 @@ import { f as fallback } from "../../../../../chunks/equality.js";
 import "@sveltejs/kit/internal/server";
 import "../../../../../chunks/root.js";
 import "../../../../../chunks/state.svelte.js";
-import { m as getProductChartData, i as getSeries, n as getSeriesById, h as getProducts, o as getProduct } from "../../../../../chunks/api.js";
+import { z as getProductChartData, w as getSeries, A as getSeriesById, g as getProducts, c as getProduct } from "../../../../../chunks/api.js";
 import { E as ECharts, g as getChartTheme, b as buildFullChartOption } from "../../../../../chunks/fullChart.js";
 import { t as theme } from "../../../../../chunks/config.js";
-import { J as JobProgressPanel } from "../../../../../chunks/JobProgressPanel.js";
-import { S as SeriesNamesBadgeList } from "../../../../../chunks/SeriesNamesBadgeList.js";
+import { J as JobProgressPanel, S as SeriesNamesBadgeList } from "../../../../../chunks/SeriesNamesBadgeList.js";
 import { h as html } from "../../../../../chunks/html.js";
 function _page($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {

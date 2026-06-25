@@ -1,4 +1,4 @@
-import { error } from "@sveltejs/kit";
+import { error, redirect } from "@sveltejs/kit";
 async function load({ fetch, params }) {
   const product_type = params.product_type || "";
   if (product_type) {
@@ -8,7 +8,7 @@ async function load({ fetch, params }) {
     }
     const productTypes = await response.json();
     if (!productTypes.some((productType) => String(productType.id) === String(product_type))) {
-      throw error(404, "Product type not found.");
+      throw redirect(307, "/editor/product-types/edit");
     }
   }
   return {

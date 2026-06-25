@@ -1,5 +1,5 @@
 import { error } from "@sveltejs/kit";
-import { g as getPublicProductTypes, e as getPublicProducts } from "../../../../../chunks/api.js";
+import { l as getPublicProductTypes, t as getPublicProducts } from "../../../../../chunks/api.js";
 async function load({ fetch, params }) {
   const productTypeKey = params.product_type;
   try {

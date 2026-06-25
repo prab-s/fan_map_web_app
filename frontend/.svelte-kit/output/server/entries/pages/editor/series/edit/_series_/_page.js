@@ -1,4 +1,4 @@
-import { error } from "@sveltejs/kit";
+import { error, redirect } from "@sveltejs/kit";
 async function load({ fetch, params }) {
   const series = params.series || "";
   if (series) {
@@ -8,7 +8,7 @@ async function load({ fetch, params }) {
     }
     const seriesRecords = await response.json();
     if (!seriesRecords.some((seriesRecord) => String(seriesRecord.id) === String(series))) {
-      throw error(404, "Series not found.");
+      throw redirect(307, "/editor/series/edit");
     }
   }
   return {

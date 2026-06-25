@@ -7,8 +7,7 @@ import { f as fallback } from "./equality.js";
 import "@sveltejs/kit/internal/server";
 import "./root.js";
 import "./state.svelte.js";
-import { J as JobProgressPanel } from "./JobProgressPanel.js";
-import { S as SeriesNamesBadgeList } from "./SeriesNamesBadgeList.js";
+import { S as SeriesNamesBadgeList, J as JobProgressPanel } from "./SeriesNamesBadgeList.js";
 function ProductTypeWorkspace($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
     let selectedProductType;
@@ -23,6 +22,7 @@ function ProductTypeWorkspace($$renderer, $$props) {
     let refreshingPdfJob = null;
     let mode = initialMode;
     let hydratedProductTypeId = "";
+    let appliedInitialProductTypeId = "";
     function productTypeViewerUrl(productTypeId = selectedProductType?.id) {
       const nextProductTypeId = productTypeId == null || productTypeId === "" ? "" : String(productTypeId);
       return nextProductTypeId ? `/viewer/product-type/${encodeURIComponent(nextProductTypeId)}` : "/viewer/product-type";
@@ -72,10 +72,21 @@ function ProductTypeWorkspace($$renderer, $$props) {
     }
     onDestroy(() => {
     });
-    if (initialProductTypeId !== "" && String(selectedProductTypeId) !== String(initialProductTypeId)) {
-      selectedProductTypeId = String(initialProductTypeId);
-      if (mode !== "create") {
-        mode = "edit";
+    {
+      const nextInitialProductTypeId = initialProductTypeId !== "" && initialProductTypeId != null ? String(initialProductTypeId) : "";
+      if (nextInitialProductTypeId !== appliedInitialProductTypeId) {
+        appliedInitialProductTypeId = nextInitialProductTypeId;
+        if (nextInitialProductTypeId) {
+          selectedProductTypeId = nextInitialProductTypeId;
+          if (mode !== "create") {
+            mode = "edit";
+          }
+        } else if (mode !== "create" || selectedProductTypeId) {
+          selectedProductTypeId = "";
+          productTypeDraft = resetDraft();
+          hydratedProductTypeId = "";
+          mode = "edit";
+        }
       }
     }
     selectedProductType = productTypes.find((item) => String(item.id) === String(selectedProductTypeId)) || null;

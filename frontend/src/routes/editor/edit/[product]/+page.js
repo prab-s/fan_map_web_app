@@ -1,4 +1,4 @@
-import { error } from '@sveltejs/kit';
+import { error, redirect } from '@sveltejs/kit';
 
 export async function load({ fetch, params }) {
   const product = params.product || '';
@@ -6,6 +6,9 @@ export async function load({ fetch, params }) {
   if (product) {
     const response = await fetch(`/api/products/${encodeURIComponent(product)}`);
     if (!response.ok) {
+      if (response.status === 404) {
+        throw redirect(307, '/editor/edit');
+      }
       throw error(response.status === 404 ? 404 : response.status, 'Product not found.');
     }
   }

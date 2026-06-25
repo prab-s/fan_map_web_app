@@ -1,4 +1,4 @@
-import { b as attr, e as escape_html, a as slot, f as bind_props, s as store_get, u as unsubscribe_stores, d as ensure_array_like, c as attr_class, i as attr_style } from "./index2.js";
+import { b as attr, e as escape_html, a as slot, f as bind_props, d as ensure_array_like, s as store_get, u as unsubscribe_stores, c as attr_class, i as attr_style } from "./index2.js";
 import { o as onDestroy } from "./index-server.js";
 import "@sveltejs/kit/internal";
 import "./exports.js";
@@ -7,9 +7,10 @@ import { f as fallback } from "./equality.js";
 import "@sveltejs/kit/internal/server";
 import "./root.js";
 import "./state.svelte.js";
-import { F as FAN_ACOUSTIC_DEFAULT_SOUND_POWER_COLUMNS, t as theme, e as emptyProductForm, G as GLOBAL_UNIT_OPTIONS } from "./config.js";
+import { u as updateProduct, g as getProducts, s as startRefreshProductPdfJob, r as refreshGraphImage, d as deleteProductImage, a as reorderProductImages, b as uploadProductImages, c as getProduct, e as getRpmLines, f as getRpmPoints, h as getEfficiencyPoints } from "./api.js";
 import { g as getChartTheme, b as buildFullChartOption, E as ECharts, R as RPM_BAND_FALLBACK_COLORS, F as FULL_CHART_LINE_DEFINITIONS } from "./fullChart.js";
-import { S as SeriesNamesBadgeList } from "./SeriesNamesBadgeList.js";
+import { J as JobProgressPanel, S as SeriesNamesBadgeList, r as runMaintenanceJob } from "./SeriesNamesBadgeList.js";
+import { F as FAN_ACOUSTIC_DEFAULT_SOUND_POWER_COLUMNS, t as theme, e as emptyProductForm, G as GLOBAL_UNIT_OPTIONS } from "./config.js";
 function AccordionCard($$renderer, $$props) {
   let title = fallback($$props["title"], "");
   let description = fallback($$props["description"], "");
@@ -34,6 +35,98 @@ function AccordionCard($$renderer, $$props) {
   $$renderer.push(`<!--]--></div>`);
   bind_props($$props, { title, description, startOpen, open });
 }
+function ProductMediaPanel($$renderer, $$props) {
+  $$renderer.component(($$renderer2) => {
+    let productForm = $$props["productForm"];
+    let productImages = fallback($$props["productImages"], () => [], true);
+    let pendingImageFiles = fallback($$props["pendingImageFiles"], () => [], true);
+    let currentProduct = fallback($$props["currentProduct"], null);
+    let productPdfJob = fallback($$props["productPdfJob"], null);
+    let refreshingProductGraphId = fallback($$props["refreshingProductGraphId"], null);
+    let selectedProductId = fallback($$props["selectedProductId"], null);
+    let graphStyleForm = $$props["graphStyleForm"];
+    let showBandGraphStyle = fallback($$props["showBandGraphStyle"], true);
+    let graphLineValueLabel = fallback($$props["graphLineValueLabel"], () => "RPM");
+    let uploadImages = fallback($$props["uploadImages"], () => {
+    });
+    let moveProductImage = fallback($$props["moveProductImage"], () => {
+    });
+    let removeProductImage = fallback($$props["removeProductImage"], () => {
+    });
+    let generateProductGraph = fallback($$props["generateProductGraph"], () => {
+    });
+    let generateProductPdf = fallback($$props["generateProductPdf"], () => {
+    });
+    let saveBandGraphStyle = fallback($$props["saveBandGraphStyle"], () => {
+    });
+    $$renderer2.push(`<div class="vstack gap-3"><div class="card shadow-sm h-100"><div class="card-body"><h3 class="h6">Product images</h3> <p class="text-body-secondary">Upload multiple images, reorder them, and the first image becomes the primary catalogue thumbnail.</p> <div class="mb-3"><label class="form-label" for="edit-product-images">Select image files</label> <input class="form-control" id="edit-product-images" type="file" accept="image/*" multiple=""/></div> <div class="d-flex flex-wrap gap-2"><button class="btn btn-primary"${attr("disabled", pendingImageFiles.length === 0, true)}>Upload Selected Images</button></div> `);
+    if (productImages.length > 0) {
+      $$renderer2.push("<!--[0-->");
+      $$renderer2.push(`<div class="row g-3 mt-1"><!--[-->`);
+      const each_array = ensure_array_like(productImages);
+      for (let index = 0, $$length = each_array.length; index < $$length; index++) {
+        let image = each_array[index];
+        $$renderer2.push(`<div class="col-12 col-sm-6"><div class="card shadow-sm h-100"><div class="card-body"><img class="img-fluid rounded border mb-2" style="width: 100%; height: 150px; object-fit: cover;"${attr("src", image.url)}${attr("alt", `${productForm.model} product image ${index + 1}`)}/> <p class="text-body-secondary">${escape_html(index === 0 ? "Primary image" : `Image ${index + 1}`)}</p> <div class="d-flex flex-wrap gap-2"><button class="btn btn-outline-secondary btn-sm"${attr("disabled", index === 0, true)}>Move Up</button> <button class="btn btn-outline-secondary btn-sm"${attr("disabled", index === productImages.length - 1, true)}>Move Down</button> <button class="btn btn-danger btn-sm">Delete</button></div></div></div></div>`);
+      }
+      $$renderer2.push(`<!--]--></div>`);
+    } else {
+      $$renderer2.push("<!--[-1-->");
+      $$renderer2.push(`<p class="text-body-secondary mt-3 mb-0">No product images uploaded yet.</p>`);
+    }
+    $$renderer2.push(`<!--]--></div></div> <div class="card shadow-sm h-100"><div class="card-body"><h3 class="h6">Generated Assets</h3> <p class="text-body-secondary">Generate and download the current graph plus printed and online PDFs for this product.</p> <div class="d-flex flex-wrap gap-2"><button class="btn btn-outline-secondary"${attr("disabled", refreshingProductGraphId === selectedProductId || !selectedProductId, true)}>${escape_html(refreshingProductGraphId === selectedProductId ? "Generating Graph..." : "Generate Product Graph")}</button> `);
+    if (currentProduct?.graph_image_url) {
+      $$renderer2.push("<!--[0-->");
+      $$renderer2.push(`<a${attr("href", currentProduct.graph_image_url)} download="" class="btn btn-outline-secondary">Download Current Graph</a>`);
+    } else {
+      $$renderer2.push("<!--[-1-->");
+    }
+    $$renderer2.push(`<!--]--> <button class="btn btn-outline-secondary"${attr("disabled", productPdfJob?.status === "running" || !selectedProductId, true)}>${escape_html(productPdfJob?.status === "running" ? "Generating PDFs..." : "Generate Product PDFs")}</button> `);
+    if (currentProduct?.product_printed_pdf_url) {
+      $$renderer2.push("<!--[0-->");
+      $$renderer2.push(`<a${attr("href", currentProduct.product_printed_pdf_url)} download="" class="btn btn-outline-secondary">Download Printed PDF</a>`);
+    } else {
+      $$renderer2.push("<!--[-1-->");
+    }
+    $$renderer2.push(`<!--]--> `);
+    if (currentProduct?.product_online_pdf_url) {
+      $$renderer2.push("<!--[0-->");
+      $$renderer2.push(`<a${attr("href", currentProduct.product_online_pdf_url)} download="" class="btn btn-outline-secondary">Download Online PDF</a>`);
+    } else if (currentProduct?.product_pdf_url) {
+      $$renderer2.push("<!--[1-->");
+      $$renderer2.push(`<a${attr("href", currentProduct.product_pdf_url)} download="" class="btn btn-outline-secondary">Download Existing PDF</a>`);
+    } else {
+      $$renderer2.push("<!--[-1-->");
+    }
+    $$renderer2.push(`<!--]--></div> `);
+    JobProgressPanel($$renderer2, { job: productPdfJob, label: "Product PDF generation" });
+    $$renderer2.push(`<!----></div></div> `);
+    if (showBandGraphStyle) {
+      $$renderer2.push("<!--[0-->");
+      $$renderer2.push(`<div class="card shadow-sm h-100"><div class="card-body"><h3 class="h6">Band graph style</h3> <p class="text-body-secondary">These colours apply to the banded graph style, including generated graph images.</p> <div class="row g-3"><div class="col-12"><label class="form-label" for="band-graph-label-color">${escape_html(graphLineValueLabel())} label text colour</label> <div class="input-group"><input class="form-control form-control-color" id="band-graph-label-color" type="color"${attr("value", graphStyleForm.band_graph_label_text_color)}/> <input class="form-control" type="text"${attr("value", graphStyleForm.band_graph_label_text_color)} placeholder="#000000"/></div></div> <div class="col-12"><label class="form-label" for="band-graph-background-color">Graph background colour</label> <div class="input-group"><input class="form-control form-control-color" id="band-graph-background-color" type="color"${attr("value", graphStyleForm.band_graph_background_color)}/> <input class="form-control" type="text"${attr("value", graphStyleForm.band_graph_background_color)} placeholder="#ffffff"/></div></div> <div class="col-12"><label class="form-label" for="band-graph-faded-opacity">Faded area opacity</label> <div class="input-group"><input class="form-range" id="band-graph-faded-opacity" type="range" min="0" max="1" step="0.01"${attr("value", graphStyleForm.band_graph_faded_opacity)}/> <input class="form-control" type="number" min="0" max="1" step="0.01"${attr("value", graphStyleForm.band_graph_faded_opacity)}/></div></div> <div class="col-12"><label class="form-label" for="band-graph-permissible-label-color">Permissible use label colour</label> <div class="input-group"><input class="form-control form-control-color" id="band-graph-permissible-label-color" type="color"${attr("value", graphStyleForm.band_graph_permissible_label_color)}/> <input class="form-control" type="text"${attr("value", graphStyleForm.band_graph_permissible_label_color)} placeholder="#000000"/></div></div></div> <div class="d-flex flex-wrap gap-2 mt-3"><button class="btn btn-outline-primary">Save Band Graph Style</button></div></div></div>`);
+    } else {
+      $$renderer2.push("<!--[-1-->");
+    }
+    $$renderer2.push(`<!--]--></div>`);
+    bind_props($$props, {
+      productForm,
+      productImages,
+      pendingImageFiles,
+      currentProduct,
+      productPdfJob,
+      refreshingProductGraphId,
+      selectedProductId,
+      graphStyleForm,
+      showBandGraphStyle,
+      graphLineValueLabel,
+      uploadImages,
+      moveProductImage,
+      removeProductImage,
+      generateProductGraph,
+      generateProductPdf,
+      saveBandGraphStyle
+    });
+  });
+}
 function ProductWorkspace($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
     var $$store_subs;
@@ -45,19 +138,40 @@ function ProductWorkspace($$renderer, $$props) {
     let seriesRecords = [];
     let templateRegistry = { product_templates: [] };
     let selectedProductId = null;
+    let currentProduct = null;
     let rpmLines = [];
     let rpmPoints = [];
     let efficiencyPoints = [];
+    let originalRpmLineSnapshots = /* @__PURE__ */ new Map();
+    let originalRpmPointSnapshots = /* @__PURE__ */ new Map();
     let mapChartOption = {};
     let loading = false;
+    let savingProductDetails = false;
     let successMessages = [];
+    let productImages = [];
+    let pendingImageFiles = [];
+    let rpmPointSort = { column: null };
+    let chartAddTarget = "";
+    let newRpmLineValue = "";
+    let newRpmLineBandColor = RPM_BAND_FALLBACK_COLORS[0];
+    let originalRpmPointIds = [];
+    let originalEfficiencyPointIds = [];
     let nextTempPointId = -1;
     let nextTempRpmLineId = -1;
     let savingMapPoints = false;
     Promise.resolve();
+    let successDismissTimeout = null;
     let refreshingTemplates = false;
+    let refreshingProductPdfJob = null;
+    let refreshingProductGraphId = null;
     let editExistingProductTypeKey = "";
     let editExistingSeriesId = "";
+    let createTemplateSelectionSource = { printed: "auto", online: "auto" };
+    let chartInstance = null;
+    let draggingPoint = null;
+    let dragAxisLock = null;
+    let destroyed = false;
+    let appliedInitialProductId = "";
     let mode = initialMode;
     let editingProductId = null;
     function defaultGraphStyleForm() {
@@ -74,6 +188,12 @@ function ProductWorkspace($$renderer, $$props) {
     let createProductAttributesOpen = true;
     let createGroupedSpecificationsOpen = true;
     let createFanAcousticTableOpen = true;
+    let editProductDetailsOpen = true;
+    let editGroupedSpecificationsOpen = true;
+    let editFanAcousticTableOpen = true;
+    let editMediaAssetsOpen = true;
+    let editLineManagementOpen = true;
+    let editGraphDataOpen = true;
     let allAccordionsOpen = false;
     let specificationGroupOpenState = {};
     const SPECIFICATION_GROUP_BASE_COLORS = [
@@ -96,6 +216,23 @@ function ProductWorkspace($$renderer, $$props) {
     }
     let productForm = emptyProductForm();
     let fanAcousticTable = createFanAcousticTableDraft();
+    let rpmPointForm = { rpm_line_id: "", airflow: "", pressure: "" };
+    let graphCsvError = "";
+    let graphCsvFileName = "";
+    let graphCsvDownsampleImportedCurves = true;
+    let graphCsvDownsamplePointCount = 5;
+    let graphCsvNormalizeEfficiencyOverlays = false;
+    let graphCsvImportSource = { text: "", fileName: "", productId: null };
+    let graphCsvImportSignature = "";
+    let graphCsvPreview = null;
+    let fanAcousticCsvError = "";
+    let fanAcousticCsvFileName = "";
+    let efficiencyScaleFactors = {
+      efficiency_centre: "1",
+      efficiency_lower_end: "1",
+      efficiency_higher_end: "1",
+      permissible_use: "1"
+    };
     function syncSpecificationGroupOpenState(groups, currentState) {
       const nextState = {};
       groups.forEach((_, index) => {
@@ -109,6 +246,15 @@ function ProductWorkspace($$renderer, $$props) {
         return productType?.printed_product_template_id || productType?.product_template_id || "";
       }
       return productType?.online_product_template_id || productType?.product_template_id || "";
+    }
+    function productTypeBandGraphStyleDefaults(productTypeKey) {
+      const productType = productTypes.find((item) => item.key === productTypeKey);
+      return {
+        band_graph_background_color: normalizeOptionalColor(productType?.band_graph_background_color) || "#ffffff",
+        band_graph_label_text_color: normalizeOptionalColor(productType?.band_graph_label_text_color) || "#000000",
+        band_graph_faded_opacity: productType?.band_graph_faded_opacity != null && !Number.isNaN(Number(productType.band_graph_faded_opacity)) ? Number(productType.band_graph_faded_opacity) : 0.18,
+        band_graph_permissible_label_color: normalizeOptionalColor(productType?.band_graph_permissible_label_color) || "#000000"
+      };
     }
     function resolveCreateTemplateId(productTypeKey, variant) {
       const preferredTemplateId = productTypePresetTemplateId(productTypeKey, variant);
@@ -124,8 +270,14 @@ function ProductWorkspace($$renderer, $$props) {
     function applyCreateTemplateDefault(productTypeKey) {
       productForm = {
         ...productForm,
-        printed_template_id: resolveCreateTemplateId(productTypeKey, "printed"),
-        online_template_id: resolveCreateTemplateId(productTypeKey, "online")
+        printed_template_id: createTemplateSelectionSource.printed === "manual" ? productForm.printed_template_id : resolveCreateTemplateId(productTypeKey, "printed"),
+        online_template_id: createTemplateSelectionSource.online === "manual" ? productForm.online_template_id : resolveCreateTemplateId(productTypeKey, "online")
+      };
+    }
+    function applyCreateBandGraphStyleDefaults(productTypeKey, markInitialized = true) {
+      graphStyleForm = {
+        ...graphStyleForm,
+        ...productTypeBandGraphStyleDefaults(productTypeKey)
       };
     }
     function seriesForType(productTypeKey) {
@@ -142,6 +294,7 @@ function ProductWorkspace($$renderer, $$props) {
       const parameterKey = normalizeLookupText(parameterName);
       const history = /* @__PURE__ */ new Map();
       for (const product of products) {
+        if (editingProductId && Number(product.id) === Number(editingProductId)) continue;
         for (const group of product.parameter_groups ?? []) {
           if (normalizeLookupText(group.group_name) !== groupKey) continue;
           for (const parameter of group.parameters ?? []) {
@@ -174,6 +327,12 @@ function ProductWorkspace($$renderer, $$props) {
     function parseOptionalNumber(value) {
       return value === "" || value == null ? null : parseFloat(value);
     }
+    function parseOptionalInteger(value) {
+      if (value === "" || value == null) return null;
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed)) return null;
+      return Math.round(parsed);
+    }
     function isBlankEditorNumericValue(value) {
       return value === "" || value == null;
     }
@@ -183,6 +342,33 @@ function ProductWorkspace($$renderer, $$props) {
     }
     function editorNumericInputClass(value) {
       return isValidEditorNumericValue(value) ? "" : "is-invalid";
+    }
+    function normalizeGraphLineDraft(line = {}) {
+      return { ...line, rpm: parseOptionalInteger(line.rpm) };
+    }
+    function snapshotGraphLine(line = {}) {
+      return {
+        rpm: parseOptionalInteger(line.rpm),
+        band_color: normalizeOptionalColor(line.band_color) || null
+      };
+    }
+    function normalizeGraphPointDraft(point = {}) {
+      return {
+        ...point,
+        rpm: parseOptionalInteger(point.rpm),
+        airflow: parseOptionalInteger(point.airflow),
+        pressure: parseOptionalInteger(point.pressure)
+      };
+    }
+    function normalizeGraphEfficiencyPointDraft(point = {}) {
+      return {
+        ...point,
+        airflow: parseOptionalInteger(point.airflow),
+        efficiency_centre: parseOptionalInteger(point.efficiency_centre),
+        efficiency_lower_end: parseOptionalInteger(point.efficiency_lower_end),
+        efficiency_higher_end: parseOptionalInteger(point.efficiency_higher_end),
+        permissible_use: parseOptionalInteger(point.permissible_use)
+      };
     }
     function createParameterDraft(parameter = {}) {
       const unitValue = parameter.unit ?? "";
@@ -263,6 +449,13 @@ function ProductWorkspace($$renderer, $$props) {
       });
       return { sound_power_columns, rows };
     }
+    function syncFanAcousticTableWithRpmLines(rpmLineSource = rpmLines) {
+      if (productForm.product_type_key !== "fan") {
+        fanAcousticTable = null;
+        return;
+      }
+      fanAcousticTable = createFanAcousticTableDraft(fanAcousticTable || {}, rpmLineSource);
+    }
     function isFanAcousticTableVisible() {
       return productForm.product_type_key === "fan";
     }
@@ -322,6 +515,35 @@ function ProductWorkspace($$renderer, $$props) {
       efficiencyPoints = graphPresets.efficiencyPoints;
       fanAcousticTable = productTypeKey === "fan" ? createFanAcousticTableDraft({}, graphPresets.rpmLines) : null;
       specificationGroupOpenState = {};
+    }
+    function resetProductEditor(productTypeKey = "") {
+      createTemplateSelectionSource = { printed: "auto", online: "auto" };
+      productForm = {
+        ...emptyProductForm(),
+        product_type_key: productTypeKey,
+        printed_template_id: "",
+        online_template_id: "",
+        series_id: null
+      };
+      graphStyleForm = defaultGraphStyleForm();
+      if (mode === "create") {
+        applyCreateTypePresets(productTypeKey);
+        applyCreateTemplateDefault(productTypeKey);
+        applyCreateBandGraphStyleDefaults(productTypeKey, productTypes.length > 0);
+      } else {
+        parameterGroups = clonePresetGroups(productTypeKey);
+        rpmLines = [];
+        rpmPoints = [];
+        efficiencyPoints = [];
+        fanAcousticTable = productTypeKey === "fan" ? createFanAcousticTableDraft({}, []) : null;
+        specificationGroupOpenState = {};
+      }
+      createCoreDetailsOpen = true;
+      createProductAttributesOpen = true;
+      createGroupedSpecificationsOpen = true;
+      createFanAcousticTableOpen = true;
+      fanAcousticCsvError = "";
+      fanAcousticCsvFileName = "";
     }
     function getCurrentProductType() {
       return productTypes.find((item) => item.key === productForm.product_type_key) || null;
@@ -387,6 +609,20 @@ function ProductWorkspace($$renderer, $$props) {
       const normalized = String(value ?? "").trim();
       return normalized || "";
     }
+    function addSuccess(message) {
+      if (!message) return;
+      successMessages = [...successMessages, message];
+      if (successDismissTimeout) {
+        clearTimeout(successDismissTimeout);
+      }
+      successDismissTimeout = setTimeout(
+        () => {
+          successMessages = [];
+          successDismissTimeout = null;
+        },
+        3e3
+      );
+    }
     function createTempPointId() {
       const nextId = nextTempPointId;
       nextTempPointId -= 1;
@@ -400,8 +636,547 @@ function ProductWorkspace($$renderer, $$props) {
     function applyRpmPointSort(points) {
       return points;
     }
+    function hydrateRpmPointsWithLineValues(points, lines) {
+      const rpmByLineId = new Map((lines ?? []).map((line) => [Number(line?.id), Number(line?.rpm)]).filter(([, rpm]) => Number.isFinite(rpm)));
+      return (points ?? []).map((point) => {
+        const rpm = Number(point?.rpm);
+        if (Number.isFinite(rpm)) {
+          return point;
+        }
+        const lineRpm = rpmByLineId.get(Number(point?.rpm_line_id));
+        return lineRpm == null ? point : { ...point, rpm: lineRpm };
+      });
+    }
+    function sortIndicator(column) {
+      if (rpmPointSort.column !== column) return "Sort";
+      return "Asc";
+    }
+    function parseCsvRows(text) {
+      return text.split(/\r?\n/).map((row) => row.trim()).filter(Boolean).map((row) => row.split(",").map((cell) => cell.trim()));
+    }
+    function normalizeGraphCsvCell(value) {
+      return String(value ?? "").trim() === "#N/A" ? "" : value;
+    }
+    function normalizeGraphCsvHeader(header) {
+      const trimmedHeader = String(header ?? "").trim();
+      if (!trimmedHeader) return trimmedHeader;
+      const lowerHeader = trimmedHeader.toLowerCase();
+      if (lowerHeader === "airflow (l/s)") {
+        return "airflow_l_s";
+      }
+      if (lowerHeader === "green system") {
+        return "efficiency_centre";
+      }
+      if (lowerHeader === "upper red curve") {
+        return "efficiency_lower_end";
+      }
+      if (lowerHeader === "lower red curve") {
+        return "efficiency_higher_end";
+      }
+      if (lowerHeader.startsWith("efficiency_") || lowerHeader === "permissible_use" || lowerHeader.startsWith("system_")) {
+        return trimmedHeader;
+      }
+      if (lowerHeader.includes("rpm")) {
+        const compactHeader = trimmedHeader.replace(/\s+/g, "");
+        return lowerHeader.startsWith("pressure_") ? compactHeader : `pressure_${compactHeader}`;
+      }
+      return trimmedHeader;
+    }
+    function normalizeGraphCsvRows(rows) {
+      return rows.map((row, rowIndex) => row.map((cell, cellIndex) => rowIndex === 0 ? normalizeGraphCsvHeader(cell) : normalizeGraphCsvCell(cell)));
+    }
+    function buildGraphCsvPreview(text) {
+      if (!text) return null;
+      const rows = parseCsvRows(text);
+      if (!rows.length) return null;
+      const normalizedRows = normalizeGraphCsvRows(rows);
+      const replacedNaNCount = rows.slice(1).reduce((count, row) => count + row.reduce((rowCount, cell) => rowCount + (String(cell ?? "").trim() === "#N/A" ? 1 : 0), 0), 0);
+      const headerPairs = rows[0].map((originalHeader, index) => ({
+        original: String(originalHeader ?? "").trim(),
+        normalized: String(normalizedRows[0]?.[index] ?? "").trim()
+      }));
+      return {
+        fileName: graphCsvImportSource.fileName || "graph-data.csv",
+        rowCount: Math.max(rows.length - 1, 0),
+        replacedNaNCount,
+        headerPairs,
+        changedHeaders: headerPairs.filter((pair) => pair.original !== pair.normalized)
+      };
+    }
+    function formatGraphCsvLineToken(value) {
+      const numericValue = Number(value);
+      if (!Number.isFinite(numericValue)) {
+        return String(value ?? "").trim().toLowerCase();
+      }
+      return `${numericValue}`.replace(/\.0+$/, "").replace(/(\.\d*?[1-9])0+$/, "$1");
+    }
+    function parseGraphCsvLineToken(header) {
+      const match = String(header ?? "").trim().toLowerCase().match(/^pressure_(.+?)(?:rpm)?$/);
+      if (!match) return null;
+      const rpm = Math.round(parseFloat(match[1]));
+      return Number.isFinite(rpm) ? rpm : null;
+    }
+    function parseGraphCsvNumber(value, columnName) {
+      if (value === "" || value == null) return null;
+      const parsed = parseFloat(value);
+      if (!Number.isFinite(parsed)) {
+        throw new Error(`Column "${columnName}" contains a non-numeric value: "${value}".`);
+      }
+      return parsed;
+    }
+    function parseGraphCsvInteger(value, columnName) {
+      const parsed = parseGraphCsvNumber(value, columnName);
+      return parsed == null ? null : Math.round(parsed);
+    }
+    function normalizeGraphCsvDownsampleCount(value) {
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed)) {
+        throw new Error("The downsample count must be a whole number.");
+      }
+      const count = Math.floor(parsed);
+      if (count < 1) {
+        throw new Error("The downsample count must be at least 1.");
+      }
+      return count;
+    }
+    function interpolateGraphCsvValue(points, axisValue) {
+      if (!points.length) return null;
+      if (points.length === 1) return points[0].value;
+      if (axisValue <= points[0].axis) return points[0].value;
+      if (axisValue >= points[points.length - 1].axis) return points[points.length - 1].value;
+      for (let index = 0; index < points.length - 1; index += 1) {
+        const left = points[index];
+        const right = points[index + 1];
+        if (axisValue < left.axis || axisValue > right.axis) continue;
+        const span = right.axis - left.axis;
+        if (span === 0) return right.value;
+        const ratio = (axisValue - left.axis) / span;
+        return left.value + (right.value - left.value) * ratio;
+      }
+      return points[points.length - 1].value;
+    }
+    function downsampleGraphCsvSeries(points, axisKey = "airflow", valueKey = "pressure", targetCount = 5) {
+      const numericPoints = (points ?? []).map((point) => ({
+        point,
+        axis: Number(point?.[axisKey]),
+        value: Number(point?.[valueKey])
+      })).filter(({ axis, value }) => Number.isFinite(axis) && Number.isFinite(value)).sort((a, b) => a.axis - b.axis);
+      if (numericPoints.length <= targetCount) {
+        return numericPoints.map(({ point }) => point);
+      }
+      const sampleAxes = Array.from({ length: targetCount }, (_, index) => {
+        const t = targetCount === 1 ? 0 : index / (targetCount - 1);
+        return Math.round(numericPoints[0].axis + (numericPoints[numericPoints.length - 1].axis - numericPoints[0].axis) * t);
+      });
+      const templatePoint = numericPoints[0].point;
+      const sampledPoints = sampleAxes.map((axis) => ({
+        ...templatePoint,
+        id: createTempPointId(),
+        [axisKey]: axis,
+        [valueKey]: Math.round(interpolateGraphCsvValue(numericPoints, axis))
+      }));
+      const seenAxes = /* @__PURE__ */ new Set();
+      return sampledPoints.filter((point) => {
+        const axisValue = point?.[axisKey];
+        if (seenAxes.has(axisValue)) return false;
+        seenAxes.add(axisValue);
+        return true;
+      });
+    }
+    function downsampleGraphCsvOverlayPoints(points, valueKeys, targetCount = 5) {
+      const mergedPoints = /* @__PURE__ */ new Map();
+      for (const valueKey of valueKeys) {
+        const seriesPoints = (points ?? []).filter((point) => point?.[valueKey] != null);
+        const sampledPoints = downsampleGraphCsvSeries(seriesPoints, "airflow", valueKey, targetCount);
+        for (const sampledPoint of sampledPoints) {
+          const airflow = Number(sampledPoint?.airflow);
+          const value = Number(sampledPoint?.[valueKey]);
+          if (!Number.isFinite(airflow) || !Number.isFinite(value)) continue;
+          const mergeKey = `${airflow}`;
+          if (!mergedPoints.has(mergeKey)) {
+            mergedPoints.set(mergeKey, {
+              id: createTempPointId(),
+              product_id: selectedProductId,
+              airflow,
+              efficiency_centre: null,
+              efficiency_lower_end: null,
+              efficiency_higher_end: null,
+              permissible_use: null
+            });
+          }
+          mergedPoints.get(mergeKey)[valueKey] = value;
+        }
+      }
+      return [...mergedPoints.values()].sort((a, b) => Number(a.airflow) - Number(b.airflow));
+    }
+    function graphCsvPlaceholder() {
+      if (productSupportsGraphOverlays()) {
+        return `Example columns: airflow_l_s, pressure_650rpm, pressure_813rpm, efficiency_centre, permissible_use`;
+      }
+      return `Example columns: airflow_l_s, pressure_650rpm, pressure_813rpm`;
+    }
     onDestroy(() => {
+      destroyed = true;
+      if (successDismissTimeout) {
+        clearTimeout(successDismissTimeout);
+      }
     });
+    function buildImportedGraphState(rows, { downsampleImportedCurves = true, downsamplePointCount = 5 } = {}) {
+      const [headerRow, ...dataRows] = rows;
+      const normalizedHeaders = headerRow.map((header) => String(header ?? "").trim());
+      const airflowHeader = normalizedHeaders[0]?.toLowerCase();
+      if (airflowHeader !== "airflow_l_s" && airflowHeader !== "airflow") {
+        throw new Error('The first column must be "airflow_l_s".');
+      }
+      const pressureColumns = [];
+      const overlayColumns = /* @__PURE__ */ new Set([
+        "efficiency_centre",
+        "efficiency_lower_end",
+        "efficiency_higher_end",
+        "permissible_use"
+      ]);
+      for (let index = 1; index < normalizedHeaders.length; index += 1) {
+        const header = normalizedHeaders[index];
+        const normalizedHeader = header.toLowerCase();
+        if (!normalizedHeader) continue;
+        if (overlayColumns.has(normalizedHeader)) {
+          if (!productSupportsGraphOverlays()) {
+            throw new Error(`Column "${header}" is only supported for products with graph overlay lines.`);
+          }
+          continue;
+        }
+        if (normalizedHeader.startsWith("system_")) {
+          throw new Error(`Column "${header}" is not supported yet because system curve storage has not been added to this project.`);
+        }
+        if (normalizedHeader.startsWith("efficiency_")) {
+          throw new Error(`Column "${header}" is not supported yet because efficiency data is currently stored as shared overlay lines, not per-${graphLineValueLabel().toLowerCase()} curves.`);
+        }
+        const rpm = parseGraphCsvLineToken(normalizedHeader);
+        if (rpm == null) {
+          throw new Error(`Column "${header}" is not recognised. Use "pressure_<value>rpm" columns plus the supported overlay columns.`);
+        }
+        pressureColumns.push({ index, header, rpm });
+      }
+      const nextRpmLines = pressureColumns.map((column, index) => {
+        const existingLine = (rpmLines ?? []).find((line) => Number(line?.rpm) === Number(column.rpm));
+        return {
+          id: createTempRpmLineId(),
+          product_id: selectedProductId,
+          rpm: column.rpm,
+          band_color: normalizeOptionalColor(existingLine?.band_color) || RPM_BAND_FALLBACK_COLORS[index % RPM_BAND_FALLBACK_COLORS.length]
+        };
+      });
+      const nextRpmLineByKey = new Map(nextRpmLines.map((line) => [formatGraphCsvLineToken(line.rpm), line]));
+      let previousAirflow = null;
+      const seenAirflows = /* @__PURE__ */ new Set();
+      const nextRpmPoints = [];
+      const nextEfficiencyPoints = [];
+      for (const [rowIndex, row] of dataRows.entries()) {
+        const roundedAirflow = parseGraphCsvInteger(row[0], normalizedHeaders[0]);
+        if (roundedAirflow == null) {
+          throw new Error(`Row ${rowIndex + 2} is missing an airflow_l_s value.`);
+        }
+        if (seenAirflows.has(roundedAirflow)) {
+          throw new Error(`Duplicate airflow_l_s value found: ${roundedAirflow}.`);
+        }
+        if (previousAirflow != null && roundedAirflow <= previousAirflow) {
+          throw new Error(`airflow_l_s must increase strictly row by row. Row ${rowIndex + 2} is out of order.`);
+        }
+        seenAirflows.add(roundedAirflow);
+        previousAirflow = roundedAirflow;
+        for (const column of pressureColumns) {
+          const pressure = parseGraphCsvNumber(row[column.index], column.header);
+          if (pressure == null) continue;
+          const roundedPressure = parseGraphCsvInteger(row[column.index], column.header);
+          const lineKey = formatGraphCsvLineToken(column.rpm);
+          const line = nextRpmLineByKey.get(lineKey);
+          nextRpmPoints.push({
+            id: createTempPointId(),
+            product_id: selectedProductId,
+            rpm_line_id: line.id,
+            rpm: line.rpm,
+            airflow: roundedAirflow,
+            pressure: roundedPressure
+          });
+        }
+        if (productSupportsGraphOverlays()) {
+          const efficiencyPoint = {
+            id: createTempPointId(),
+            product_id: selectedProductId,
+            airflow: roundedAirflow,
+            efficiency_centre: null,
+            efficiency_lower_end: null,
+            efficiency_higher_end: null,
+            permissible_use: null
+          };
+          let hasOverlayValue = false;
+          for (let index = 1; index < normalizedHeaders.length; index += 1) {
+            const normalizedHeader = normalizedHeaders[index]?.toLowerCase();
+            if (!overlayColumns.has(normalizedHeader)) continue;
+            const value = parseGraphCsvInteger(row[index], normalizedHeaders[index]);
+            efficiencyPoint[normalizedHeader] = value;
+            if (value != null) hasOverlayValue = true;
+          }
+          if (hasOverlayValue) {
+            nextEfficiencyPoints.push(efficiencyPoint);
+          }
+        }
+      }
+      const nextRpmPointsByLineId = /* @__PURE__ */ new Map();
+      for (const point of nextRpmPoints) {
+        const lineId = Number(point?.rpm_line_id);
+        if (!Number.isFinite(lineId)) continue;
+        if (!nextRpmPointsByLineId.has(lineId)) {
+          nextRpmPointsByLineId.set(lineId, []);
+        }
+        nextRpmPointsByLineId.get(lineId).push(point);
+      }
+      const adjustedRpmPoints = downsampleImportedCurves ? [...nextRpmPointsByLineId.values()].flatMap((linePoints) => downsampleGraphCsvSeries(linePoints, "airflow", "pressure", downsamplePointCount)) : nextRpmPoints;
+      const adjustedEfficiencyPoints = downsampleImportedCurves ? downsampleGraphCsvOverlayPoints(
+        nextEfficiencyPoints,
+        [
+          "efficiency_centre",
+          "efficiency_lower_end",
+          "efficiency_higher_end",
+          "permissible_use"
+        ],
+        downsamplePointCount
+      ) : nextEfficiencyPoints;
+      const importedOverlayPoints = adjustedEfficiencyPoints.map((point) => ({
+        ...point,
+        airflow: parseOptionalInteger(point.airflow),
+        efficiency_centre: parseOptionalInteger(point.efficiency_centre),
+        efficiency_lower_end: parseOptionalInteger(point.efficiency_lower_end),
+        efficiency_higher_end: parseOptionalInteger(point.efficiency_higher_end),
+        permissible_use: parseOptionalInteger(point.permissible_use)
+      }));
+      const finalEfficiencyPoints = importedOverlayPoints;
+      return {
+        rpmLines: nextRpmLines.sort((a, b) => Number(a.rpm) - Number(b.rpm)),
+        rpmPoints: applyRpmPointSort(adjustedRpmPoints),
+        efficiencyPoints: finalEfficiencyPoints
+      };
+    }
+    function setGraphCsvImportSource(text, fileName) {
+      graphCsvImportSource = { text, fileName, productId: selectedProductId };
+      graphCsvImportSignature = "";
+    }
+    function clearGraphCsvImportSource() {
+      graphCsvImportSource = { text: "", fileName: "", productId: null };
+      graphCsvImportSignature = "";
+    }
+    function applyImportedGraphCsvSource({
+      text,
+      fileName = "graph-data.csv",
+      showSuccess = true,
+      rememberSource = true
+    } = {}) {
+      graphCsvError = "";
+      if (!selectedProductId) {
+        graphCsvError = "Select a product first.";
+        return;
+      }
+      const rows = parseCsvRows(text);
+      if (rows.length < 2) {
+        graphCsvError = "Choose a graph CSV file with a header row and at least one data row.";
+        return;
+      }
+      try {
+        const cleanedRows = normalizeGraphCsvRows(rows);
+        if (rememberSource) {
+          setGraphCsvImportSource(text, fileName);
+        }
+        const downsampleImportedCurves = !!graphCsvDownsampleImportedCurves;
+        const downsamplePointCount = downsampleImportedCurves ? normalizeGraphCsvDownsampleCount(graphCsvDownsamplePointCount) : null;
+        const imported = buildImportedGraphState(cleanedRows, {
+          downsampleImportedCurves,
+          downsamplePointCount: downsamplePointCount ?? 5
+        });
+        rpmLines = imported.rpmLines;
+        rpmPoints = imported.rpmPoints;
+        efficiencyPoints = imported.efficiencyPoints;
+        syncFanAcousticTableWithRpmLines(rpmLines);
+        graphCsvFileName = fileName;
+        graphCsvImportSignature = `${selectedProductId ?? ""}|${downsampleImportedCurves ? "1" : "0"}|${downsampleImportedCurves ? downsamplePointCount : "full"}|${graphCsvNormalizeEfficiencyOverlays ? "1" : "0"}`;
+        const validTargets = /* @__PURE__ */ new Set([
+          ...rpmLines.map((line) => `rpm:${line.id}`),
+          ...currentOverlayLineDefinitions().map((definition) => `efficiency:${definition.key}`)
+        ]);
+        if (!chartAddTarget || !validTargets.has(chartAddTarget)) {
+          chartAddTarget = rpmLines.length ? `rpm:${rpmLines[0].id}` : "off";
+        }
+        if (rpmLines.length) {
+          rpmPointForm = { ...rpmPointForm, rpm_line_id: String(rpmLines[0].id) };
+        }
+        if (showSuccess) {
+          addSuccess(`${`Loaded graph CSV from ${fileName}`}${graphCsvNormalizeEfficiencyOverlays ? " and scaled the overlay columns line by line against the highest RPM line" : ""}${downsampleImportedCurves ? `, downsampled each imported curve to ${downsamplePointCount} representative point${downsamplePointCount === 1 ? "" : "s"}` : ""}. Review the tables and chart, then press Save Changes to commit it.`);
+        }
+      } catch (e) {
+        graphCsvError = e.message;
+      }
+    }
+    async function loadProductData() {
+      if (!selectedProductId) return;
+      try {
+        if (graphCsvImportSource.productId != null && graphCsvImportSource.productId !== selectedProductId) {
+          clearGraphCsvImportSource();
+          graphCsvFileName = "";
+        }
+        const nextProduct = await getProduct(selectedProductId);
+        currentProduct = nextProduct;
+        const nextProductType = productTypes.find((item) => item.key === (nextProduct?.product_type_key || "fan")) || null;
+        const overlayDefinitions = nextProductType?.supports_graph_overlays === false ? [] : FULL_CHART_LINE_DEFINITIONS;
+        const [rpmLinesResult, rpmPointsResult, efficiencyPointsResult] = await Promise.allSettled([
+          getRpmLines(selectedProductId),
+          getRpmPoints(selectedProductId),
+          getEfficiencyPoints(selectedProductId)
+        ]);
+        const nextRpmLines = rpmLinesResult.status === "fulfilled" ? rpmLinesResult.value : [];
+        const nextRpmPoints = rpmPointsResult.status === "fulfilled" ? rpmPointsResult.value : [];
+        const nextEfficiencyPoints = efficiencyPointsResult.status === "fulfilled" ? efficiencyPointsResult.value : [];
+        rpmLines = nextRpmLines.map((line, index) => normalizeGraphLineDraft({
+          ...line,
+          band_color: normalizeOptionalColor(line.band_color) || RPM_BAND_FALLBACK_COLORS[index % RPM_BAND_FALLBACK_COLORS.length]
+        }));
+        originalRpmLineSnapshots = new Map(nextRpmLines.map((line) => [Number(line.id), snapshotGraphLine(line)]));
+        originalRpmPointSnapshots = new Map(nextRpmPoints.map((point) => [Number(point.id), Number(point.rpm_line_id)]));
+        rpmPoints = applyRpmPointSort(hydrateRpmPointsWithLineValues(nextRpmPoints, rpmLines).map((point) => normalizeGraphPointDraft(point)));
+        efficiencyPoints = nextEfficiencyPoints.map((point) => normalizeGraphEfficiencyPointDraft(point));
+        originalRpmPointIds = nextRpmPoints.map((point) => point.id);
+        originalEfficiencyPointIds = nextEfficiencyPoints.map((point) => point.id);
+        fanAcousticTable = nextProductType?.key === "fan" ? createFanAcousticTableDraft(nextProduct?.fan_acoustic_table || {}, nextRpmLines) : null;
+        graphStyleForm = {
+          band_graph_background_color: normalizeOptionalColor(nextProduct?.band_graph_background_color) || "#ffffff",
+          band_graph_label_text_color: normalizeOptionalColor(nextProduct?.band_graph_label_text_color) || "#000000",
+          band_graph_faded_opacity: nextProduct?.band_graph_faded_opacity != null && !Number.isNaN(Number(nextProduct.band_graph_faded_opacity)) ? Number(nextProduct.band_graph_faded_opacity) : 0.18,
+          band_graph_permissible_label_color: normalizeOptionalColor(nextProduct?.band_graph_permissible_label_color) || normalizeOptionalColor(nextProduct?.band_graph_label_text_color) || "#000000"
+        };
+        productImages = currentProduct.product_images || [];
+        const validTargets = /* @__PURE__ */ new Set([
+          ...nextRpmLines.map((line) => `rpm:${line.id}`),
+          ...overlayDefinitions.map((definition) => `efficiency:${definition.key}`)
+        ]);
+        if (!chartAddTarget || !validTargets.has(chartAddTarget)) {
+          chartAddTarget = "off";
+        }
+        if (!rpmPointForm.rpm_line_id && nextRpmLines.length) {
+          rpmPointForm = { ...rpmPointForm, rpm_line_id: String(nextRpmLines[0].id) };
+        }
+      } catch (e) {
+        e.message;
+      }
+    }
+    function productViewerUrl(productId = selectedProductId) {
+      const nextProductId = productId == null || productId === "" ? "" : String(productId);
+      return nextProductId ? `/viewer/product/${encodeURIComponent(nextProductId)}` : "/viewer/product";
+    }
+    async function saveBandGraphStyle() {
+      if (!selectedProductId) {
+        return;
+      }
+      try {
+        const saved = await updateProduct(selectedProductId, {
+          band_graph_background_color: normalizeOptionalColor(graphStyleForm.band_graph_background_color) || null,
+          band_graph_label_text_color: normalizeOptionalColor(graphStyleForm.band_graph_label_text_color) || null,
+          band_graph_faded_opacity: graphStyleForm.band_graph_faded_opacity === "" || graphStyleForm.band_graph_faded_opacity == null ? null : Number(graphStyleForm.band_graph_faded_opacity),
+          band_graph_permissible_label_color: normalizeOptionalColor(graphStyleForm.band_graph_permissible_label_color) || null
+        });
+        graphStyleForm = {
+          band_graph_background_color: normalizeOptionalColor(saved?.band_graph_background_color),
+          band_graph_label_text_color: normalizeOptionalColor(saved?.band_graph_label_text_color),
+          band_graph_faded_opacity: saved?.band_graph_faded_opacity != null && !Number.isNaN(Number(saved.band_graph_faded_opacity)) ? Number(saved.band_graph_faded_opacity) : 0.18,
+          band_graph_permissible_label_color: normalizeOptionalColor(saved?.band_graph_permissible_label_color) || normalizeOptionalColor(saved?.band_graph_label_text_color) || "#000000"
+        };
+        currentProduct = saved;
+        products = await getProducts();
+        addSuccess("Band graph style updated for this product.");
+      } catch (e) {
+        e.message;
+      }
+    }
+    async function uploadImages() {
+      if (!selectedProductId) {
+        return;
+      }
+      if (!pendingImageFiles.length) {
+        return;
+      }
+      try {
+        productImages = await uploadProductImages(selectedProductId, pendingImageFiles);
+        pendingImageFiles = [];
+        await loadProductData();
+        products = await getProducts();
+        addSuccess("Product images uploaded.");
+      } catch (e) {
+        e.message;
+      }
+    }
+    async function generateProductPdf() {
+      if (!selectedProductId) {
+        return;
+      }
+      refreshingProductPdfJob = null;
+      const productLabel = currentProduct?.model || `product ${selectedProductId}`;
+      try {
+        const job = await runMaintenanceJob(() => startRefreshProductPdfJob(selectedProductId), {
+          isCancelled: () => destroyed,
+          onUpdate: (nextJob) => {
+            refreshingProductPdfJob = nextJob;
+          }
+        });
+        refreshingProductPdfJob = job;
+        await loadProductData();
+        products = await getProducts();
+        addSuccess(`Printed and online product PDFs generated for ${productLabel}.`);
+      } catch (e) {
+        e.message;
+      } finally {
+        if (!destroyed) {
+          refreshingProductPdfJob = null;
+        }
+      }
+    }
+    async function generateProductGraph() {
+      if (!selectedProductId) {
+        return;
+      }
+      refreshingProductGraphId = selectedProductId;
+      try {
+        await refreshGraphImage(selectedProductId);
+        await loadProductData();
+        products = await getProducts();
+        addSuccess("Product graph generated.");
+      } catch (e) {
+        e.message;
+      } finally {
+        refreshingProductGraphId = null;
+      }
+    }
+    async function moveProductImage(index, direction) {
+      const targetIndex = index + direction;
+      if (targetIndex < 0 || targetIndex >= productImages.length) return;
+      const reordered = [...productImages];
+      const [moved] = reordered.splice(index, 1);
+      reordered.splice(targetIndex, 0, moved);
+      try {
+        productImages = await reorderProductImages(selectedProductId, reordered.map((image) => image.id));
+        await loadProductData();
+        products = await getProducts();
+        addSuccess("Product image order updated.");
+      } catch (e) {
+        e.message;
+      }
+    }
+    async function removeProductImage(image) {
+      try {
+        await deleteProductImage(selectedProductId, image.id);
+        await loadProductData();
+        products = await getProducts();
+        addSuccess("Product image deleted.");
+      } catch (e) {
+        e.message;
+      }
+    }
     function buildMapChartOption() {
       const chartTheme = getChartTheme(store_get($$store_subs ??= {}, "$theme", theme));
       const overlayDefinitions = currentOverlayLineDefinitions();
@@ -416,8 +1191,8 @@ function ProductWorkspace($$renderer, $$props) {
         includeDragHandles: true,
         showRpmBandShading: productSupportsBandGraphStyle() ? productForm.show_rpm_band_shading ?? true : false,
         showSecondaryAxis: productSupportsGraphOverlays(),
-        flowAxisMaxOverride: null,
-        pressureAxisMaxOverride: null,
+        flowAxisMaxOverride: dragAxisLock?.flowMax ?? null,
+        pressureAxisMaxOverride: dragAxisLock?.pressureMax ?? null,
         adaptGraphBackgroundToTheme: true,
         graphStyle: graphStyleForm,
         tooltip: {
@@ -434,20 +1209,222 @@ function ProductWorkspace($$renderer, $$props) {
         }
       });
     }
+    function handleMapChartDragEnd(params) {
+      const data = params.data;
+      const value = params.value || data && data.value;
+      const id = data?.id;
+      if (!id || !value || !Array.isArray(value)) return;
+      const [x, y] = value;
+      const airflow = Math.round(x);
+      const target = data?.pointType === "efficiency" ? efficiencyPoints.find((p) => p.id === id) : rpmPoints.find((p) => p.id === id);
+      if (!target) return;
+      if (data?.pointType === "efficiency") {
+        const overlayDefinition = currentOverlayLineDefinitions().find((definition) => definition.label === params.seriesName);
+        const lineKey = overlayDefinition?.key ?? null;
+        const updated2 = {
+          ...target,
+          airflow,
+          ...lineKey ? { [lineKey]: Math.round(y) } : {}
+        };
+        efficiencyPoints = efficiencyPoints.map((p) => p.id === id ? updated2 : p);
+        return;
+      }
+      const updated = { ...target, airflow, pressure: Math.round(y) };
+      rpmPoints = rpmPoints.map((p) => p.id === id ? updated : p);
+    }
+    let chartDragAttached = false;
+    function setupChartDrag() {
+      if (chartDragAttached || !chartInstance) return;
+      chartDragAttached = true;
+      const zr = chartInstance.getZr();
+      if (!zr) return;
+      let dragMoved = false;
+      let suppressNextClick = false;
+      function getEventXY(evt) {
+        const dom = evt.event || evt;
+        return { x: dom.offsetX ?? dom.clientX, y: dom.offsetY ?? dom.clientY };
+      }
+      function lockCurrentAxisExtents() {
+        const currentOption = chartInstance?.getOption?.();
+        const xAxis = Array.isArray(currentOption?.xAxis) ? currentOption.xAxis[0] : currentOption?.xAxis;
+        const yAxis = Array.isArray(currentOption?.yAxis) ? currentOption.yAxis[0] : currentOption?.yAxis;
+        dragAxisLock = {
+          flowMax: Array.isArray(xAxis?.max) ? xAxis.max[0] : xAxis?.max ?? null,
+          pressureMax: Array.isArray(yAxis?.max) ? yAxis.max[0] : yAxis?.max ?? null
+        };
+      }
+      function pickClosestPoint({ x, y }) {
+        const threshold = 14;
+        let best = null;
+        let bestDist = Infinity;
+        for (const p of rpmPoints) {
+          if (p.airflow == null || p.pressure == null) continue;
+          const pressurePixel = chartInstance.convertToPixel({ xAxisIndex: 0, yAxisIndex: 0 }, [p.airflow, p.pressure]);
+          const dx = pressurePixel[0] - x;
+          const dy = pressurePixel[1] - y;
+          const d = Math.hypot(dx, dy);
+          if (d < bestDist && d <= threshold) {
+            bestDist = d;
+            best = { id: p.id, pointType: "rpm" };
+          }
+        }
+        for (const p of efficiencyPoints) {
+          for (const definition of currentOverlayLineDefinitions()) {
+            if (p[definition.key] == null) continue;
+            const overlayPixel = chartInstance.convertToPixel({ xAxisIndex: 0, yAxisIndex: 1 }, [p.airflow, p[definition.key]]);
+            const dx2 = overlayPixel[0] - x;
+            const dy2 = overlayPixel[1] - y;
+            const d2 = Math.hypot(dx2, dy2);
+            if (d2 < bestDist && d2 <= threshold) {
+              bestDist = d2;
+              best = { id: p.id, pointType: "efficiency", lineKey: definition.key };
+            }
+          }
+        }
+        return best;
+      }
+      function updateDraggedPoint(point, pixel) {
+        if (!point) return;
+        const axisIndex = point.pointType === "efficiency" ? 1 : 0;
+        const [airflow, value] = chartInstance.convertFromPixel({ xAxisIndex: 0, yAxisIndex: axisIndex }, [pixel.x, pixel.y]);
+        if (point.pointType === "efficiency") {
+          const updated2 = {
+            ...efficiencyPoints.find((p) => p.id === point.id),
+            airflow: Math.round(airflow),
+            ...point.lineKey ? { [point.lineKey]: Math.round(value) } : {}
+          };
+          efficiencyPoints = efficiencyPoints.map((p) => p.id === point.id ? updated2 : p);
+          return;
+        }
+        const updated = {
+          ...rpmPoints.find((p) => p.id === point.id),
+          airflow: Math.round(airflow),
+          pressure: Math.round(value)
+        };
+        rpmPoints = rpmPoints.map((p) => p.id === point.id ? updated : p);
+      }
+      async function handleChartClick(evt) {
+        if (suppressNextClick) {
+          suppressNextClick = false;
+          return;
+        }
+        if (dragMoved) {
+          dragMoved = false;
+          return;
+        }
+        evt.event || evt;
+        if (!selectedProductId) return;
+        const { x, y } = getEventXY(evt);
+        if (!chartAddTarget || chartAddTarget === "off") return;
+        if (chartAddTarget.startsWith("rpm:")) {
+          const rpm_line_id = Number(chartAddTarget.split(":")[1]);
+          const [airflow, pressure] = chartInstance.convertFromPixel({ xAxisIndex: 0, yAxisIndex: 0 }, [x, y]);
+          rpmPoints = applyRpmPointSort([
+            ...rpmPoints,
+            {
+              id: createTempPointId(),
+              product_id: selectedProductId,
+              rpm_line_id,
+              rpm: rpmLines.find((line) => line.id === rpm_line_id)?.rpm ?? null,
+              airflow: Math.round(airflow),
+              pressure: Math.round(pressure)
+            }
+          ]);
+          addSuccess("Point added locally from chart. Save Changes to persist it.");
+          return;
+        }
+        if (chartAddTarget.startsWith("efficiency:")) {
+          const lineKey = chartAddTarget.split(":")[1];
+          const [airflow, value] = chartInstance.convertFromPixel({ xAxisIndex: 0, yAxisIndex: 1 }, [x, y]);
+          efficiencyPoints = [
+            ...efficiencyPoints,
+            {
+              id: createTempPointId(),
+              product_id: selectedProductId,
+              airflow: Math.round(airflow),
+              efficiency_centre: lineKey === "efficiency_centre" ? Math.round(value) : null,
+              efficiency_lower_end: lineKey === "efficiency_lower_end" ? Math.round(value) : null,
+              efficiency_higher_end: lineKey === "efficiency_higher_end" ? Math.round(value) : null,
+              permissible_use: lineKey === "permissible_use" ? Math.round(value) : null
+            }
+          ];
+          addSuccess("Point added locally from chart. Save Changes to persist it.");
+        }
+      }
+      zr.on("mousedown", (evt) => {
+        const dom = evt.event || evt;
+        const mouse = getEventXY(evt);
+        const found = pickClosestPoint(mouse);
+        if (dom.shiftKey && (dom.button ?? 0) === 0) {
+          if (!chartAddTarget || chartAddTarget === "off") return;
+          if (!found) return;
+          if (found.pointType === "efficiency") {
+            efficiencyPoints = efficiencyPoints.filter((point) => point.id !== found.id);
+          } else {
+            rpmPoints = rpmPoints.filter((point) => point.id !== found.id);
+          }
+          suppressNextClick = true;
+          dragMoved = false;
+          draggingPoint = null;
+          addSuccess("Point deleted locally from chart. Save Changes to persist it.");
+          return;
+        }
+        if (dom.shiftKey) return;
+        if (found) {
+          lockCurrentAxisExtents();
+          draggingPoint = found;
+          dragMoved = false;
+        }
+      });
+      zr.on("mousemove", (evt) => {
+        if (!draggingPoint) return;
+        dragMoved = true;
+        const mouse = getEventXY(evt);
+        updateDraggedPoint(draggingPoint, mouse);
+      });
+      zr.on("mouseup", () => {
+        if (draggingPoint) {
+          draggingPoint = null;
+          dragAxisLock = null;
+        }
+      });
+      zr.on("click", handleChartClick);
+    }
     specificationGroupOpenState = syncSpecificationGroupOpenState(parameterGroups, specificationGroupOpenState);
     productTemplateOptions = templateRegistry.product_templates ?? [];
-    if (initialProductId !== "" && Number(initialProductId) !== Number(selectedProductId)) {
-      selectedProductId = Number(initialProductId);
-      if (mode !== "create") {
-        mode = "editExisting";
+    {
+      const nextInitialProductId = initialProductId !== "" && initialProductId != null ? String(initialProductId) : "";
+      if (nextInitialProductId !== appliedInitialProductId) {
+        appliedInitialProductId = nextInitialProductId;
+        if (nextInitialProductId) {
+          selectedProductId = Number(nextInitialProductId);
+          if (mode !== "create") {
+            mode = "editExisting";
+          }
+        } else if (mode !== "create" || selectedProductId !== null) {
+          selectedProductId = null;
+          editingProductId = null;
+          currentProduct = null;
+          resetProductEditor("");
+          mode = "editExisting";
+        }
       }
     }
+    if (graphCsvImportSource.text && graphCsvImportSource.productId === selectedProductId && `${selectedProductId ?? ""}|${"1"}|${String(graphCsvDownsamplePointCount)}|${"0"}` !== graphCsvImportSignature) {
+      applyImportedGraphCsvSource({
+        text: graphCsvImportSource.text,
+        fileName: graphCsvImportSource.fileName || "graph-data.csv",
+        showSuccess: false,
+        rememberSource: false
+      });
+    }
+    graphCsvPreview = buildGraphCsvPreview(graphCsvImportSource.text);
     if (mode === "create" && productForm.product_type_key && productTypes.length > 0 && templateRegistry) {
       applyCreateTypePresets(productForm.product_type_key);
       applyCreateTemplateDefault(productForm.product_type_key);
     }
     currentProductTypeForForm = getCurrentProductType();
-    allAccordionsOpen = mode === "create" ? createCoreDetailsOpen && createProductAttributesOpen && createGroupedSpecificationsOpen && (!isFanAcousticTableVisible() || createFanAcousticTableOpen) && allSpecificationGroupsOpen() : false;
+    allAccordionsOpen = mode === "create" ? createCoreDetailsOpen && createProductAttributesOpen && createGroupedSpecificationsOpen && (!isFanAcousticTableVisible() || createFanAcousticTableOpen) && allSpecificationGroupsOpen() : mode === "editExisting" && editingProductId !== null ? editProductDetailsOpen && editGroupedSpecificationsOpen && (!isFanAcousticTableVisible() || editFanAcousticTableOpen) && editMediaAssetsOpen && editLineManagementOpen && (!productSupportsGraph() || editGraphDataOpen) && allSpecificationGroupsOpen() : false;
     {
       store_get($$store_subs ??= {}, "$theme", theme);
       buildMapChartOption();
@@ -494,11 +1471,21 @@ function ProductWorkspace($$renderer, $$props) {
         if (mode === "create") {
           $$renderer3.push("<!--[0-->");
           $$renderer3.push(`<button class="btn btn-primary"${attr("disabled", loading, true)}>${escape_html("Save Product")}</button> <button class="btn btn-outline-secondary">Cancel</button>`);
+        } else if (editingProductId !== null) {
+          $$renderer3.push("<!--[1-->");
+          $$renderer3.push(`<button class="btn btn-primary"${attr("disabled", savingMapPoints, true)}>${escape_html("Save Changes")}</button> <a class="btn btn-outline-primary"${attr("href", productViewerUrl(editingProductId))} target="_self">View in Viewer</a> <button class="btn btn-outline-danger"${attr("disabled", savingProductDetails, true)}>Delete Product</button> <button class="btn btn-outline-secondary"${attr("disabled", savingProductDetails, true)}>Done</button>`);
         } else {
           $$renderer3.push("<!--[-1-->");
         }
         $$renderer3.push(`<!--]--></div> `);
-        {
+        if (mode === "editExisting" && editingProductId !== null) {
+          $$renderer3.push("<!--[0-->");
+          $$renderer3.push(`<div class="small text-body-secondary w-100 text-end">`);
+          {
+            $$renderer3.push("<!--[-1-->");
+          }
+          $$renderer3.push(`<!--]--></div>`);
+        } else {
           $$renderer3.push("<!--[-1-->");
         }
         $$renderer3.push(`<!--]--></div></div>`);
@@ -848,11 +1835,17 @@ function ProductWorkspace($$renderer, $$props) {
                 $$renderer4.push("<!--[0-->");
                 $$renderer4.push(`<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"><p class="text-body-secondary mb-0">The speed column is read-only and follows the fan graph line
                   order.</p> <div class="d-flex flex-wrap gap-2"><input class="form-control form-control-sm fan-acoustic-csv-input" type="file" accept=".csv,text/csv"/> <button class="btn btn-outline-secondary btn-sm" type="button">Clear CSV</button> <button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", !fanAcousticTable && rpmLines.length === 0, true)}>Export CSV</button> <button class="btn btn-outline-secondary btn-sm" type="button">Add Column</button></div></div> `);
-                {
+                if (fanAcousticCsvFileName) {
+                  $$renderer4.push("<!--[0-->");
+                  $$renderer4.push(`<p class="small mb-2">Loaded file: <strong>${escape_html(fanAcousticCsvFileName)}</strong></p>`);
+                } else {
                   $$renderer4.push("<!--[-1-->");
                 }
                 $$renderer4.push(`<!--]--> `);
-                {
+                if (fanAcousticCsvError) {
+                  $$renderer4.push("<!--[0-->");
+                  $$renderer4.push(`<p class="text-danger mb-2">${escape_html(fanAcousticCsvError)}</p>`);
+                } else {
                   $$renderer4.push("<!--[-1-->");
                 }
                 $$renderer4.push(`<!--]--> <div class="table-responsive fan-acoustic-table-wrap"><table class="table table-sm align-middle editable-table fan-acoustic-table mb-0"><thead><tr><th>Speed (rpm)</th><th>Peak Pressure (Pa)</th><th>Peak Power (kW)</th><th>Running Frequency</th><th>Sound Pressure Level dB @ 3 meters</th><!--[-->`);
@@ -947,6 +1940,7 @@ function ProductWorkspace($$renderer, $$props) {
                   option: mapChartOption,
                   height: "500px",
                   onChartReady: (c) => {
+                    chartInstance = c;
                   }
                 });
                 $$renderer4.push(`<!----></div></div>`);
@@ -1042,7 +2036,633 @@ function ProductWorkspace($$renderer, $$props) {
         $$renderer3.push("<!--[-1-->");
       }
       $$renderer3.push(`<!--]--> `);
-      {
+      if (mode === "editExisting" && editingProductId !== null) {
+        $$renderer3.push("<!--[0-->");
+        $$renderer3.push(`<div class="card shadow-sm"><div class="card-body"><h2 class="h5">Edit Product: ${escape_html(productForm.model)}</h2> <div class="row g-3"><div class="col-12 col-xxl-6"><div class="vstack gap-3">`);
+        AccordionCard($$renderer3, {
+          title: "Product details",
+          description: "Edit the main product fields and descriptive content.",
+          get open() {
+            return editProductDetailsOpen;
+          },
+          set open($$value) {
+            editProductDetailsOpen = $$value;
+            $$settled = false;
+          },
+          children: ($$renderer4) => {
+            $$renderer4.push(`<div class="row g-3"><div class="col-12 col-md-6"><label class="form-label" for="edit-model">Model</label> <input class="form-control" id="edit-model" type="text"${attr("value", productForm.model)}/></div> <div class="col-12 col-md-6"><label class="form-label" for="edit-product-type">Product type</label> `);
+            $$renderer4.select(
+              {
+                class: "form-select",
+                id: "edit-product-type",
+                value: productForm.product_type_key
+              },
+              ($$renderer5) => {
+                $$renderer5.option({ value: "" }, ($$renderer6) => {
+                  $$renderer6.push(`-- Choose option --`);
+                });
+                $$renderer5.push(`<!--[-->`);
+                const each_array_19 = ensure_array_like(productTypes);
+                for (let $$index_19 = 0, $$length = each_array_19.length; $$index_19 < $$length; $$index_19++) {
+                  let productType = each_array_19[$$index_19];
+                  $$renderer5.option({ value: productType.key }, ($$renderer6) => {
+                    $$renderer6.push(`${escape_html(productType.label)}`);
+                  });
+                }
+                $$renderer5.push(`<!--]-->`);
+              }
+            );
+            $$renderer4.push(`</div> `);
+            if (currentProductTypeForForm) {
+              $$renderer4.push("<!--[0-->");
+              $$renderer4.push(`<div class="col-12">`);
+              SeriesNamesBadgeList($$renderer4, {
+                seriesNames: currentProductTypeForForm.series_names || [],
+                title: `Series names for ${currentProductTypeForForm.label}`,
+                emptyLabel: "This product type does not have any series yet."
+              });
+              $$renderer4.push(`<!----></div>`);
+            } else {
+              $$renderer4.push("<!--[-1-->");
+            }
+            $$renderer4.push(`<!--]--> <div class="col-12 col-md-6"><label class="form-label" for="edit-series">Series</label> `);
+            $$renderer4.select(
+              {
+                class: "form-select",
+                id: "edit-series",
+                value: productForm.series_id,
+                disabled: !productForm.product_type_key
+              },
+              ($$renderer5) => {
+                $$renderer5.option({ value: null }, ($$renderer6) => {
+                  $$renderer6.push(`No series`);
+                });
+                $$renderer5.push(`<!--[-->`);
+                const each_array_20 = ensure_array_like(seriesForType(productForm.product_type_key));
+                for (let $$index_20 = 0, $$length = each_array_20.length; $$index_20 < $$length; $$index_20++) {
+                  let series = each_array_20[$$index_20];
+                  $$renderer5.option({ value: series.id }, ($$renderer6) => {
+                    $$renderer6.push(`${escape_html(series.name)}`);
+                  });
+                }
+                $$renderer5.push(`<!--]-->`);
+              }
+            );
+            $$renderer4.push(`</div> <div class="col-12 col-md-6"><label class="form-label" for="edit-printed-template">Printed PDF template</label> `);
+            $$renderer4.select(
+              {
+                class: "form-select",
+                id: "edit-printed-template",
+                value: productForm.printed_template_id
+              },
+              ($$renderer5) => {
+                $$renderer5.option({ value: "" }, ($$renderer6) => {
+                  $$renderer6.push(`-- Choose option --`);
+                });
+                $$renderer5.push(`<!--[-->`);
+                const each_array_21 = ensure_array_like(productTemplateOptions);
+                for (let $$index_21 = 0, $$length = each_array_21.length; $$index_21 < $$length; $$index_21++) {
+                  let template = each_array_21[$$index_21];
+                  $$renderer5.option({ value: template.id }, ($$renderer6) => {
+                    $$renderer6.push(`${escape_html(template.label)}`);
+                  });
+                }
+                $$renderer5.push(`<!--]-->`);
+              }
+            );
+            $$renderer4.push(`</div> <div class="col-12 col-md-6"><label class="form-label" for="edit-online-template">Online PDF template</label> `);
+            $$renderer4.select(
+              {
+                class: "form-select",
+                id: "edit-online-template",
+                value: productForm.online_template_id
+              },
+              ($$renderer5) => {
+                $$renderer5.option({ value: "" }, ($$renderer6) => {
+                  $$renderer6.push(`-- Choose option --`);
+                });
+                $$renderer5.push(`<!--[-->`);
+                const each_array_22 = ensure_array_like(productTemplateOptions);
+                for (let $$index_22 = 0, $$length = each_array_22.length; $$index_22 < $$length; $$index_22++) {
+                  let template = each_array_22[$$index_22];
+                  $$renderer5.option({ value: template.id }, ($$renderer6) => {
+                    $$renderer6.push(`${escape_html(template.label)}`);
+                  });
+                }
+                $$renderer5.push(`<!--]-->`);
+              }
+            );
+            $$renderer4.push(`</div> <div class="col-12"><label class="form-label" for="edit-description">Description1 (HTML)</label> <textarea class="form-control" id="edit-description" rows="4">`);
+            const $$body_4 = escape_html(productForm.description1_html);
+            if ($$body_4) {
+              $$renderer4.push(`${$$body_4}`);
+            }
+            $$renderer4.push(`</textarea></div> <div class="col-12"><label class="form-label" for="edit-features">Description2 (HTML)</label> <textarea class="form-control" id="edit-features" rows="4">`);
+            const $$body_5 = escape_html(productForm.description2_html);
+            if ($$body_5) {
+              $$renderer4.push(`${$$body_5}`);
+            }
+            $$renderer4.push(`</textarea></div> <div class="col-12"><label class="form-label" for="edit-specifications">Description3 (HTML)</label> <textarea class="form-control" id="edit-specifications" rows="4">`);
+            const $$body_6 = escape_html(productForm.description3_html);
+            if ($$body_6) {
+              $$renderer4.push(`${$$body_6}`);
+            }
+            $$renderer4.push(`</textarea></div> <div class="col-12"><label class="form-label" for="edit-comments">Comments (HTML)</label> <textarea class="form-control" id="edit-comments" rows="4">`);
+            const $$body_7 = escape_html(productForm.comments_html);
+            if ($$body_7) {
+              $$renderer4.push(`${$$body_7}`);
+            }
+            $$renderer4.push(`</textarea></div> `);
+            if (productSupportsBandGraphStyle()) {
+              $$renderer4.push("<!--[0-->");
+              $$renderer4.push(`<div class="col-12"><div class="form-check form-switch mt-2"><input class="form-check-input" id="edit-show-rpm-band-shading" type="checkbox"${attr("checked", productForm.show_rpm_band_shading, true)}/> <label class="form-check-label" for="edit-show-rpm-band-shading">Show band shading on product graphs and generated graph
+                        images</label></div></div>`);
+            } else {
+              $$renderer4.push("<!--[-1-->");
+            }
+            $$renderer4.push(`<!--]--></div>`);
+          },
+          $$slots: { default: true }
+        });
+        $$renderer3.push(`<!----> `);
+        AccordionCard($$renderer3, {
+          title: "Grouped Specifications",
+          description: "Manage the ordered specification groups shown across the site.",
+          get open() {
+            return editGroupedSpecificationsOpen;
+          },
+          set open($$value) {
+            editGroupedSpecificationsOpen = $$value;
+            $$settled = false;
+          },
+          children: ($$renderer4) => {
+            $$renderer4.push(`<div class="d-flex flex-wrap justify-content-between align-items-center gap-2"><div><p class="text-body-secondary mb-0">These are ordered exactly as they will appear elsewhere.</p></div> <div class="d-flex flex-wrap gap-2"><button class="btn btn-outline-secondary btn-sm">${escape_html(parameterGroups.length > 0 && parameterGroups.every((_, index) => specificationGroupOpenState[index] ?? true) ? "Collapse All Groups" : "Expand All Groups")}</button> <button class="btn btn-outline-secondary btn-sm">Load Type Presets</button> <button class="btn btn-outline-primary btn-sm">Add Group</button></div></div> `);
+            if (parameterGroups.length > 0) {
+              $$renderer4.push("<!--[0-->");
+              $$renderer4.push(`<div class="vstack gap-3 mt-3"><!--[-->`);
+              const each_array_23 = ensure_array_like(parameterGroups);
+              for (let groupIndex = 0, $$length = each_array_23.length; groupIndex < $$length; groupIndex++) {
+                let group = each_array_23[groupIndex];
+                $$renderer4.push(`<div${attr_class(
+                  `border rounded p-3 ${group._pending_delete ? "bg-danger-subtle border-danger-subtle opacity-75" : ""}`,
+                  "svelte-py4xdp"
+                )}${attr_style(group._pending_delete ? "" : `background-color: ${specificationGroupBackgroundColor(groupIndex)}; border-color: ${specificationGroupBorderColor(groupIndex)};`)}><div class="d-flex flex-wrap justify-content-between gap-2 align-items-center mb-3"><button class="btn btn-link p-0 text-decoration-none text-reset fw-semibold spec-group-toggle svelte-py4xdp" type="button">${escape_html(specificationGroupOpenState[groupIndex] ?? true ? "Hide" : "Show")}
+                          ${escape_html(group.group_name || `Group ${groupIndex + 1}`)}</button> <div class="d-flex flex-wrap gap-2 align-items-center"><button class="btn btn-outline-secondary btn-sm"${attr("disabled", groupIndex === 0, true)}>Up</button> <button class="btn btn-outline-secondary btn-sm"${attr("disabled", groupIndex === parameterGroups.length - 1, true)}>Down</button> <button${attr_class(`btn btn-sm ${group._pending_delete ? "btn-outline-success" : "btn-outline-danger"}`, "svelte-py4xdp")}>${escape_html(group._pending_delete ? "Undo Delete" : "Delete Group")}</button> <button class="btn btn-outline-primary btn-sm"${attr("disabled", group._pending_delete, true)}>Add Parameter</button></div></div> `);
+                if (group._pending_delete) {
+                  $$renderer4.push("<!--[0-->");
+                  $$renderer4.push(`<p class="small text-danger-emphasis mb-3">This group is marked for deletion. Save Changes to
+                          apply the deletion.</p>`);
+                } else {
+                  $$renderer4.push("<!--[-1-->");
+                }
+                $$renderer4.push(`<!--]--> `);
+                if (specificationGroupOpenState[groupIndex] ?? true) {
+                  $$renderer4.push("<!--[0-->");
+                  $$renderer4.push(`<div class="vstack gap-3"><input class="form-control" style="max-width: 22rem;" type="text" placeholder="Group name"${attr("value", group.group_name)}/> <!--[-->`);
+                  const each_array_24 = ensure_array_like(group.parameters);
+                  for (let parameterIndex = 0, $$length2 = each_array_24.length; parameterIndex < $$length2; parameterIndex++) {
+                    let parameter = each_array_24[parameterIndex];
+                    $$renderer4.push(`<div${attr_class(
+                      `border rounded p-3 ${parameter._pending_delete ? "border-danger-subtle bg-danger-subtle opacity-75" : ""}`,
+                      "svelte-py4xdp"
+                    )}${attr_style(specificationParameterCardStyle(groupIndex, parameter._pending_delete))}><div class="row g-3 align-items-end"><div class="col-12 col-lg-3"><label class="form-label"${attr("for", `edit-group-${groupIndex}-parameter-${parameterIndex}-name`)}>Name</label> <input class="form-control"${attr("id", `edit-group-${groupIndex}-parameter-${parameterIndex}-name`)} type="text"${attr("value", parameter.parameter_name)}/></div> <div class="col-12 col-lg-2"><label class="form-label"${attr("for", `edit-group-${groupIndex}-parameter-${parameterIndex}-value-type`)}>Value type</label> `);
+                    $$renderer4.select(
+                      {
+                        class: "form-select",
+                        id: `edit-group-${groupIndex}-parameter-${parameterIndex}-value-type`,
+                        value: parameter.value_type
+                      },
+                      ($$renderer5) => {
+                        $$renderer5.option({ value: "string" }, ($$renderer6) => {
+                          $$renderer6.push(`Text`);
+                        });
+                        $$renderer5.option({ value: "number" }, ($$renderer6) => {
+                          $$renderer6.push(`Number`);
+                        });
+                      }
+                    );
+                    $$renderer4.push(`</div> `);
+                    if (parameter.value_type === "string") {
+                      $$renderer4.push("<!--[0-->");
+                      $$renderer4.push(`<div class="col-12 col-lg-5"><label class="form-label"${attr("for", `edit-group-${groupIndex}-parameter-${parameterIndex}-text`)}>Text value</label> <input class="form-control"${attr("id", `edit-group-${groupIndex}-parameter-${parameterIndex}-text`)} type="text"${attr("value", parameter.value_string)}/> `);
+                      if (parameterValueHistory(group.group_name, parameter.parameter_name, "string").length > 0) {
+                        $$renderer4.push("<!--[0-->");
+                        $$renderer4.push(`<label class="form-label form-label-sm mt-2"${attr("for", `edit-group-${groupIndex}-parameter-${parameterIndex}-reuse-text`)}>Reuse previous value</label> <select class="form-select form-select-sm"${attr("id", `edit-group-${groupIndex}-parameter-${parameterIndex}-reuse-text`)}>`);
+                        $$renderer4.option({ value: "" }, ($$renderer5) => {
+                          $$renderer5.push(`Choose prior value`);
+                        });
+                        $$renderer4.push(`<!--[-->`);
+                        const each_array_25 = ensure_array_like(parameterValueHistory(group.group_name, parameter.parameter_name, "string"));
+                        for (let suggestionIndex = 0, $$length3 = each_array_25.length; suggestionIndex < $$length3; suggestionIndex++) {
+                          let suggestion = each_array_25[suggestionIndex];
+                          $$renderer4.option({ value: suggestionIndex }, ($$renderer5) => {
+                            $$renderer5.push(`${escape_html(suggestion.value_string)} (${escape_html(suggestion.count)})`);
+                          });
+                        }
+                        $$renderer4.push(`<!--]--></select>`);
+                      } else {
+                        $$renderer4.push("<!--[-1-->");
+                      }
+                      $$renderer4.push(`<!--]--></div>`);
+                    } else {
+                      $$renderer4.push("<!--[-1-->");
+                      $$renderer4.push(`<div class="col-12 col-lg-3"><label class="form-label"${attr("for", `edit-group-${groupIndex}-parameter-${parameterIndex}-number`)}>Numeric value</label> <input class="form-control"${attr("id", `edit-group-${groupIndex}-parameter-${parameterIndex}-number`)} type="number" step="any"${attr("value", parameter.value_number)}/> `);
+                      if (parameterValueHistory(group.group_name, parameter.parameter_name, "number").length > 0) {
+                        $$renderer4.push("<!--[0-->");
+                        $$renderer4.push(`<label class="form-label form-label-sm mt-2"${attr("for", `edit-group-${groupIndex}-parameter-${parameterIndex}-reuse-number`)}>Reuse previous value</label> <select class="form-select form-select-sm"${attr("id", `edit-group-${groupIndex}-parameter-${parameterIndex}-reuse-number`)}>`);
+                        $$renderer4.option({ value: "" }, ($$renderer5) => {
+                          $$renderer5.push(`Choose prior value`);
+                        });
+                        $$renderer4.push(`<!--[-->`);
+                        const each_array_26 = ensure_array_like(parameterValueHistory(group.group_name, parameter.parameter_name, "number"));
+                        for (let suggestionIndex = 0, $$length3 = each_array_26.length; suggestionIndex < $$length3; suggestionIndex++) {
+                          let suggestion = each_array_26[suggestionIndex];
+                          $$renderer4.option({ value: suggestionIndex }, ($$renderer5) => {
+                            $$renderer5.push(`${escape_html(suggestion.value_number)}${escape_html(suggestion.unit ? ` ${suggestion.unit}` : "")} (${escape_html(suggestion.count)})`);
+                          });
+                        }
+                        $$renderer4.push(`<!--]--></select>`);
+                      } else {
+                        $$renderer4.push("<!--[-1-->");
+                      }
+                      $$renderer4.push(`<!--]--></div> <div class="col-12 col-lg-3"><label class="form-label"${attr("for", `edit-group-${groupIndex}-parameter-${parameterIndex}-unit`)}>Unit</label> `);
+                      $$renderer4.select(
+                        {
+                          class: "form-select",
+                          id: `edit-group-${groupIndex}-parameter-${parameterIndex}-unit`,
+                          value: parameter.unit
+                        },
+                        ($$renderer5) => {
+                          $$renderer5.option({ value: "" }, ($$renderer6) => {
+                            $$renderer6.push(`No unit`);
+                          });
+                          $$renderer5.push(`<!--[-->`);
+                          const each_array_27 = ensure_array_like(GLOBAL_UNIT_OPTIONS);
+                          for (let $$index_25 = 0, $$length3 = each_array_27.length; $$index_25 < $$length3; $$index_25++) {
+                            let unitOption = each_array_27[$$index_25];
+                            $$renderer5.option({ value: unitOption }, ($$renderer6) => {
+                              $$renderer6.push(`${escape_html(unitOption)}`);
+                            });
+                          }
+                          $$renderer5.push(`<!--]-->`);
+                          $$renderer5.option({ value: "__custom__" }, ($$renderer6) => {
+                            $$renderer6.push(`Custom…`);
+                          });
+                        }
+                      );
+                      $$renderer4.push(`</div> `);
+                      if (parameter.unit === "__custom__") {
+                        $$renderer4.push("<!--[0-->");
+                        $$renderer4.push(`<div class="col-12 col-lg-2"><label class="form-label"${attr("for", `edit-group-${groupIndex}-parameter-${parameterIndex}-custom-unit`)}>Custom unit</label> <input class="form-control"${attr("id", `edit-group-${groupIndex}-parameter-${parameterIndex}-custom-unit`)} type="text"${attr("value", parameter.custom_unit)}/></div>`);
+                      } else {
+                        $$renderer4.push("<!--[-1-->");
+                      }
+                      $$renderer4.push(`<!--]-->`);
+                    }
+                    $$renderer4.push(`<!--]--> <div class="col-12 col-lg-2"><div class="d-flex flex-wrap gap-2"><button class="btn btn-outline-secondary btn-sm"${attr("disabled", group._pending_delete || parameter._pending_delete || parameterIndex === 0, true)}>Up</button> <button class="btn btn-outline-secondary btn-sm"${attr("disabled", group._pending_delete || parameter._pending_delete || parameterIndex === group.parameters.length - 1, true)}>Down</button> <button${attr_class(`btn btn-sm ${parameter._pending_delete ? "btn-outline-success" : "btn-outline-danger"}`, "svelte-py4xdp")}${attr("disabled", group._pending_delete, true)}>${escape_html(parameter._pending_delete ? "Undo Delete" : "Delete")}</button></div></div></div> `);
+                    if (parameter._pending_delete) {
+                      $$renderer4.push("<!--[0-->");
+                      $$renderer4.push(`<p class="small text-danger-emphasis mt-3 mb-0">This parameter is marked for deletion. Save
+                                  Changes to apply the deletion.</p>`);
+                    } else {
+                      $$renderer4.push("<!--[-1-->");
+                    }
+                    $$renderer4.push(`<!--]--></div>`);
+                  }
+                  $$renderer4.push(`<!--]--></div>`);
+                } else {
+                  $$renderer4.push("<!--[-1-->");
+                }
+                $$renderer4.push(`<!--]--></div>`);
+              }
+              $$renderer4.push(`<!--]--></div>`);
+            } else {
+              $$renderer4.push("<!--[-1-->");
+              $$renderer4.push(`<p class="text-body-secondary mt-3 mb-0">No parameter groups yet. Load type presets or add a group
+                  manually.</p>`);
+            }
+            $$renderer4.push(`<!--]-->`);
+          },
+          $$slots: { default: true }
+        });
+        $$renderer3.push(`<!----></div></div> <div class="col-12 col-xxl-6"><div class="vstack gap-3">`);
+        AccordionCard($$renderer3, {
+          title: "Media and generated assets",
+          description: "Manage product images, exports, and band-graph styling.",
+          get open() {
+            return editMediaAssetsOpen;
+          },
+          set open($$value) {
+            editMediaAssetsOpen = $$value;
+            $$settled = false;
+          },
+          children: ($$renderer4) => {
+            ProductMediaPanel($$renderer4, {
+              productForm,
+              productImages,
+              currentProduct,
+              productPdfJob: refreshingProductPdfJob,
+              refreshingProductGraphId,
+              selectedProductId,
+              graphStyleForm,
+              showBandGraphStyle: productSupportsBandGraphStyle(),
+              graphLineValueLabel,
+              uploadImages,
+              moveProductImage,
+              removeProductImage,
+              generateProductGraph,
+              generateProductPdf,
+              saveBandGraphStyle,
+              get pendingImageFiles() {
+                return pendingImageFiles;
+              },
+              set pendingImageFiles($$value) {
+                pendingImageFiles = $$value;
+                $$settled = false;
+              }
+            });
+          },
+          $$slots: { default: true }
+        });
+        $$renderer3.push(`<!----> `);
+        AccordionCard($$renderer3, {
+          title: `${graphLineValueLabel()} line management`,
+          description: "Add, reorder, and style the main graph lines.",
+          get open() {
+            return editLineManagementOpen;
+          },
+          set open($$value) {
+            editLineManagementOpen = $$value;
+            $$settled = false;
+          },
+          children: ($$renderer4) => {
+            $$renderer4.push(`<div class="row g-3 align-items-end"><div class="col-12 col-md-4"><label class="form-label" for="new-rpm-line">New ${escape_html(graphLineValueLabel())} line</label> <input class="form-control" id="new-rpm-line" type="text" inputmode="numeric" pattern="[0-9]*"${attr("value", newRpmLineValue)}/></div> <div class="col-12 col-md-4"><label class="form-label" for="new-rpm-line-band-color">Band colour</label> <div class="input-group"><input class="form-control form-control-color" id="new-rpm-line-band-color" type="color"${attr("value", newRpmLineBandColor)}/> <input class="form-control" type="text"${attr("value", newRpmLineBandColor)} placeholder="#60a5fa"/></div></div> <div class="col-12 col-md-4"><div class="d-flex flex-wrap gap-2"><button class="btn btn-primary">Add ${escape_html(graphLineValueLabel())} Line</button></div></div></div> `);
+            if (rpmLines.length > 0) {
+              $$renderer4.push("<!--[0-->");
+              $$renderer4.push(`<div class="vstack gap-2 mt-3"><!--[-->`);
+              const each_array_28 = ensure_array_like(rpmLines);
+              for (let $$index_28 = 0, $$length = each_array_28.length; $$index_28 < $$length; $$index_28++) {
+                let line = each_array_28[$$index_28];
+                $$renderer4.push(`<div class="border rounded p-2"><div class="row g-2 align-items-end"><div class="col-12 col-md-3"><label class="form-label form-label-sm"${attr("for", `rpm-line-value-${line.id}`)}>${escape_html(graphLineValueLabel())}</label> <input class="form-control form-control-sm"${attr("id", `rpm-line-value-${line.id}`)} type="text" inputmode="numeric" pattern="[0-9]*"${attr("value", line.rpm)}/></div> <div class="col-12 col-md-5"><label class="form-label form-label-sm"${attr("for", `rpm-line-band-color-${line.id}`)}>Band colour</label> <div class="input-group input-group-sm"><input class="form-control form-control-color"${attr("id", `rpm-line-band-color-${line.id}`)} type="color"${attr("value", line.band_color)}/> <input class="form-control" type="text"${attr("value", line.band_color)} placeholder="#60a5fa"/></div></div> <div class="col-12 col-md-4"><div class="d-flex flex-wrap gap-2"><button class="btn btn-outline-primary btn-sm">Save</button> <button class="btn btn-outline-secondary btn-sm">Delete</button></div></div></div></div>`);
+              }
+              $$renderer4.push(`<!--]--></div>`);
+            } else {
+              $$renderer4.push("<!--[-1-->");
+              $$renderer4.push(`<p class="text-body-secondary mt-3 mb-0">No ${escape_html(graphLineValueLabel().toLowerCase())} lines yet.</p>`);
+            }
+            $$renderer4.push(`<!--]-->`);
+          },
+          $$slots: { default: true }
+        });
+        $$renderer3.push(`<!----> `);
+        if (productSupportsGraph()) {
+          $$renderer3.push("<!--[0-->");
+          AccordionCard($$renderer3, {
+            title: "Graph data",
+            description: "Import, edit, and drag graph points for this product.",
+            get open() {
+              return editGraphDataOpen;
+            },
+            set open($$value) {
+              editGraphDataOpen = $$value;
+              $$settled = false;
+            },
+            children: ($$renderer4) => {
+              $$renderer4.push(`<div class="vstack gap-3"><div class="card shadow-sm"><div class="card-body"><h3 class="h6 mb-2">Graph CSV</h3> <p class="text-body-secondary mb-2">Use one wide CSV per graph. Required first column: <code>airflow_l_s</code>. Supported dynamic columns: <code>pressure_650rpm</code>, <code>pressure_813rpm</code>, etc. `);
+              if (productSupportsGraphOverlays()) {
+                $$renderer4.push("<!--[0-->");
+                $$renderer4.push(`Overlay columns also supported: <code>efficiency_centre</code>, <code>efficiency_lower_end</code>, <code>efficiency_higher_end</code>, <code>permissible_use</code>.`);
+              } else {
+                $$renderer4.push("<!--[-1-->");
+              }
+              $$renderer4.push(`<!--]--></p> <label class="form-label" for="graph-csv-file">Import Graph CSV file</label> <div class="d-flex flex-wrap align-items-end gap-3 mb-2"><div class="form-check form-switch mb-0"><input class="form-check-input" id="graph-csv-downsample-enabled" type="checkbox"${attr("checked", graphCsvDownsampleImportedCurves, true)}/> <label class="form-check-label" for="graph-csv-downsample-enabled">Downsample imported curves</label></div> <div><label class="form-label form-label-sm mb-1" for="graph-csv-downsample-count">Points per curve</label> <input class="form-control form-control-sm" id="graph-csv-downsample-count" type="text" inputmode="numeric" pattern="[0-9]*" min="1" step="1"${attr("value", graphCsvDownsamplePointCount)}${attr("disabled", !graphCsvDownsampleImportedCurves, true)} style="width: 7rem;"/></div></div> `);
+              if (productSupportsGraphOverlays()) {
+                $$renderer4.push("<!--[0-->");
+                $$renderer4.push(`<div class="form-check form-switch mb-2"><input class="form-check-input" id="graph-csv-normalize-overlays" type="checkbox"${attr("checked", graphCsvNormalizeEfficiencyOverlays, true)}/> <label class="form-check-label" for="graph-csv-normalize-overlays">Scale imported efficiency/permissible lines against
+                            the highest RPM line</label></div>`);
+              } else {
+                $$renderer4.push("<!--[-1-->");
+              }
+              $$renderer4.push(`<!--]--> <p class="text-body-secondary small mb-2">`);
+              {
+                $$renderer4.push("<!--[0-->");
+                $$renderer4.push(`Each imported curve is resampled across its valid axis
+                          range before the points are injected into the product
+                          draft.`);
+              }
+              $$renderer4.push(`<!--]--></p> `);
+              if (productSupportsGraphOverlays()) {
+                $$renderer4.push("<!--[0-->");
+                $$renderer4.push(`<p class="text-body-secondary small mb-2">When scaling is on, each overlay line is scaled
+                          independently from its imported values using the
+                          interpolated highest RPM line.</p>`);
+              } else {
+                $$renderer4.push("<!--[-1-->");
+              }
+              $$renderer4.push(`<!--]--> <input class="form-control" id="graph-csv-file" type="file" accept=".csv,text/csv"/> `);
+              if (graphCsvPreview) {
+                $$renderer4.push("<!--[0-->");
+                $$renderer4.push(`<div class="border rounded-3 bg-body-tertiary p-3 mt-3"><div class="d-flex flex-wrap justify-content-between gap-2 align-items-center mb-2"><div><h4 class="h6 mb-1">Import preview</h4> <p class="text-body-secondary small mb-0">${escape_html(graphCsvPreview.fileName)} · ${escape_html(graphCsvPreview.rowCount)}
+                                data row${escape_html(graphCsvPreview.rowCount === 1 ? "" : "s")}</p></div> `);
+                if (graphCsvPreview.changedHeaders.length) {
+                  $$renderer4.push("<!--[0-->");
+                  $$renderer4.push(`<span class="badge text-bg-warning">Headers normalized</span>`);
+                } else {
+                  $$renderer4.push("<!--[-1-->");
+                  $$renderer4.push(`<span class="badge text-bg-secondary">No header changes</span>`);
+                }
+                $$renderer4.push(`<!--]--></div> <p class="text-body-secondary small mb-2"><code>#N/A</code> replacements:
+                            ${escape_html(graphCsvPreview.replacedNaNCount)}</p> <div class="small overflow-auto"><table class="table table-sm table-borderless align-middle mb-0"><thead><tr><th scope="col" class="text-body-secondary">Original</th><th scope="col" class="text-body-secondary">Normalized</th></tr></thead><tbody><!--[-->`);
+                const each_array_29 = ensure_array_like(graphCsvPreview.headerPairs);
+                for (let $$index_29 = 0, $$length = each_array_29.length; $$index_29 < $$length; $$index_29++) {
+                  let pair = each_array_29[$$index_29];
+                  $$renderer4.push(`<tr><td><code>${escape_html(pair.original || " ")}</code></td><td><code>${escape_html(pair.normalized || " ")}</code></td></tr>`);
+                }
+                $$renderer4.push(`<!--]--></tbody></table></div></div>`);
+              } else {
+                $$renderer4.push("<!--[-1-->");
+              }
+              $$renderer4.push(`<!--]--> <p class="text-body-secondary small mt-2 mb-0">${escape_html(graphCsvPlaceholder())}</p> `);
+              if (graphCsvFileName) {
+                $$renderer4.push("<!--[0-->");
+                $$renderer4.push(`<p class="small mb-0 mt-2">Loaded file: <strong>${escape_html(graphCsvFileName)}</strong></p>`);
+              } else {
+                $$renderer4.push("<!--[-1-->");
+              }
+              $$renderer4.push(`<!--]--> `);
+              if (graphCsvError) {
+                $$renderer4.push("<!--[0-->");
+                $$renderer4.push(`<p class="text-danger mb-0 mt-2">${escape_html(graphCsvError)}</p>`);
+              } else {
+                $$renderer4.push("<!--[-1-->");
+              }
+              $$renderer4.push(`<!--]--> <div class="d-flex flex-wrap gap-2 mt-3"><button class="btn btn-outline-secondary">Clear File Selection</button> <button class="btn btn-outline-secondary"${attr("disabled", rpmPoints.length === 0 && efficiencyPoints.length === 0, true)}>Export Graph CSV</button></div> <p class="small text-body-secondary mt-3 mb-0">Selecting a CSV overwrites the graph data shown on this
+                        page immediately. Review the tables and chart, then
+                        press <strong>Save Changes</strong> to commit the imported
+                        changes to the database.</p></div></div> <div class="card shadow-sm"><div class="card-body"><h6 class="card-title mb-3">${escape_html(graphLineValueLabel())} points</h6> <div class="table-responsive"><table class="table table-sm align-middle editable-table mb-0"><thead><tr><th>${escape_html(graphLineValueLabel())}</th><th><button type="button" class="btn btn-outline-secondary btn-sm">${escape_html(graphXAxisLabel())} (${escape_html(sortIndicator("airflow"))})</button></th><th><button type="button" class="btn btn-outline-secondary btn-sm">${escape_html(graphYAxisLabel())} (${escape_html(sortIndicator("pressure"))})</button></th><th>Actions</th></tr></thead><tbody><!--[-->`);
+              const each_array_30 = ensure_array_like(rpmPoints);
+              for (let $$index_30 = 0, $$length = each_array_30.length; $$index_30 < $$length; $$index_30++) {
+                let p = each_array_30[$$index_30];
+                $$renderer4.push(`<tr><td>${escape_html(formatGraphLineValue(p.rpm))}</td><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(p.airflow)}`, "svelte-py4xdp")} style="min-width: 90px;" type="text" inputmode="numeric" pattern="[0-9]*"${attr("value", p.airflow)}/></td><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(p.pressure)}`, "svelte-py4xdp")} style="min-width: 90px;" type="text" inputmode="numeric" pattern="[0-9]*"${attr("value", p.pressure)}/></td><td><button class="btn btn-danger btn-sm">Delete</button></td></tr>`);
+              }
+              $$renderer4.push(`<!--]--></tbody></table></div> `);
+              if (rpmPoints.length === 0) {
+                $$renderer4.push("<!--[0-->");
+                $$renderer4.push(`<p class="text-body-secondary mb-0">No graph points yet.</p>`);
+              } else {
+                $$renderer4.push("<!--[-1-->");
+              }
+              $$renderer4.push(`<!--]--></div></div> `);
+              if (productSupportsGraphOverlays()) {
+                $$renderer4.push("<!--[0-->");
+                $$renderer4.push(`<div class="card shadow-sm"><div class="card-body"><h6 class="card-title mb-3">Efficiency / permissible points</h6> <div class="row g-2 mb-3"><div class="col-12 col-md-3"><label class="form-label form-label-sm" for="scale-efficiency-centre">Centre scale factor</label> <div class="input-group input-group-sm"><input class="form-control" id="scale-efficiency-centre" type="number" step="any"${attr("value", efficiencyScaleFactors.efficiency_centre)}/> <button class="btn btn-outline-secondary" type="button">Apply</button></div></div> <div class="col-12 col-md-3"><label class="form-label form-label-sm" for="scale-efficiency-lower">Lower scale factor</label> <div class="input-group input-group-sm"><input class="form-control" id="scale-efficiency-lower" type="number" step="any"${attr("value", efficiencyScaleFactors.efficiency_lower_end)}/> <button class="btn btn-outline-secondary" type="button">Apply</button></div></div> <div class="col-12 col-md-3"><label class="form-label form-label-sm" for="scale-efficiency-higher">Higher scale factor</label> <div class="input-group input-group-sm"><input class="form-control" id="scale-efficiency-higher" type="number" step="any"${attr("value", efficiencyScaleFactors.efficiency_higher_end)}/> <button class="btn btn-outline-secondary" type="button">Apply</button></div></div> <div class="col-12 col-md-3"><label class="form-label form-label-sm" for="scale-permissible-use">Permissible scale factor</label> <div class="input-group input-group-sm"><input class="form-control" id="scale-permissible-use" type="number" step="any"${attr("value", efficiencyScaleFactors.permissible_use)}/> <button class="btn btn-outline-secondary" type="button">Apply</button></div></div></div> <p class="text-body-secondary small mb-3">These scale the current draft values for each overlay
+                          column and round the result back to whole numbers.</p> <div class="table-responsive"><table class="table table-sm align-middle editable-table mb-0"><thead><tr><th>${escape_html(graphXAxisLabel())}</th><th>Efficiency Centre</th><th>Efficiency Lower End</th><th>Efficiency Higher End</th><th>Permissible Use</th><th>Actions</th></tr></thead><tbody><!--[-->`);
+                const each_array_31 = ensure_array_like(efficiencyPoints);
+                for (let $$index_31 = 0, $$length = each_array_31.length; $$index_31 < $$length; $$index_31++) {
+                  let p = each_array_31[$$index_31];
+                  $$renderer4.push(`<tr><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(p.airflow)}`, "svelte-py4xdp")} style="min-width: 90px;" type="text" inputmode="numeric" pattern="[0-9]*"${attr("value", p.airflow)}/></td><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(p.efficiency_centre)}`, "svelte-py4xdp")} style="min-width: 90px;" type="text" inputmode="numeric" pattern="[0-9]*"${attr("value", p.efficiency_centre)}/></td><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(p.efficiency_lower_end)}`, "svelte-py4xdp")} style="min-width: 90px;" type="text" inputmode="numeric" pattern="[0-9]*"${attr("value", p.efficiency_lower_end)}/></td><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(p.efficiency_higher_end)}`, "svelte-py4xdp")} style="min-width: 90px;" type="text" inputmode="numeric" pattern="[0-9]*"${attr("value", p.efficiency_higher_end)}/></td><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(p.permissible_use)}`, "svelte-py4xdp")} style="min-width: 90px;" type="text" inputmode="numeric" pattern="[0-9]*"${attr("value", p.permissible_use)}/></td><td><button class="btn btn-danger btn-sm">Delete</button></td></tr>`);
+                }
+                $$renderer4.push(`<!--]--></tbody></table></div> `);
+                if (efficiencyPoints.length === 0) {
+                  $$renderer4.push("<!--[0-->");
+                  $$renderer4.push(`<p class="text-body-secondary mb-0">No efficiency/permissible points yet.</p>`);
+                } else {
+                  $$renderer4.push("<!--[-1-->");
+                }
+                $$renderer4.push(`<!--]--></div></div>`);
+              } else {
+                $$renderer4.push("<!--[-1-->");
+              }
+              $$renderer4.push(`<!--]--> `);
+              if (rpmPoints.length > 0 || efficiencyPoints.length > 0) {
+                $$renderer4.push("<!--[0-->");
+                $$renderer4.push(`<div class="card shadow-sm"><div class="card-body"><h6 class="card-title mb-3">Map points chart</h6> <div class="d-flex flex-wrap align-items-center gap-2 mb-3"><label class="form-label mb-0" for="chart-add-target">Line to add points on</label> `);
+                $$renderer4.select(
+                  {
+                    class: "form-select w-auto",
+                    id: "chart-add-target",
+                    value: chartAddTarget
+                  },
+                  ($$renderer5) => {
+                    $$renderer5.option({ value: "off" }, ($$renderer6) => {
+                      $$renderer6.push(`-Off-`);
+                    });
+                    $$renderer5.push(`<!--[-->`);
+                    const each_array_32 = ensure_array_like(rpmLines);
+                    for (let $$index_32 = 0, $$length = each_array_32.length; $$index_32 < $$length; $$index_32++) {
+                      let line = each_array_32[$$index_32];
+                      $$renderer5.option({ value: `rpm:${line.id}` }, ($$renderer6) => {
+                        $$renderer6.push(`${escape_html(formatGraphLineValue(line.rpm))} line`);
+                      });
+                    }
+                    $$renderer5.push(`<!--]--><!--[-->`);
+                    const each_array_33 = ensure_array_like(currentOverlayLineDefinitions());
+                    for (let $$index_33 = 0, $$length = each_array_33.length; $$index_33 < $$length; $$index_33++) {
+                      let definition = each_array_33[$$index_33];
+                      $$renderer5.option({ value: `efficiency:${definition.key}` }, ($$renderer6) => {
+                        $$renderer6.push(`${escape_html(definition.label)}`);
+                      });
+                    }
+                    $$renderer5.push(`<!--]-->`);
+                  }
+                );
+                $$renderer4.push(`</div> <p class="text-body-secondary">Drag existing points to edit them. Set the dropdown
+                          above to a line when you want chart clicks to add
+                          points. Set it to -Off- to disable point adding. Hold
+                          either Shift key while left clicking a point to delete
+                          it.</p> `);
+                ECharts($$renderer4, {
+                  option: mapChartOption,
+                  height: "750px",
+                  on: { dragend: handleMapChartDragEnd },
+                  onChartReady: (c) => {
+                    chartInstance = c;
+                    setupChartDrag();
+                  }
+                });
+                $$renderer4.push(`<!----></div></div>`);
+              } else {
+                $$renderer4.push("<!--[-1-->");
+              }
+              $$renderer4.push(`<!--]--></div>`);
+            },
+            $$slots: { default: true }
+          });
+        } else {
+          $$renderer3.push("<!--[-1-->");
+        }
+        $$renderer3.push(`<!--]--></div></div> `);
+        if (isFanAcousticTableVisible()) {
+          $$renderer3.push("<!--[0-->");
+          $$renderer3.push(`<div class="mt-3">`);
+          AccordionCard($$renderer3, {
+            title: "Fan Acoustic Table",
+            description: "Rows stay aligned to the current RPM graph rows. Sound power columns can be added, removed, and renamed.",
+            get open() {
+              return editFanAcousticTableOpen;
+            },
+            set open($$value) {
+              editFanAcousticTableOpen = $$value;
+              $$settled = false;
+            },
+            children: ($$renderer4) => {
+              if (fanAcousticTable) {
+                $$renderer4.push("<!--[0-->");
+                $$renderer4.push(`<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"><p class="text-body-secondary mb-0">The speed column is read-only and follows the fan graph line
+                    order.</p> <div class="d-flex flex-wrap gap-2"><input class="form-control form-control-sm fan-acoustic-csv-input" type="file" accept=".csv,text/csv"/> <button class="btn btn-outline-secondary btn-sm" type="button">Clear CSV</button> <button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", !fanAcousticTable && rpmLines.length === 0, true)}>Export CSV</button> <button class="btn btn-outline-secondary btn-sm" type="button">Add Column</button></div></div> `);
+                if (fanAcousticCsvFileName) {
+                  $$renderer4.push("<!--[0-->");
+                  $$renderer4.push(`<p class="small mb-2">Loaded file: <strong>${escape_html(fanAcousticCsvFileName)}</strong></p>`);
+                } else {
+                  $$renderer4.push("<!--[-1-->");
+                }
+                $$renderer4.push(`<!--]--> `);
+                if (fanAcousticCsvError) {
+                  $$renderer4.push("<!--[0-->");
+                  $$renderer4.push(`<p class="text-danger mb-2">${escape_html(fanAcousticCsvError)}</p>`);
+                } else {
+                  $$renderer4.push("<!--[-1-->");
+                }
+                $$renderer4.push(`<!--]--> <div class="table-responsive fan-acoustic-table-wrap"><table class="table table-sm align-middle editable-table fan-acoustic-table mb-0"><thead><tr><th>Speed (rpm)</th><th>Peak Pressure (Pa)</th><th>Peak Power (kW)</th><th>Running Frequency</th><th>Sound Pressure Level dB @ 3 meters</th><!--[-->`);
+                const each_array_34 = ensure_array_like(fanAcousticTable.sound_power_columns);
+                for (let columnIndex = 0, $$length = each_array_34.length; columnIndex < $$length; columnIndex++) {
+                  each_array_34[columnIndex];
+                  $$renderer4.push(`<th><div class="d-grid gap-1"><input class="form-control form-control-sm" type="text"${attr("value", fanAcousticTable.sound_power_columns[columnIndex])}/> <button class="btn btn-outline-secondary btn-sm" type="button">Rename</button> <button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", fanAcousticTable.sound_power_columns.length <= 1, true)}>Delete</button></div></th>`);
+                }
+                $$renderer4.push(`<!--]--></tr></thead><tbody><!--[-->`);
+                const each_array_35 = ensure_array_like(fanAcousticTable.rows);
+                for (let rowIndex = 0, $$length = each_array_35.length; rowIndex < $$length; rowIndex++) {
+                  let row = each_array_35[rowIndex];
+                  $$renderer4.push(`<tr><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(row.speed_rpm)}`, "svelte-py4xdp")} type="number" step="any"${attr("value", row.speed_rpm)} disabled=""/></td><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(row.peak_pressure_pa)}`, "svelte-py4xdp")} type="number" step="any"${attr("value", row.peak_pressure_pa)}/></td><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(row.peak_power_kw)}`, "svelte-py4xdp")} type="number" step="any"${attr("value", row.peak_power_kw)}/></td><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(row.running_frequency_hz)}`, "svelte-py4xdp")} type="number" step="any"${attr("value", row.running_frequency_hz)}/></td><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(row.sound_pressure_db_3m)}`, "svelte-py4xdp")} type="number" step="any"${attr("value", row.sound_pressure_db_3m)}/></td><!--[-->`);
+                  const each_array_36 = ensure_array_like(fanAcousticTable.sound_power_columns);
+                  for (let $$index_35 = 0, $$length2 = each_array_36.length; $$index_35 < $$length2; $$index_35++) {
+                    let column = each_array_36[$$index_35];
+                    $$renderer4.push(`<td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(row.sound_power_levels[column])}`, "svelte-py4xdp")} type="number" step="any"${attr("value", row.sound_power_levels[column])}/></td>`);
+                  }
+                  $$renderer4.push(`<!--]--></tr>`);
+                }
+                $$renderer4.push(`<!--]--></tbody></table></div> `);
+                if (fanAcousticTable.rows.length === 0) {
+                  $$renderer4.push("<!--[0-->");
+                  $$renderer4.push(`<p class="text-body-secondary mt-3 mb-0">Load or create RPM lines first so the acoustic table can
+                    align itself.</p>`);
+                } else {
+                  $$renderer4.push("<!--[-1-->");
+                }
+                $$renderer4.push(`<!--]-->`);
+              } else {
+                $$renderer4.push("<!--[-1-->");
+              }
+              $$renderer4.push(`<!--]-->`);
+            },
+            $$slots: { default: true }
+          });
+          $$renderer3.push(`<!----></div>`);
+        } else {
+          $$renderer3.push("<!--[-1-->");
+        }
+        $$renderer3.push(`<!--]--></div></div></div>`);
+      } else {
         $$renderer3.push("<!--[-1-->");
       }
       $$renderer3.push(`<!--]-->`);

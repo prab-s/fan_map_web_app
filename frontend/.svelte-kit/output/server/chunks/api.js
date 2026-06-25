@@ -117,6 +117,14 @@ async function getProduct(id) {
   const r = await apiFetch(`/products/${id}`);
   return r.json();
 }
+async function updateProduct(id, body) {
+  const r = await apiFetch(`/products/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  return r.json();
+}
 async function getRpmLines(productId) {
   const r = await apiFetch(`/products/${productId}/rpm-lines`);
   return r.json();
@@ -129,6 +137,18 @@ async function getEfficiencyPoints(productId) {
   const r = await apiFetch(`/products/${productId}/efficiency-points`);
   return r.json();
 }
+async function refreshGraphImage(productId) {
+  const r = await apiFetch(`/products/${productId}/graph-image/refresh`, {
+    method: "POST"
+  });
+  return r.json();
+}
+async function startRefreshProductPdfJob(productId) {
+  const r = await apiFetch(`/maintenance/jobs/products/${productId}/pdf/refresh`, {
+    method: "POST"
+  });
+  return r.json();
+}
 async function getProductChartData(productId) {
   const [rpmLines, rpmPoints, efficiencyPoints] = await Promise.all([
     getRpmLines(productId),
@@ -137,26 +157,65 @@ async function getProductChartData(productId) {
   ]);
   return { rpmLines, rpmPoints, efficiencyPoints };
 }
+async function uploadProductImages(productId, files) {
+  const formData = new FormData();
+  for (const file of files) {
+    formData.append("files", file);
+  }
+  const r = await apiFetch(`/products/${productId}/product-images`, {
+    method: "POST",
+    body: formData
+  });
+  return r.json();
+}
+async function reorderProductImages(productId, imageIds) {
+  const r = await apiFetch(`/products/${productId}/product-images/reorder`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ image_ids: imageIds })
+  });
+  return r.json();
+}
+async function deleteProductImage(productId, imageId) {
+  const r = await apiFetch(`/products/${productId}/product-images/${imageId}`, {
+    method: "DELETE"
+  });
+  return r.json();
+}
+async function getMaintenanceJob(jobId) {
+  const r = await apiFetch(`/maintenance/jobs/${jobId}`);
+  return r.json();
+}
 async function getUsers() {
   const r = await apiFetch("/users");
   return r.json();
 }
 export {
-  login as a,
-  getAuthSession as b,
-  getPublicProduct as c,
-  deleteSeriesImage as d,
-  getPublicProducts as e,
-  getPublicSeries as f,
-  getPublicProductTypes as g,
-  getProducts as h,
-  getSeries as i,
-  getUsers as j,
-  getProductTypes as k,
-  logout as l,
-  getProductChartData as m,
-  getSeriesById as n,
-  getProduct as o,
-  reorderSeriesImages as r,
-  uploadSeriesImages as u
+  getSeriesById as A,
+  reorderProductImages as a,
+  uploadProductImages as b,
+  getProduct as c,
+  deleteProductImage as d,
+  getRpmLines as e,
+  getRpmPoints as f,
+  getProducts as g,
+  getEfficiencyPoints as h,
+  deleteSeriesImage as i,
+  reorderSeriesImages as j,
+  uploadSeriesImages as k,
+  getPublicProductTypes as l,
+  logout as m,
+  login as n,
+  getAuthSession as o,
+  getMaintenanceJob as p,
+  getPublicProduct as q,
+  refreshGraphImage as r,
+  startRefreshProductPdfJob as s,
+  getPublicProducts as t,
+  updateProduct as u,
+  getPublicSeries as v,
+  getSeries as w,
+  getUsers as x,
+  getProductTypes as y,
+  getProductChartData as z
 };

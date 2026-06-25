@@ -19,6 +19,7 @@
   let mode = initialMode;
   let destroyed = false;
   let hydratedProductTypeId = '';
+  let appliedInitialProductTypeId = '';
 
   function syncProductTypeEditorUrl(productTypeId) {
     if (typeof window === 'undefined') return;
@@ -159,10 +160,24 @@
     }
   }
 
-  $: if (initialProductTypeId !== '' && String(selectedProductTypeId) !== String(initialProductTypeId)) {
-    selectedProductTypeId = String(initialProductTypeId);
-    if (mode !== 'create') {
-      mode = 'edit';
+  $: {
+    const nextInitialProductTypeId =
+      initialProductTypeId !== '' && initialProductTypeId != null
+        ? String(initialProductTypeId)
+        : '';
+    if (nextInitialProductTypeId !== appliedInitialProductTypeId) {
+      appliedInitialProductTypeId = nextInitialProductTypeId;
+      if (nextInitialProductTypeId) {
+        selectedProductTypeId = nextInitialProductTypeId;
+        if (mode !== 'create') {
+          mode = 'edit';
+        }
+      } else if (mode !== 'create' || selectedProductTypeId) {
+        selectedProductTypeId = '';
+        productTypeDraft = resetDraft();
+        hydratedProductTypeId = '';
+        mode = 'edit';
+      }
     }
   }
 

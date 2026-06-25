@@ -139,6 +139,7 @@
   let dragAxisLock = null;
   let loadingExistingProduct = false;
   let destroyed = false;
+  let appliedInitialProductId = '';
 
   // Mode: 'select' (initial), 'create', or 'editExisting'
   let mode = initialMode;
@@ -3548,13 +3549,25 @@
       : "/viewer/product";
   }
 
-  $: if (
-    initialProductId !== "" &&
-    Number(initialProductId) !== Number(selectedProductId)
-  ) {
-    selectedProductId = Number(initialProductId);
-    if (mode !== "create") {
-      mode = "editExisting";
+  $: {
+    const nextInitialProductId =
+      initialProductId !== "" && initialProductId != null
+        ? String(initialProductId)
+        : "";
+    if (nextInitialProductId !== appliedInitialProductId) {
+      appliedInitialProductId = nextInitialProductId;
+      if (nextInitialProductId) {
+        selectedProductId = Number(nextInitialProductId);
+        if (mode !== "create") {
+          mode = "editExisting";
+        }
+      } else if (mode !== "create" || selectedProductId !== null) {
+        selectedProductId = null;
+        editingProductId = null;
+        currentProduct = null;
+        resetProductEditor("");
+        mode = "editExisting";
+      }
     }
   }
 
@@ -3747,6 +3760,7 @@
       editExistingSeriesId = "";
       resetProductEditor("");
       mode = "editExisting";
+      syncProductEditorUrl("");
       addSuccess("Product deleted.");
     } catch (e) {
       error = e.message;
