@@ -19,6 +19,9 @@ function createAuthStore() {
     username: null,
     is_admin: false,
     cookie_secure: false,
+    client_ip_v4: null,
+    client_ip_v6: null,
+    client_ip: null,
     busy: false,
     error: ""
   });
@@ -38,6 +41,9 @@ function createAuthStore() {
           username: session.username ?? null,
           is_admin: session.is_admin ?? false,
           cookie_secure: session.cookie_secure ?? false,
+          client_ip_v4: session.client_ip_v4 ?? null,
+          client_ip_v6: session.client_ip_v6 ?? null,
+          client_ip: session.client_ip ?? null,
           busy: false,
           error: ""
         });
@@ -48,6 +54,9 @@ function createAuthStore() {
           username: null,
           is_admin: false,
           cookie_secure: false,
+          client_ip_v4: null,
+          client_ip_v6: null,
+          client_ip: null,
           busy: false,
           error: error?.message || "Unable to verify the current session."
         });
@@ -63,6 +72,9 @@ function createAuthStore() {
           username: session.username,
           is_admin: session.is_admin,
           cookie_secure: session.cookie_secure ?? false,
+          client_ip_v4: session.client_ip_v4 ?? null,
+          client_ip_v6: session.client_ip_v6 ?? null,
+          client_ip: session.client_ip ?? null,
           busy: false,
           error: ""
         });
@@ -74,6 +86,9 @@ function createAuthStore() {
           username: null,
           is_admin: false,
           cookie_secure: false,
+          client_ip_v4: null,
+          client_ip_v6: null,
+          client_ip: null,
           busy: false,
           error: "Incorrect username or password."
         });
@@ -91,6 +106,9 @@ function createAuthStore() {
           username: null,
           is_admin: false,
           cookie_secure: false,
+          client_ip_v4: null,
+          client_ip_v6: null,
+          client_ip: null,
           busy: false,
           error: ""
         });

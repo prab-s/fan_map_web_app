@@ -95,6 +95,8 @@
           touch_points: telemetry.touch_points ?? '—',
           public_host: entry.payload?.public_host || '',
           public_port: entry.payload?.public_port ?? '',
+          public_ipv4: entry.payload?.public_ipv4 || '',
+          public_ipv6: entry.payload?.public_ipv6 || '',
           public_source: entry.payload?.public_source || ''
         });
       }
@@ -129,6 +131,8 @@
           telemetry.language,
           telemetry.languages.join(' '),
           entry?.payload?.public_host,
+          entry?.payload?.public_ipv4,
+          entry?.payload?.public_ipv6,
           entry?.payload?.public_source,
           routeGroup
         ]
@@ -297,7 +301,9 @@
               <td>
                 <div>{device.platform}</div>
                 <div class="small text-body-secondary">
-                  {#if device.public_host}
+                  {#if device.public_ipv4 || device.public_ipv6}
+                    IPv4 {device.public_ipv4 || '—'} · IPv6 {device.public_ipv6 || '—'}
+                  {:else if device.public_host}
                     {device.public_host}{device.public_port ? `:${device.public_port}` : ''}
                   {:else}
                     —

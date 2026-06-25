@@ -48,6 +48,8 @@
       host: payload.host || '—',
       public_host: payload.public_host || '',
       public_port: payload.public_port ?? '',
+      public_ipv4: payload.public_ipv4 || '',
+      public_ipv6: payload.public_ipv6 || '',
       public_source: payload.public_source || '',
       peer_host: payload.peer_host || '',
       route_group: payload.route_group || '',
@@ -101,6 +103,8 @@
           host: summary.host,
           public_host: summary.public_host,
           public_port: summary.public_port,
+          public_ipv4: summary.public_ipv4,
+          public_ipv6: summary.public_ipv6,
           public_source: summary.public_source,
           peer_host: summary.peer_host,
           event: summary.event
@@ -139,6 +143,8 @@
           entry.languages.join(' '),
           entry.host,
           entry.public_host,
+          entry.public_ipv4,
+          entry.public_ipv6,
           entry.public_source,
           entry.peer_host,
           routeGroup,
@@ -318,7 +324,9 @@
               <td>
                 <div>{device.public_source || '—'}</div>
                 <div class="small text-body-secondary">
-                  {#if device.public_host}
+                  {#if device.public_ipv4 || device.public_ipv6}
+                    IPv4 {device.public_ipv4 || '—'} · IPv6 {device.public_ipv6 || '—'}
+                  {:else if device.public_host}
                     {device.public_host}{device.public_port ? `:${device.public_port}` : ''}
                   {:else}
                     —

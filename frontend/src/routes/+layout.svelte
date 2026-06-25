@@ -185,7 +185,7 @@
           <a class={`nav-link ${editorActive ? 'active text-body fw-medium' : 'text-body-secondary'}`} href="/editor" aria-current={editorActive ? 'page' : undefined}>Editor</a>
           <a class={`nav-link ${viewerActive ? 'active text-body fw-medium' : 'text-body-secondary'}`} href="/viewer" aria-current={viewerActive ? 'page' : undefined}>Viewer</a>
           <a class={`nav-link ${templateBuilderActive ? 'active text-body fw-medium' : 'text-body-secondary'}`} href="/template-builder" aria-current={templateBuilderActive ? 'page' : undefined}>Template Builder</a>
-          {#if $auth.is_admin}
+          {#if $auth.authenticated}
             <a class={`nav-link ${bulkImportActive ? 'active text-body fw-medium' : 'text-body-secondary'}`} href="/bulk-import" aria-current={bulkImportActive ? 'page' : undefined}>Bulk Import</a>
           {/if}
           <a class={`nav-link ${setupActive ? 'active text-body fw-medium' : 'text-body-secondary'}`} href="/setup" aria-current={setupActive ? 'page' : undefined}>Setup</a>

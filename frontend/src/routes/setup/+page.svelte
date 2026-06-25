@@ -997,6 +997,9 @@
         <p class="small text-uppercase text-body-secondary fw-semibold mb-1">My Account</p>
         <h2 class="h4">Change Password</h2>
         <p class="text-body-secondary">Signed in as {$auth.username}.</p>
+        <p class="small text-body-secondary mb-0">
+          IP address: IPv4 {$auth.client_ip_v4 || '—'} · IPv6 {$auth.client_ip_v6 || '—'}
+        </p>
 
         <form class="vstack gap-3" on:submit|preventDefault={submitOwnPasswordChange}>
           <div>

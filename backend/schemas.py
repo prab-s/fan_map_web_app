@@ -686,6 +686,9 @@ class AuthSessionResponse(BaseModel):
     username: Optional[str] = None
     is_admin: bool = False
     cookie_secure: bool = False
+    client_ip_v4: Optional[str] = None
+    client_ip_v6: Optional[str] = None
+    client_ip: Optional[str] = None
 
 
 class UserCreate(BaseModel):

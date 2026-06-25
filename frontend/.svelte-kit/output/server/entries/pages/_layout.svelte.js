@@ -96,7 +96,7 @@ function _layout($$renderer, $$props) {
         $$renderer2.push(`Overview`);
       }
       $$renderer2.push(`<!--]--></span></div> <nav class="nav nav-underline justify-content-center mx-auto" aria-label="Primary"><a${attr_class(`nav-link ${homeActive ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/"${attr("aria-current", homeActive ? "page" : void 0)}>Home</a> <a${attr_class(`nav-link ${editorActive ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/editor"${attr("aria-current", editorActive ? "page" : void 0)}>Editor</a> <a${attr_class(`nav-link ${viewerActive ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/viewer"${attr("aria-current", viewerActive ? "page" : void 0)}>Viewer</a> <a${attr_class(`nav-link ${templateBuilderActive ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/template-builder"${attr("aria-current", templateBuilderActive ? "page" : void 0)}>Template Builder</a> `);
-      if (store_get($$store_subs ??= {}, "$auth", auth).is_admin) {
+      if (store_get($$store_subs ??= {}, "$auth", auth).authenticated) {
         $$renderer2.push("<!--[0-->");
         $$renderer2.push(`<a${attr_class(`nav-link ${bulkImportActive ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/bulk-import"${attr("aria-current", bulkImportActive ? "page" : void 0)}>Bulk Import</a>`);
       } else {

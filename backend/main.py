@@ -320,17 +320,86 @@ def _iter_forwarded_ips(request: Request):
             yield value.strip()
 
 
+def _extract_request_ip_details(request: Request) -> dict[str, str | int | None]:
+    peer_host = request.client.host if request.client else ""
+    peer_port = request.client.port if request.client else None
+    forwarded_for = request.headers.get("forwarded", "")
+    x_forwarded_for = request.headers.get("x-forwarded-for", "")
+    x_real_ip = request.headers.get("x-real-ip", "")
+    public_host = ""
+    public_port = None
+    public_source = ""
+    public_ipv4 = ""
+    public_ipv6 = ""
+    forwarded_chain: list[str] = []
+
+    candidates: list[tuple[str, str]] = []
+    if forwarded_for:
+        for entry in forwarded_for.split(","):
+            for part in entry.split(";"):
+                key, separator, raw_value = part.partition("=")
+                if not separator or key.strip().lower() != "for":
+                    continue
+                cleaned = raw_value.strip()
+                if cleaned:
+                    candidates.append(("forwarded", cleaned))
+                    forwarded_chain.append(cleaned)
+                break
+
+    if x_forwarded_for:
+        for value in x_forwarded_for.split(","):
+            cleaned = value.strip()
+            if cleaned:
+                candidates.append(("x-forwarded-for", cleaned))
+                forwarded_chain.append(cleaned)
+
+    if peer_host:
+        candidates.append(("peer", peer_host))
+
+    for source, candidate in candidates:
+        host, port = _split_host_port(candidate)
+        parsed = _parse_ip_address(host)
+        if parsed is None or not parsed.is_global:
+            continue
+        if parsed.version == 4 and not public_ipv4:
+            public_ipv4 = str(parsed)
+        elif parsed.version == 6 and not public_ipv6:
+            public_ipv6 = str(parsed)
+        if not public_host:
+            public_host = str(parsed)
+            public_port = port if source != "peer" else peer_port
+            public_source = source
+
+    if not public_host:
+        peer = _parse_ip_address(peer_host)
+        if peer is not None and peer.is_global:
+            public_host = str(peer)
+            public_port = peer_port
+            public_source = "peer"
+            if peer.version == 4 and not public_ipv4:
+                public_ipv4 = str(peer)
+            elif peer.version == 6 and not public_ipv6:
+                public_ipv6 = str(peer)
+
+    return {
+        "peer_host": peer_host,
+        "peer_port": peer_port,
+        "public_host": public_host,
+        "public_port": public_port,
+        "public_source": public_source,
+        "public_ipv4": public_ipv4,
+        "public_ipv6": public_ipv6,
+        "forwarded_chain": forwarded_chain,
+        "forwarded_for": forwarded_for,
+        "x_forwarded_for": x_forwarded_for,
+        "x_real_ip": x_real_ip,
+    }
+
+
 def _extract_public_client_ip(request: Request) -> str | None:
-    peer = _parse_ip_address(request.client.host if request.client else "")
-    if peer is not None and peer.is_global:
-        return str(peer)
-
-    if peer is None or peer.is_private or peer.is_loopback or peer.is_link_local:
-        for candidate in _iter_forwarded_ips(request):
-            parsed = _parse_ip_address(candidate)
-            if parsed is not None and parsed.is_global:
-                return str(parsed)
-
+    details = _extract_request_ip_details(request)
+    if details["public_host"]:
+        return str(details["public_host"])
     return None
 
 
@@ -367,50 +436,7 @@ def _split_host_port(value: str) -> tuple[str, int | None]:
 
 
 def _extract_public_client(request: Request) -> dict[str, object]:
-    peer_host = request.client.host if request.client else ""
-    peer_port = request.client.port if request.client else None
-    forwarded_for = request.headers.get("forwarded", "")
-    x_forwarded_for = request.headers.get("x-forwarded-for", "")
-    x_real_ip = request.headers.get("x-real-ip", "")
-    public_host = ""
-    public_port = None
-    public_source = ""
-    forwarded_chain: list[str] = []
-
-    forwarded_values: list[str] = []
-    if forwarded_for:
-        for entry in forwarded_for.split(","):
-            for part in entry.split(";"):
-                key, separator, raw_value = part.partition("=")
-                if not separator or key.strip().lower() != "for":
-                    continue
-                forwarded_values.append(raw_value.strip())
-                forwarded_chain.append(raw_value.strip())
-                break
-
-    if x_forwarded_for:
-        for value in x_forwarded_for.split(","):
-            cleaned = value.strip()
-            if cleaned:
-                forwarded_chain.append(cleaned)
-                forwarded_values.append(cleaned)
-
-    for candidate in forwarded_values:
-        host, port = _split_host_port(candidate)
-        parsed = _parse_ip_address(host)
-        if parsed is not None and parsed.is_global:
-            public_host = str(parsed)
-            public_port = port
-            public_source = "forwarded"
-            break
-
-    if not public_host:
-        peer = _parse_ip_address(peer_host)
-        if peer is not None and peer.is_global:
-            public_host = str(peer)
-            public_port = peer_port
-            public_source = "peer"
-
+    details = _extract_request_ip_details(request)
     device_type = "desktop"
     user_agent = request.headers.get("user-agent", "")
     sec_ch_ua_mobile = request.headers.get("sec-ch-ua-mobile", "")
@@ -422,15 +448,7 @@ def _extract_public_client(request: Request) -> dict[str, object]:
         device_type = "mobile"
 
     return {
-        "peer_host": peer_host,
-        "peer_port": peer_port,
-        "public_host": public_host,
-        "public_port": public_port,
-        "public_source": public_source,
-        "forwarded_chain": forwarded_chain,
-        "forwarded_for": forwarded_for,
-        "x_forwarded_for": x_forwarded_for,
-        "x_real_ip": x_real_ip,
+        **details,
         "host": request.headers.get("host", ""),
         "scheme": request.url.scheme,
         "method": request.method,
@@ -5796,7 +5814,7 @@ bulk_import_router.add_api_route(
     bulk_import_assets,
     methods=["POST"],
     response_model=BulkImportResponse,
-    dependencies=[Depends(require_admin_user)],
+    dependencies=[Depends(get_current_user)],
     summary="Import workbook sheets and image assets",
 )
 
@@ -7461,12 +7479,23 @@ def start_refresh_series_pdf_job(series_id: int):
 @app.get("/api/auth/session", response_model=AuthSessionResponse, tags=["Public", "Authentication"])
 def get_auth_session(request: Request):
     if not is_authenticated(request):
-        return AuthSessionResponse(authenticated=False, cookie_secure=AUTH_COOKIE_SECURE)
+        details = _extract_request_ip_details(request)
+        return AuthSessionResponse(
+            authenticated=False,
+            cookie_secure=AUTH_COOKIE_SECURE,
+            client_ip_v4=details["public_ipv4"] or None,
+            client_ip_v6=details["public_ipv6"] or None,
+            client_ip=details["public_host"] or None,
+        )
+    details = _extract_request_ip_details(request)
     return AuthSessionResponse(
         authenticated=True,
         username=request.session.get("username"),
         is_admin=bool(request.session.get("is_admin")),
         cookie_secure=AUTH_COOKIE_SECURE,
+        client_ip_v4=details["public_ipv4"] or None,
+        client_ip_v6=details["public_ipv6"] or None,
+        client_ip=details["public_host"] or None,
     )
 
 
@@ -7479,7 +7508,16 @@ def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
     request.session["user_id"] = user.id
     request.session["username"] = user.username
     request.session["is_admin"] = user.is_admin
-    return AuthSessionResponse(authenticated=True, username=user.username, is_admin=user.is_admin, cookie_secure=AUTH_COOKIE_SECURE)
+    details = _extract_request_ip_details(request)
+    return AuthSessionResponse(
+        authenticated=True,
+        username=user.username,
+        is_admin=user.is_admin,
+        cookie_secure=AUTH_COOKIE_SECURE,
+        client_ip_v4=details["public_ipv4"] or None,
+        client_ip_v6=details["public_ipv6"] or None,
+        client_ip=details["public_host"] or None,
+    )
 
 
 @app.post("/api/auth/logout", response_model=AuthSessionResponse, tags=["Public", "Authentication"])
@@ -7501,7 +7539,16 @@ def change_password(
     db.commit()
     request.session["username"] = current_user.username
     request.session["is_admin"] = current_user.is_admin
-    return AuthSessionResponse(authenticated=True, username=current_user.username, is_admin=current_user.is_admin, cookie_secure=AUTH_COOKIE_SECURE)
+    details = _extract_request_ip_details(request)
+    return AuthSessionResponse(
+        authenticated=True,
+        username=current_user.username,
+        is_admin=current_user.is_admin,
+        cookie_secure=AUTH_COOKIE_SECURE,
+        client_ip_v4=details["public_ipv4"] or None,
+        client_ip_v6=details["public_ipv6"] or None,
+        client_ip=details["public_host"] or None,
+    )
 
 
 @app.get("/api/users", response_model=list[UserResponse], tags=["Users"])
