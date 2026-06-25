@@ -319,6 +319,7 @@ class BulkImportManifestSheetResponse(BaseModel):
     sheet_name: str
     product_model: Optional[str] = None
     product_type_key: Optional[str] = None
+    series_id: Optional[int] = None
     series_name: Optional[str] = None
     image_count: int = 0
 

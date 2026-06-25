@@ -1862,6 +1862,8 @@ def bulk_import_process_payloads(
     defaults.setdefault("downsample_point_count", default_downsample_point_count)
     defaults.setdefault("scale_efficiency_permissible_against_highest_rpm", default_scale_overlay_lines)
     defaults.setdefault("overlay_scale_tuning_factor", 1.0)
+    default_series_id = parse_int_or_none(defaults.get("series_id")) if "series_id" in defaults else None
+    default_series_name = str(defaults.get("series_name") or "").strip() or None
     report.tables = [
         BulkImportTableSummaryResponse(name=table_name, kind="sheet" if bulk_import_is_graph_sheet(rows) else "table", row_count=len(rows))
         for table_name, rows in sorted(((name, rows) for name, rows in tables.items() if name != "__manifest__"), key=lambda item: item[0].casefold())
@@ -1918,8 +1920,14 @@ def bulk_import_process_payloads(
             or defaults.get("product_type_key")
             or "fan"
         ).strip() or "fan"
-        series_name = str(sheet_config.get("series_name") or defaults.get("series_name") or "").strip() or None
-        series_id = parse_int_or_none(sheet_config.get("series_id"))
+        if "series_name" in sheet_config:
+            series_name = str(sheet_config.get("series_name") or "").strip() or None
+        else:
+            series_name = default_series_name
+        if "series_id" in sheet_config:
+            series_id = parse_int_or_none(sheet_config.get("series_id"))
+        else:
+            series_id = default_series_id
         product_id = parse_int_or_none(sheet_config.get("product_id") or sheet_config.get("id"))
         downsample_imported_curves = bool(
             sheet_config.get(
@@ -2040,7 +2048,8 @@ def bulk_import_process_payloads(
                         sheet_name=table_name,
                         product_model=product_model,
                         product_type_key=product_type_key,
-                        series_name=series_name,
+                        series_id=parse_int_or_none(payload.get("series_id")),
+                        series_name=str(payload.get("series_name") or series_name or "").strip() or None,
                         image_count=manifest_image_counts.get(bulk_import_sheet_key(table_name), 0),
                     )
                 )

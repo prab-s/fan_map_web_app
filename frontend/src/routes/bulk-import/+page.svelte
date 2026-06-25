@@ -12,6 +12,8 @@
   import { onDestroy, onMount } from 'svelte';
 
   const DEFAULT_PRODUCT_TYPE_KEY = 'fan';
+  const DEFAULT_SERIES_SELECTION = 'default';
+  const NO_SERIES_SELECTION = 'none';
 
   let workbookFiles = [];
   let workbookKeySet = new Set();
@@ -26,6 +28,7 @@
   let overlayScaleTuningFactor = 0.99;
   let productTypes = [];
   let selectedProductTypeKey = DEFAULT_PRODUCT_TYPE_KEY;
+  let selectedWorkbookSeriesId = '';
 
   let imageFiles = [];
   let imageKeySet = new Set();
@@ -74,6 +77,51 @@
   function describeFile(file) {
     const path = file?.webkitRelativePath || file?.name || 'Unnamed file';
     return `${path} · ${formatBytes(file?.size)}`;
+  }
+
+  function describeSeries(item) {
+    if (!item) return 'Series';
+    return item.name || `Series ${item.id}`;
+  }
+
+  function findSeriesById(seriesId) {
+    const value = String(seriesId || '');
+    if (!value) return null;
+    return series.find((item) => String(item.id) === value) || null;
+  }
+
+  function getWorkbookDefaultSeries() {
+    return findSeriesById(selectedWorkbookSeriesId);
+  }
+
+  function getWorkbookSeriesSelectionLabel(selection) {
+    if (selection === NO_SERIES_SELECTION) return 'No series';
+    if (selection === DEFAULT_SERIES_SELECTION) return 'Use workbook default';
+    return describeSeries(findSeriesById(selection));
+  }
+
+  function getWorkbookEffectiveSeriesLabel(selection) {
+    if (selection === NO_SERIES_SELECTION) return 'No series';
+    if (selection === DEFAULT_SERIES_SELECTION) {
+      const defaultSeries = getWorkbookDefaultSeries();
+      return defaultSeries ? `Default: ${describeSeries(defaultSeries)}` : 'Default: none';
+    }
+    const selectedSeries = findSeriesById(selection);
+    return selectedSeries ? describeSeries(selectedSeries) : 'Series unavailable';
+  }
+
+  function resolveWorkbookSeriesSelection(selection) {
+    if (selection === NO_SERIES_SELECTION) {
+      return { series_id: null, series_name: null };
+    }
+    if (selection && selection !== DEFAULT_SERIES_SELECTION) {
+      const seriesRecord = findSeriesById(selection);
+      return {
+        series_id: seriesRecord ? Number(seriesRecord.id) : null,
+        series_name: seriesRecord?.name || null
+      };
+    }
+    return {};
   }
 
   function addFiles(fileList, selectedFiles, selectedKeySet) {
@@ -160,6 +208,23 @@
     clearSuccessToast();
   }
 
+  function resolveSelectedWorkbookSeriesId() {
+    if (!selectedWorkbookSeriesId) return '';
+    if (!series.length) return selectedWorkbookSeriesId;
+    return filteredSeries.some((item) => String(item.id) === String(selectedWorkbookSeriesId)) ? String(selectedWorkbookSeriesId) : '';
+  }
+
+  function syncSelectedWorkbookSeries() {
+    const nextSeriesId = resolveSelectedWorkbookSeriesId();
+    if (nextSeriesId !== selectedWorkbookSeriesId) {
+      selectedWorkbookSeriesId = nextSeriesId;
+    }
+  }
+
+  function handleWorkbookSeriesChange(event) {
+    selectedWorkbookSeriesId = event.currentTarget.value;
+  }
+
   function handleImageInput(event) {
     const result = addFiles(event.currentTarget.files, imageFiles, imageKeySet);
     imageFiles = result.selectedFiles;
@@ -227,24 +292,33 @@
     for (const row of workbookMappings) {
       const sheetName = (row.sheet_name || '').trim();
       if (!sheetName) continue;
-      sheets[sheetName] = {
+      const sheetConfig = {
         product_model: (row.product_model || '').trim() || sheetName,
         product_type_key: DEFAULT_PRODUCT_TYPE_KEY,
         skip_import: !row.include_in_import
       };
+      Object.assign(sheetConfig, resolveWorkbookSeriesSelection(row.series_selection));
+      sheets[sheetName] = sheetConfig;
+    }
+
+    const defaultSeries = getWorkbookDefaultSeries();
+    const defaults = {
+      downsample_imported_curves: downsampleImportedCurves,
+      downsample_point_count: Number(downsamplePointCount) || 5,
+      scale_efficiency_permissible_against_highest_rpm: scaleEfficiencyPermissibleAgainstHighestRpm,
+      overlay_scale_tuning_factor:
+        Number.isFinite(Number(overlayScaleTuningFactor)) && Number(overlayScaleTuningFactor) > 0
+          ? Number(overlayScaleTuningFactor)
+          : 1,
+      product_type_key: DEFAULT_PRODUCT_TYPE_KEY
+    };
+    if (defaultSeries) {
+      defaults.series_id = Number(defaultSeries.id);
+      defaults.series_name = defaultSeries.name;
     }
 
     return JSON.stringify({
-      defaults: {
-        downsample_imported_curves: downsampleImportedCurves,
-        downsample_point_count: Number(downsamplePointCount) || 5,
-        scale_efficiency_permissible_against_highest_rpm: scaleEfficiencyPermissibleAgainstHighestRpm,
-        overlay_scale_tuning_factor:
-          Number.isFinite(Number(overlayScaleTuningFactor)) && Number(overlayScaleTuningFactor) > 0
-            ? Number(overlayScaleTuningFactor)
-            : 1,
-        product_type_key: DEFAULT_PRODUCT_TYPE_KEY
-      },
+      defaults,
       sheets
     });
   }
@@ -261,6 +335,7 @@
         row_count: table.row_count || 0,
         product_model: existing?.product_model || table.name,
         include_in_import: existing?.include_in_import ?? true,
+        series_selection: existing?.series_selection || DEFAULT_SERIES_SELECTION,
         normalization: normalizationBySheet.get(table.name) || existing?.normalization || null
       });
     }
@@ -334,6 +409,7 @@
     }
     ensureImageTargetSelection();
     syncImageSeriesFilterSelection();
+    syncSelectedWorkbookSeries();
   }
 
   async function analyseWorkbook() {
@@ -411,6 +487,7 @@
       if (!state.authenticated) {
         productTypes = [];
         selectedProductTypeKey = DEFAULT_PRODUCT_TYPE_KEY;
+        selectedWorkbookSeriesId = '';
         products = [];
         series = [];
         filteredProducts = [];
@@ -481,6 +558,10 @@
     selectedProductTypeKey;
     syncSelectedProductType();
   }
+  $: {
+    filteredSeries;
+    syncSelectedWorkbookSeries();
+  }
   afterNavigate(() => {
     if ($auth.ready && $auth.authenticated) {
       void refreshProductTypes();
@@ -510,7 +591,7 @@
       <p class="eyebrow mb-2">Maintenance</p>
       <h1 class="display-title mb-2">Bulk Import</h1>
       <p class="lead text-body-secondary mb-0">
-        Use the workbook importer for graph points and the image importer for product or series media. If a workbook sheet is named after a product that does not yet exist, importing it will create that product automatically and load the map points into it.
+        Use the workbook importer for graph points and the image importer for product or series media. You can set a workbook-wide default series before the dry run, then override individual sheets in the inline mapping panel. If a workbook sheet is named after a product that does not yet exist, importing it will create that product automatically and load the map points into it.
       </p>
     </div>
   </section>
@@ -520,6 +601,7 @@
       <h2 class="h5 mb-2">Import Contract</h2>
       <ul class="text-body-secondary mb-0 ps-3">
         <li>The workbook flow only handles graph data files and keeps the sheet-to-product mapping inline on the page.</li>
+        <li>You can assign a default series before analysing, then change any sheet's series in the dry-run panel.</li>
         <li>The image flow targets exactly one product or one series at a time.</li>
         <li>Image uploads overwrite any existing file with the same name in that target folder.</li>
         <li>Files are stored in dedicated `product_&lt;id&gt;` and `series_&lt;id&gt;` subfolders.</li>
@@ -607,6 +689,16 @@
                     bind:value={overlayScaleTuningFactor}
                   />
                   <div class="form-text">Use values below 1.00 to pull the imported efficiency lines down slightly.</div>
+                </div>
+                <div class="col-12 col-lg-4">
+                  <label class="form-label form-label-sm" for="bulk-series-default">Default series for new products</label>
+                  <select id="bulk-series-default" class="form-select" bind:value={selectedWorkbookSeriesId} on:change={handleWorkbookSeriesChange}>
+                    <option value="">No default series</option>
+                    {#each filteredSeries as item}
+                      <option value={String(item.id)}>{describeSeries(item)}</option>
+                    {/each}
+                  </select>
+                  <div class="form-text">Sheets can inherit this series or override it individually in the dry run.</div>
                 </div>
               </div>
             </div>
@@ -718,6 +810,33 @@
                               bind:value={item.product_model}
                               placeholder={item.sheet_name}
                             />
+                            <label class="form-label form-label-sm mt-2" for={`mapping-series-${index}`}>Series</label>
+                            <select
+                              id={`mapping-series-${index}`}
+                              class="form-select"
+                              bind:value={item.series_selection}
+                              on:change={(event) => {
+                                workbookMappings = workbookMappings.map((mapping, mappingIndex) =>
+                                  mappingIndex === index
+                                    ? { ...mapping, series_selection: event.currentTarget.value }
+                                    : mapping
+                                );
+                              }}
+                            >
+                              <option value={DEFAULT_SERIES_SELECTION}>Use workbook default</option>
+                              <option value={NO_SERIES_SELECTION}>No series</option>
+                              {#each filteredSeries as seriesItem}
+                                <option value={String(seriesItem.id)}>{describeSeries(seriesItem)}</option>
+                              {/each}
+                            </select>
+                            <div class="d-flex align-items-center gap-2 flex-wrap mt-2">
+                              <span class="badge text-bg-light border text-body-secondary">
+                                Effective series: {getWorkbookEffectiveSeriesLabel(item.series_selection)}
+                              </span>
+                              <span class="small text-body-secondary">
+                                {getWorkbookSeriesSelectionLabel(item.series_selection)}
+                              </span>
+                            </div>
                             <div class="form-check mt-2">
                               <input
                                 id={`mapping-include-${index}`}
