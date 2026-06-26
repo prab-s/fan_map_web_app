@@ -2005,7 +2005,7 @@ COPY vent-tech-catalogue.env.example ./.env.example
 
 EXPOSE 8004
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8004"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8004", "--proxy-headers", "--forwarded-allow-ips=*"]
 EOF
 
 cat > "$ROOT_DIR/run_container.sh" <<'EOF'

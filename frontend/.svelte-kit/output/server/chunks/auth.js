@@ -22,6 +22,9 @@ function createAuthStore() {
     client_ip_v4: null,
     client_ip_v6: null,
     client_ip: null,
+    device_ip_v4: null,
+    device_ip_v6: null,
+    device_ip: null,
     busy: false,
     error: ""
   });
@@ -44,6 +47,9 @@ function createAuthStore() {
           client_ip_v4: session.client_ip_v4 ?? null,
           client_ip_v6: session.client_ip_v6 ?? null,
           client_ip: session.client_ip ?? null,
+          device_ip_v4: session.device_ip_v4 ?? null,
+          device_ip_v6: session.device_ip_v6 ?? null,
+          device_ip: session.device_ip ?? null,
           busy: false,
           error: ""
         });
@@ -57,6 +63,9 @@ function createAuthStore() {
           client_ip_v4: null,
           client_ip_v6: null,
           client_ip: null,
+          device_ip_v4: null,
+          device_ip_v6: null,
+          device_ip: null,
           busy: false,
           error: error?.message || "Unable to verify the current session."
         });
@@ -75,6 +84,9 @@ function createAuthStore() {
           client_ip_v4: session.client_ip_v4 ?? null,
           client_ip_v6: session.client_ip_v6 ?? null,
           client_ip: session.client_ip ?? null,
+          device_ip_v4: session.device_ip_v4 ?? null,
+          device_ip_v6: session.device_ip_v6 ?? null,
+          device_ip: session.device_ip ?? null,
           busy: false,
           error: ""
         });
@@ -89,6 +101,9 @@ function createAuthStore() {
           client_ip_v4: null,
           client_ip_v6: null,
           client_ip: null,
+          device_ip_v4: null,
+          device_ip_v6: null,
+          device_ip: null,
           busy: false,
           error: "Incorrect username or password."
         });
@@ -109,6 +124,9 @@ function createAuthStore() {
           client_ip_v4: null,
           client_ip_v6: null,
           client_ip: null,
+          device_ip_v4: null,
+          device_ip_v6: null,
+          device_ip: null,
           busy: false,
           error: ""
         });

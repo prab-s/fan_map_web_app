@@ -51,6 +51,7 @@
       public_ipv4: payload.public_ipv4 || '',
       public_ipv6: payload.public_ipv6 || '',
       public_source: payload.public_source || '',
+      username: payload.username || '',
       peer_host: payload.peer_host || '',
       route_group: payload.route_group || '',
       page_route_group: payload.page_route_group || '',
@@ -106,6 +107,7 @@
           public_ipv4: summary.public_ipv4,
           public_ipv6: summary.public_ipv6,
           public_source: summary.public_source,
+          username: summary.username,
           peer_host: summary.peer_host,
           event: summary.event
         });
@@ -145,6 +147,7 @@
           entry.public_host,
           entry.public_ipv4,
           entry.public_ipv6,
+          entry.username,
           entry.public_source,
           entry.peer_host,
           routeGroup,
@@ -157,6 +160,14 @@
       }
       return true;
     });
+  }
+
+  function formatSourceLabel(device) {
+    const source = device.public_source || '—';
+    if (device.username) {
+      return `${source} · ${device.username}`;
+    }
+    return source;
   }
 
   $: filteredEntries = applyFilters(rawEntries);
@@ -322,7 +333,7 @@
                 <div class="small text-body-secondary">{device.peer_host || '—'}</div>
               </td>
               <td>
-                <div>{device.public_source || '—'}</div>
+                <div>{formatSourceLabel(device)}</div>
                 <div class="small text-body-secondary">
                   {#if device.public_ipv4 || device.public_ipv6}
                     IPv4 {device.public_ipv4 || '—'} · IPv6 {device.public_ipv6 || '—'}

@@ -689,6 +689,9 @@ class AuthSessionResponse(BaseModel):
     client_ip_v4: Optional[str] = None
     client_ip_v6: Optional[str] = None
     client_ip: Optional[str] = None
+    device_ip_v4: Optional[str] = None
+    device_ip_v6: Optional[str] = None
+    device_ip: Optional[str] = None
 
 
 class UserCreate(BaseModel):

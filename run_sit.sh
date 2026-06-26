@@ -252,7 +252,7 @@ echo "Preparing SIT database schema..."
 "$PYTHON_BIN" -m backend.db_management prepare-configured-databases
 
 echo "Starting SIT backend on http://0.0.0.0:8002"
-"$PYTHON_BIN" -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8002 &
+"$PYTHON_BIN" -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8002 --proxy-headers --forwarded-allow-ips='*' &
 BACKEND_PID=$!
 echo "$BACKEND_PID" > "$SIT_BACKEND_PID_FILE"
 
@@ -264,7 +264,7 @@ BACKEND_API_BASE_URL="$PUBLIC_CATALOGUE_BACKEND_API_BASE_URL" \
 PUBLIC_SITE_URL="$PUBLIC_CATALOGUE_SITE_URL" \
 SITE_NAME="$PUBLIC_CATALOGUE_SITE_NAME" \
 CMS_API_TOKEN="${CMS_API_TOKEN:-}" \
-"$PYTHON_BIN" -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8005 &
+"$PYTHON_BIN" -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8005 --proxy-headers --forwarded-allow-ips='*' &
 PUBLIC_PID=$!
 echo "$PUBLIC_PID" > "../$SIT_PUBLIC_PID_FILE"
 cd ..

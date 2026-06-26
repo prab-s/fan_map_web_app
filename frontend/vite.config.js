@@ -12,7 +12,8 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:8002',
-        changeOrigin: true
+        changeOrigin: true,
+        xfwd: true
       }
     },
     allowedHosts: ['localhost', 'xps.local', '*bitrep.nz']

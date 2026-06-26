@@ -179,13 +179,19 @@ def _extract_request_ip_details(request: Request) -> dict[str, str | int | None]
                 candidates.append(("x-forwarded-for", cleaned))
                 forwarded_chain.append(cleaned)
 
+    if x_real_ip:
+        cleaned = x_real_ip.strip()
+        if cleaned:
+            candidates.append(("x-real-ip", cleaned))
+            forwarded_chain.append(cleaned)
+
     if peer_host:
         candidates.append(("peer", peer_host))
 
     for source, candidate in candidates:
         host, port = _split_host_port(candidate)
         parsed = _parse_ip_address(host)
-        if parsed is None or not parsed.is_global:
+        if parsed is None:
             continue
         if parsed.version == 4 and not public_ipv4:
             public_ipv4 = str(parsed)
@@ -198,7 +204,7 @@ def _extract_request_ip_details(request: Request) -> dict[str, str | int | None]
 
     if not public_host:
         peer = _parse_ip_address(peer_host)
-        if peer is not None and peer.is_global:
+        if peer is not None:
             public_host = str(peer)
             public_port = peer_port
             public_source = "peer"

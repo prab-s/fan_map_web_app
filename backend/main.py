@@ -8,6 +8,7 @@ import ipaddress
 import math
 import hashlib
 import html
+import socket
 from collections import deque
 import io
 import logging
@@ -353,13 +354,19 @@ def _extract_request_ip_details(request: Request) -> dict[str, str | int | None]
                 candidates.append(("x-forwarded-for", cleaned))
                 forwarded_chain.append(cleaned)
 
+    if x_real_ip:
+        cleaned = x_real_ip.strip()
+        if cleaned:
+            candidates.append(("x-real-ip", cleaned))
+            forwarded_chain.append(cleaned)
+
     if peer_host:
         candidates.append(("peer", peer_host))
 
     for source, candidate in candidates:
         host, port = _split_host_port(candidate)
         parsed = _parse_ip_address(host)
-        if parsed is None or not parsed.is_global:
+        if parsed is None:
             continue
         if parsed.version == 4 and not public_ipv4:
             public_ipv4 = str(parsed)
@@ -372,7 +379,7 @@ def _extract_request_ip_details(request: Request) -> dict[str, str | int | None]
 
     if not public_host:
         peer = _parse_ip_address(peer_host)
-        if peer is not None and peer.is_global:
+        if peer is not None:
             public_host = str(peer)
             public_port = peer_port
             public_source = "peer"
@@ -401,6 +408,53 @@ def _extract_public_client_ip(request: Request) -> str | None:
     if details["public_host"]:
         return str(details["public_host"])
     return None
+
+
+def _detect_local_device_ip(family: int) -> str | None:
+    targets = {
+        socket.AF_INET: ("8.8.8.8", 80),
+        socket.AF_INET6: ("2001:4860:4860::8888", 80, 0, 0),
+    }
+    target = targets.get(family)
+    if not target:
+        return None
+
+    sock = socket.socket(family, socket.SOCK_DGRAM)
+    try:
+        sock.connect(target)
+        candidate = sock.getsockname()[0]
+        parsed = ipaddress.ip_address(candidate)
+        return str(parsed) if parsed.version == (4 if family == socket.AF_INET else 6) else None
+    except OSError:
+        return None
+    except ValueError:
+        return None
+    finally:
+        sock.close()
+
+
+def _extract_device_ip_details(request: Request) -> dict[str, str | None]:
+    details = _extract_request_ip_details(request)
+    device_ipv4 = details["public_ipv4"] or None
+    device_ipv6 = details["public_ipv6"] or None
+    device_ip = details["public_host"] or None
+    device_is_loopback = device_ip in {"127.0.0.1", "::1", "localhost", None}
+
+    if device_is_loopback:
+        local_ipv4 = _detect_local_device_ip(socket.AF_INET)
+        local_ipv6 = _detect_local_device_ip(socket.AF_INET6)
+        if local_ipv4:
+            device_ipv4 = local_ipv4
+            device_ip = local_ipv4
+        elif local_ipv6:
+            device_ipv6 = local_ipv6
+            device_ip = local_ipv6
+
+    return {
+        "device_ip_v4": device_ipv4,
+        "device_ip_v6": device_ipv6,
+        "device_ip": device_ip,
+    }
 
 
 def _request_path_with_query(request: Request) -> str:
@@ -437,6 +491,11 @@ def _split_host_port(value: str) -> tuple[str, int | None]:
 
 def _extract_public_client(request: Request) -> dict[str, object]:
     details = _extract_request_ip_details(request)
+    username = ""
+    try:
+        username = str(request.session.get("username") or "")
+    except Exception:
+        username = ""
     device_type = "desktop"
     user_agent = request.headers.get("user-agent", "")
     sec_ch_ua_mobile = request.headers.get("sec-ch-ua-mobile", "")
@@ -464,6 +523,7 @@ def _extract_public_client(request: Request) -> dict[str, object]:
         "sec_fetch_mode": request.headers.get("sec-fetch-mode", ""),
         "sec_fetch_dest": request.headers.get("sec-fetch-dest", ""),
         "sec_fetch_user": request.headers.get("sec-fetch-user", ""),
+        "username": username,
         "device_type": device_type,
     }
 
@@ -7480,14 +7540,19 @@ def start_refresh_series_pdf_job(series_id: int):
 def get_auth_session(request: Request):
     if not is_authenticated(request):
         details = _extract_request_ip_details(request)
+        device_details = _extract_device_ip_details(request)
         return AuthSessionResponse(
             authenticated=False,
             cookie_secure=AUTH_COOKIE_SECURE,
             client_ip_v4=details["public_ipv4"] or None,
             client_ip_v6=details["public_ipv6"] or None,
             client_ip=details["public_host"] or None,
+            device_ip_v4=device_details["device_ip_v4"],
+            device_ip_v6=device_details["device_ip_v6"],
+            device_ip=device_details["device_ip"],
         )
     details = _extract_request_ip_details(request)
+    device_details = _extract_device_ip_details(request)
     return AuthSessionResponse(
         authenticated=True,
         username=request.session.get("username"),
@@ -7496,6 +7561,9 @@ def get_auth_session(request: Request):
         client_ip_v4=details["public_ipv4"] or None,
         client_ip_v6=details["public_ipv6"] or None,
         client_ip=details["public_host"] or None,
+        device_ip_v4=device_details["device_ip_v4"],
+        device_ip_v6=device_details["device_ip_v6"],
+        device_ip=device_details["device_ip"],
     )
 
 
@@ -7509,6 +7577,7 @@ def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
     request.session["username"] = user.username
     request.session["is_admin"] = user.is_admin
     details = _extract_request_ip_details(request)
+    device_details = _extract_device_ip_details(request)
     return AuthSessionResponse(
         authenticated=True,
         username=user.username,
@@ -7517,6 +7586,9 @@ def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
         client_ip_v4=details["public_ipv4"] or None,
         client_ip_v6=details["public_ipv6"] or None,
         client_ip=details["public_host"] or None,
+        device_ip_v4=device_details["device_ip_v4"],
+        device_ip_v6=device_details["device_ip_v6"],
+        device_ip=device_details["device_ip"],
     )
 
 
@@ -7540,6 +7612,7 @@ def change_password(
     request.session["username"] = current_user.username
     request.session["is_admin"] = current_user.is_admin
     details = _extract_request_ip_details(request)
+    device_details = _extract_device_ip_details(request)
     return AuthSessionResponse(
         authenticated=True,
         username=current_user.username,
@@ -7548,6 +7621,9 @@ def change_password(
         client_ip_v4=details["public_ipv4"] or None,
         client_ip_v6=details["public_ipv6"] or None,
         client_ip=details["public_host"] or None,
+        device_ip_v4=device_details["device_ip_v4"],
+        device_ip_v6=device_details["device_ip_v6"],
+        device_ip=device_details["device_ip"],
     )
 
 
