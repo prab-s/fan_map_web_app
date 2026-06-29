@@ -1032,6 +1032,9 @@ def normalize_bulk_import_name(value: str | None) -> str:
         "green_system": "efficiency_centre",
         "upper_red_curve": "efficiency_lower_end",
         "lower_red_curve": "efficiency_higher_end",
+        "red_high": "efficiency_higher_end",
+        "red_low": "efficiency_lower_end",
+        "grey_curve": "permissible_use",
     }
     if normalized in alias_map:
         return alias_map[normalized]

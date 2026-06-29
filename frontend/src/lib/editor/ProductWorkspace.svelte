@@ -1768,6 +1768,15 @@
     if (lowerHeader === "lower red curve") {
       return "efficiency_higher_end";
     }
+    if (lowerHeader === "red high") {
+      return "efficiency_higher_end";
+    }
+    if (lowerHeader === "red low") {
+      return "efficiency_lower_end";
+    }
+    if (lowerHeader === "grey curve") {
+      return "permissible_use";
+    }
     if (
       lowerHeader.startsWith("efficiency_") ||
       lowerHeader === "permissible_use" ||
