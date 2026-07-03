@@ -3659,15 +3659,22 @@ def render_fan_acoustic_table(product: Product) -> str:
     )
 
 
-def render_product_image_html(product: Product, image_index: int, css_class: str, alt_text: str) -> str:
+def _renderable_product_images(product: Product) -> list[tuple[int, ProductImage, Path]]:
     ordered_images = sorted(product.product_images, key=lambda image: (image.sort_order, image.id))
-    if image_index < 1 or len(ordered_images) < image_index:
+    renderable_images: list[tuple[int, ProductImage, Path]] = []
+    for index, image in enumerate(ordered_images, start=1):
+        image_path = product_image_path(product.id, image.file_name)
+        if image_path.is_file():
+            renderable_images.append((index, image, image_path))
+    return renderable_images
+
+
+def render_product_image_html(product: Product, image_index: int, css_class: str, alt_text: str) -> str:
+    renderable_images = _renderable_product_images(product)
+    if image_index < 1 or len(renderable_images) < image_index:
         return '<p class="placeholder">No product image available.</p>'
 
-    image = ordered_images[image_index - 1]
-    image_path = product_image_path(product.id, image.file_name)
-    if not image_path.is_file():
-        return '<p class="placeholder">No product image available.</p>'
+    _, image, image_path = renderable_images[image_index - 1]
 
     return (
         f'<img src="{image_path.as_uri()}" alt="{html.escape(alt_text)}" class="{css_class}" />'
@@ -3675,15 +3682,12 @@ def render_product_image_html(product: Product, image_index: int, css_class: str
 
 
 def render_image_gallery_html(product: Product, start_index: int = 1) -> str:
-    ordered_images = sorted(product.product_images, key=lambda image: (image.sort_order, image.id))
-    if not ordered_images:
+    renderable_images = _renderable_product_images(product)
+    if not renderable_images:
         return '<p class="placeholder">No product images available.</p>'
 
     items: list[str] = []
-    for index, image in enumerate(ordered_images[start_index - 1 :], start=start_index):
-        image_path = product_image_path(product.id, image.file_name)
-        if not image_path.is_file():
-            continue
+    for index, (_, image, image_path) in enumerate(renderable_images[start_index - 1 :], start=start_index):
         items.append(
             '<figure class="gallery-item">'
             f'<img src="{image_path.as_uri()}" alt="{html.escape(product.model or "")} image {index}" class="gallery-image" />'
@@ -3692,6 +3696,60 @@ def render_image_gallery_html(product: Product, start_index: int = 1) -> str:
         )
 
     return "".join(items) if items else '<p class="placeholder">No product images available.</p>'
+
+
+def render_bottom_image_card_html(product: Product, image_index: int, alt_text: str) -> str:
+    renderable_images = _renderable_product_images(product)
+    if image_index < 1 or len(renderable_images) < image_index:
+        return '<p class="placeholder">No product image available.</p>'
+
+    _, _, image_path = renderable_images[image_index - 1]
+    return (
+        '<figure class="bottom-image-card">'
+        f'<img src="{image_path.as_uri()}" alt="{html.escape(alt_text)}" class="bottom-image-card__img" />'
+        "</figure>"
+    )
+
+
+def render_lower_visual_panels_html(product: Product) -> tuple[str, str]:
+    renderable_images = _renderable_product_images(product)
+    image_count = len(renderable_images)
+    product_label = product.model or ""
+
+    if image_count == 2:
+        return (
+            "lower-grid--single",
+            (
+                '<section class="bottom-image-stage bottom-image-stage--single">'
+                f'{render_bottom_image_card_html(product, 2, f"{product_label} image 2")}'
+                "</section>"
+            ),
+        )
+
+    if image_count == 3:
+        return (
+            "lower-grid--pair",
+            (
+                '<section class="bottom-image-stage bottom-image-stage--pair">'
+                f'{render_bottom_image_card_html(product, 2, f"{product_label} image 2")}'
+                f'{render_bottom_image_card_html(product, 3, f"{product_label} image 3")}'
+                "</section>"
+            ),
+        )
+
+    return (
+        "lower-grid--split",
+        (
+            '<section class="drawing-panel">'
+            '<div class="drawing-panel__inner">'
+            f'{render_product_image_html(product, 2, "drawing-image", f"{product_label} detailed view")}'
+            "</div>"
+            "</section>"
+            '<section class="gallery-panel">'
+            f'<div class="gallery-grid">{render_image_gallery_html(product, start_index=3)}</div>'
+            "</section>"
+        ),
+    )
 
 
 def resolve_pdf_logo_uri(project_root: Path, template_path: Path) -> str:
@@ -3747,6 +3805,8 @@ def build_product_pdf_html(product: Product, variant: str) -> tuple[str, str]:
         if graph_path.is_file():
             graph_image_uri = graph_path.as_uri()
 
+    lower_grid_layout_class, lower_visual_panels_html = render_lower_visual_panels_html(product)
+
     replacements = {
         "{{product.model}}": html.escape(product.model or ""),
         "{{product.product_type_label}}": html.escape(product.product_type_label or ""),
@@ -3770,6 +3830,8 @@ def build_product_pdf_html(product: Product, variant: str) -> tuple[str, str]:
             css_class="drawing-image",
             alt_text=f"{product.model or ''} detailed view",
         ),
+        "{{product.lower_grid_layout_class}}": lower_grid_layout_class,
+        "{{product.lower_visual_panels_html}}": lower_visual_panels_html,
         "{{product.company_logo_url}}": logo_uri,
         "{{product.primary_product_image_url}}": primary_image_uri,
         "{{product.graph_image_url}}": graph_image_uri,

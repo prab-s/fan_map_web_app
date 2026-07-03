@@ -405,10 +405,23 @@ body.vt-sheet-body {
 /* Lower visual panels */
 .lower-grid {
   display: grid;
-  grid-template-columns: 1.08fr 0.92fr;
   gap: 5mm;
   margin-top: 3mm;
   align-items: start;
+}
+
+.lower-grid--split {
+  grid-template-columns: 1.08fr 0.92fr;
+}
+
+.lower-grid--single {
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+}
+
+.lower-grid--pair {
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: stretch;
 }
 
 .drawing-panel__inner {
@@ -426,6 +439,38 @@ body.vt-sheet-body {
   object-fit: contain;
   filter: grayscale(100%) contrast(0.9);
   opacity: 0.88;
+}
+
+.bottom-image-stage {
+  width: 100%;
+  display: grid;
+  gap: 2.5mm;
+}
+
+.bottom-image-stage--single {
+  max-width: 92mm;
+}
+
+.bottom-image-stage--pair {
+  width: 100%;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.bottom-image-card {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+}
+
+.bottom-image-card__img {
+  display: block;
+  width: 100%;
+  height: 50mm;
+  object-fit: contain;
+  border: 0.3mm solid #a9bedf;
+  background: rgba(255, 255, 255, 0.55);
 }
 
 /* Gallery and footer */

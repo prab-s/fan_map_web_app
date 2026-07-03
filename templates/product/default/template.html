@@ -55,16 +55,8 @@
       </div>
     </section>
 
-    <section class="lower-grid">
-      <section class="drawing-panel">
-        <div class="drawing-panel__inner">
-          {{product.secondary_product_image_html}}
-        </div>
-      </section>
-
-      <section class="gallery-panel">
-        <div class="gallery-grid">{{product.image_gallery_from_third}}</div>
-      </section>
+    <section class="lower-grid {{product.lower_grid_layout_class}}">
+      {{product.lower_visual_panels_html}}
     </section>
 
     <footer class="footer-area">

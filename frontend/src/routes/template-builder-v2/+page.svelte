@@ -275,6 +275,24 @@
           <img src="${createPreviewPlaceholder('Gallery image preview')}" alt="Gallery image preview" />
         </div>
       `,
+      '{{product.lower_grid_layout_class}}': 'lower-grid--split',
+      '{{product.lower_visual_panels_html}}': `
+        <section class="drawing-panel">
+          <div class="drawing-panel__inner">
+            <img src="${createPreviewPlaceholder('Secondary product image preview')}" alt="Secondary product image preview" class="drawing-image" />
+          </div>
+        </section>
+        <section class="gallery-panel">
+          <div class="gallery-grid">
+            <figure class="gallery-item">
+              <img src="${createPreviewPlaceholder('Gallery image preview')}" alt="Gallery image preview" class="gallery-image" />
+            </figure>
+            <figure class="gallery-item">
+              <img src="${createPreviewPlaceholder('Gallery image preview')}" alt="Gallery image preview" class="gallery-image" />
+            </figure>
+          </div>
+        </section>
+      `,
       '{{product.graph_image_tag}}': `<img src="${createPreviewPlaceholder('Product graph preview')}" alt="Product graph preview" />`,
       '{{series.name}}': previewSeriesNames[0] || 'Sample Series',
       '{{series.description1_html}}': '<p>Sample series description shown in the editor preview.</p>',
