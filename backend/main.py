@@ -3067,22 +3067,35 @@ def render_pdf_from_html(html_content: str, output_path: Path, stylesheet_text: 
         if stylesheet_text is not None:
             (temp_dir / "template.css").write_text(stylesheet_text, encoding="utf-8")
 
-        result = subprocess.run(
-            [
-                browser_binary,
-                "--headless",
-                "--disable-gpu",
-                "--no-sandbox",
-                "--allow-file-access-from-files",
-                "--print-to-pdf-no-header",
-                f"--print-to-pdf={output_path}",
-                html_path.as_uri(),
-            ],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0 or not output_path.is_file():
-            raise RuntimeError((result.stderr or result.stdout or "Chromium failed to render the PDF.").strip())
+        last_result: subprocess.CompletedProcess[str] | None = None
+        for headless_flag in ("--headless", "--headless=new"):
+            if output_path.exists():
+                output_path.unlink()
+            result = subprocess.run(
+                [
+                    browser_binary,
+                    headless_flag,
+                    "--disable-gpu",
+                    "--no-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--allow-file-access-from-files",
+                    "--print-to-pdf-no-header",
+                    f"--print-to-pdf={output_path}",
+                    html_path.as_uri(),
+                ],
+                capture_output=True,
+                text=True,
+            )
+            last_result = result
+            if output_path.is_file() and output_path.stat().st_size > 0:
+                return
+
+        if last_result is None:
+            raise RuntimeError("Chromium failed to render the PDF.")
+        stderr = (last_result.stderr or "").strip()
+        stdout = (last_result.stdout or "").strip()
+        details = stderr or stdout or f"Chromium failed to render the PDF (exit code {last_result.returncode})."
+        raise RuntimeError(details)
 
 
 def merge_pdf_files(source_paths: list[Path], output_path: Path) -> None:
@@ -4295,6 +4308,44 @@ def _build_series_cover_background_image_path(series: Series, temp_dir: Path) ->
         return None
 
 
+def _build_series_cover_spread_background_image_path(series: Series, temp_dir: Path) -> Path | None:
+    output_path = temp_dir / f"series_{series_slug(series)}_cover_background_spread.png"
+    if output_path.is_file():
+        return output_path
+
+    ordered_images = sorted(series.series_images or [], key=lambda image: (image.sort_order, image.id))
+    if not ordered_images:
+        return None
+
+    image = ordered_images[0]
+    image_path = series_image_path(series.id, image.file_name)
+    if not image_path.is_file():
+        return None
+
+    try:
+        with Image.open(image_path) as source:
+            source = source.convert("RGB")
+            fitted = ImageOps.fit(
+                source,
+                (SERIES_COVER_PAGE_WIDTH_PX * 2, SERIES_COVER_PAGE_HEIGHT_PX),
+                method=getattr(getattr(Image, "Resampling", Image), "LANCZOS"),
+            )
+            fitted = ImageOps.invert(ImageOps.autocontrast(fitted.convert("L"))).convert("RGBA")
+            fitted = fitted.filter(ImageFilter.GaussianBlur(radius=1.0))
+            fitted.putalpha(SERIES_COVER_BACKGROUND_OPACITY)
+
+            canvas_image = Image.new("RGBA", (SERIES_COVER_PAGE_WIDTH_PX * 2, SERIES_COVER_PAGE_HEIGHT_PX), (18, 4, 8, 255))
+            canvas_image.alpha_composite(fitted)
+
+            red_wash = Image.new("RGBA", (SERIES_COVER_PAGE_WIDTH_PX * 2, SERIES_COVER_PAGE_HEIGHT_PX), (92, 10, 22, 120))
+            canvas_image = Image.alpha_composite(canvas_image, red_wash)
+
+            canvas_image.save(output_path, format="PNG")
+            return output_path
+    except Exception:
+        return None
+
+
 def _hex_color_to_rgb(hex_color: str) -> tuple[int, int, int]:
     value = (hex_color or "").strip().lstrip("#")
     if len(value) == 3:
@@ -4309,12 +4360,11 @@ def _hex_color_to_rgb(hex_color: str) -> tuple[int, int, int]:
 
 def _build_series_cover_page_image_path(series: Series, image_index: int, temp_dir: Path, include_title: bool) -> Path | None:
     page_role = "left" if include_title else "right"
-    output_path = temp_dir / f"series_{series_slug(series)}_cover_{page_role}_{image_index}.png"
+    output_path = temp_dir / f"series_{series_slug(series)}_cover_{page_role}_{image_index}_spread.png"
     if output_path.is_file():
         return output_path
 
-    outline_path = _build_series_outline_image_path(series, image_index, temp_dir)
-    background_path = _build_series_cover_background_image_path(series, temp_dir)
+    background_path = _build_series_cover_spread_background_image_path(series, temp_dir)
     title_text = series.name or ""
 
     try:
@@ -4322,8 +4372,18 @@ def _build_series_cover_page_image_path(series: Series, image_index: int, temp_d
             with Image.open(background_path) as background_image:
                 canvas_image = background_image.convert("RGBA").copy()
         else:
-            canvas_image = _series_cover_background((SERIES_COVER_PAGE_WIDTH_PX, SERIES_COVER_PAGE_HEIGHT_PX))
-        draw = ImageDraw.Draw(canvas_image)
+            canvas_image = _series_cover_background((SERIES_COVER_PAGE_WIDTH_PX * 2, SERIES_COVER_PAGE_HEIGHT_PX))
+
+        crop_left = 0 if include_title else SERIES_COVER_PAGE_WIDTH_PX
+        page_image = canvas_image.crop(
+            (
+                crop_left,
+                0,
+                crop_left + SERIES_COVER_PAGE_WIDTH_PX,
+                SERIES_COVER_PAGE_HEIGHT_PX,
+            )
+        )
+        draw = ImageDraw.Draw(page_image)
 
         if include_title:
             title_font = _fit_cover_text_font(draw, title_text, int(SERIES_COVER_PAGE_WIDTH_PX * 0.78), 132, 68) if title_text else _load_series_cover_font(112)
@@ -4352,35 +4412,7 @@ def _build_series_cover_page_image_path(series: Series, image_index: int, temp_d
                 draw.text((title_x + 2, title_y + 2), title_text, font=title_font, fill=shadow_fill, spacing=0, align="top")
                 draw.text((title_x, title_y), title_text, font=title_font, fill=(255, 255, 255, 255), spacing=0, align="top")
 
-        image_box = (
-            int(SERIES_COVER_PAGE_WIDTH_PX * 0.12),
-            int(SERIES_COVER_PAGE_HEIGHT_PX * (0.60 if include_title else 0.18)),
-            int(SERIES_COVER_PAGE_WIDTH_PX * 0.88),
-            int(SERIES_COVER_PAGE_HEIGHT_PX * 0.95),
-        )
-        box_width = max(1, image_box[2] - image_box[0])
-        box_height = max(1, image_box[3] - image_box[1])
-        if outline_path is not None and outline_path.is_file():
-            with Image.open(outline_path) as source:
-                fitted = ImageOps.contain(source.convert("RGBA"), (box_width, box_height))
-                fitted_x = image_box[0] + ((box_width - fitted.width) // 2)
-                fitted_y = image_box[1] + ((box_height - fitted.height) // 2)
-                shadow = Image.new("RGBA", fitted.size, (0, 0, 0, 0))
-                shadow.putalpha(fitted.getchannel("A"))
-                shadow = shadow.filter(ImageFilter.GaussianBlur(radius=10))
-                canvas_image.alpha_composite(shadow, (fitted_x + 10, fitted_y + 12))
-                canvas_image.alpha_composite(fitted, (fitted_x, fitted_y))
-        else:
-            fallback_draw = ImageDraw.Draw(canvas_image)
-            fallback_draw.rounded_rectangle(
-                image_box,
-                radius=30,
-                outline=(255, 255, 255, 48),
-                width=4,
-                fill=(255, 255, 255, 12),
-            )
-
-        canvas_image.save(output_path, format="PNG")
+        page_image.save(output_path, format="PNG")
         return output_path
     except Exception:
         return None

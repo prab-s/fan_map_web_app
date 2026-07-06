@@ -21,9 +21,13 @@ ENV TZ=Pacific/Auckland
 
 WORKDIR /app
 
+ARG CHROMIUM_VERSION=147.0.7727.137-1~deb12u1
+
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        chromium \
+        chromium=${CHROMIUM_VERSION} \
+        chromium-common=${CHROMIUM_VERSION} \
+        chromium-sandbox=${CHROMIUM_VERSION} \
         fontconfig \
         fonts-dejavu-core \
         mariadb-client \
