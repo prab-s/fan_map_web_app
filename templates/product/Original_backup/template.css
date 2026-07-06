@@ -5,6 +5,8 @@
   --line: #c7d3e6;
   --soft-blue: #d7e0ef;
   --deep-blue: #233f74;
+  --brand-red: #cc1024;
+  --brand-red-deep: #8f0f1d;
   --white: #ffffff;
 }
 
@@ -54,14 +56,14 @@ body.vt-sheet-body {
 }
 
 .topbar__title {
-  background: var(--soft-blue);
-  color: #111111;
+  background: linear-gradient(180deg, var(--brand-red), var(--brand-red-deep));
+  color: var(--white);
   font-size: 7.3mm;
 }
 
 .topbar__model {
   justify-content: flex-end;
-  background: var(--deep-blue);
+  background: linear-gradient(180deg, var(--brand-red), var(--brand-red-deep));
   color: var(--white);
   font-size: 7.3mm;
 }

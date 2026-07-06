@@ -150,14 +150,14 @@ body.series-template {
 }
 
 .topbar__title {
-  background: var(--series-accent);
+  background: linear-gradient(180deg, var(--brand-red), var(--brand-red-deep));
   color: var(--white);
   font-size: 7.3mm;
 }
 
 .topbar__model {
   justify-content: flex-end;
-  background: linear-gradient(135deg, var(--brand-red), var(--brand-red-deep));
+  background: linear-gradient(180deg, var(--brand-red), var(--brand-red-deep));
   color: var(--white);
   font-size: 7.3mm;
 }

@@ -5658,7 +5658,7 @@ def product_matches_parameter_filters(product: Product, parameter_filters: list[
                 filter_key[1],
                 graph_matches,
             )
-            if not any(graph_matches):
+            if not all(graph_matches):
                 trace_product_filter(
                     "product filter trace result: product=%s graph_filter=%s matched=False reason=graph_value_out_of_window",
                     product_label,

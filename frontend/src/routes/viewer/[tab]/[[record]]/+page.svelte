@@ -1519,6 +1519,23 @@
 
         <div class="card shadow-sm">
           <div class="card-body">
+            <h3 class="h5">Series Images</h3>
+            {#if (selectedSeriesRecord.series_images?.length ?? 0) > 0}
+              <div class="image-grid mt-3">
+                {#each selectedSeriesRecord.series_images as image}
+                  <figure class="image-card">
+                    <img src={image.url} alt={selectedSeriesRecord.name} />
+                  </figure>
+                {/each}
+              </div>
+            {:else}
+              <p class="text-body-secondary mb-0">No series images yet.</p>
+            {/if}
+          </div>
+        </div>
+
+        <div class="card shadow-sm">
+          <div class="card-body">
             <h3 class="h5">Series PDFs</h3>
             {#if selectedSeriesRecord.series_printed_pdf_url || selectedSeriesRecord.series_online_pdf_url}
               <div class="vstack gap-3 mt-3">

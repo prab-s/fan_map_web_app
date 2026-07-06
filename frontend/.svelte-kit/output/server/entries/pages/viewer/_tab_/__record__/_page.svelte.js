@@ -883,7 +883,21 @@ function _page($$renderer, $$props) {
         } else {
           $$renderer2.push("<!--[-1-->");
         }
-        $$renderer2.push(`<!--]--> <div class="row g-3"><div class="col-12 col-lg-6"><h4 class="h6">Description1</h4> <div class="viewer-html svelte-36khdd">${html(selectedSeriesRecord.description1_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div> <div class="col-12 col-lg-6"><h4 class="h6">Description2</h4> <div class="viewer-html svelte-36khdd">${html(selectedSeriesRecord.description2_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div> <div class="col-12 col-lg-6"><h4 class="h6">Description3</h4> <div class="viewer-html svelte-36khdd">${html(selectedSeriesRecord.description3_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div> <div class="col-12 col-lg-6"><h4 class="h6">Description4</h4> <div class="viewer-html svelte-36khdd">${html(selectedSeriesRecord.description4_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div></div> <div class="card shadow-sm"><div class="card-body"><h3 class="h5">Series PDFs</h3> `);
+        $$renderer2.push(`<!--]--> <div class="row g-3"><div class="col-12 col-lg-6"><h4 class="h6">Description1</h4> <div class="viewer-html svelte-36khdd">${html(selectedSeriesRecord.description1_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div> <div class="col-12 col-lg-6"><h4 class="h6">Description2</h4> <div class="viewer-html svelte-36khdd">${html(selectedSeriesRecord.description2_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div> <div class="col-12 col-lg-6"><h4 class="h6">Description3</h4> <div class="viewer-html svelte-36khdd">${html(selectedSeriesRecord.description3_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div> <div class="col-12 col-lg-6"><h4 class="h6">Description4</h4> <div class="viewer-html svelte-36khdd">${html(selectedSeriesRecord.description4_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div></div> <div class="card shadow-sm"><div class="card-body"><h3 class="h5">Series Images</h3> `);
+        if ((selectedSeriesRecord.series_images?.length ?? 0) > 0) {
+          $$renderer2.push("<!--[0-->");
+          $$renderer2.push(`<div class="image-grid mt-3 svelte-36khdd"><!--[-->`);
+          const each_array_14 = ensure_array_like(selectedSeriesRecord.series_images);
+          for (let $$index_14 = 0, $$length = each_array_14.length; $$index_14 < $$length; $$index_14++) {
+            let image = each_array_14[$$index_14];
+            $$renderer2.push(`<figure class="image-card svelte-36khdd"><img${attr("src", image.url)}${attr("alt", selectedSeriesRecord.name)} class="svelte-36khdd"/></figure>`);
+          }
+          $$renderer2.push(`<!--]--></div>`);
+        } else {
+          $$renderer2.push("<!--[-1-->");
+          $$renderer2.push(`<p class="text-body-secondary mb-0">No series images yet.</p>`);
+        }
+        $$renderer2.push(`<!--]--></div></div> <div class="card shadow-sm"><div class="card-body"><h3 class="h5">Series PDFs</h3> `);
         if (selectedSeriesRecord.series_printed_pdf_url || selectedSeriesRecord.series_online_pdf_url) {
           $$renderer2.push("<!--[0-->");
           $$renderer2.push(`<div class="vstack gap-3 mt-3">`);

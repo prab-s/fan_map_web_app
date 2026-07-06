@@ -21,6 +21,8 @@
   --catalogue-footer-bg: #111827;
   --catalogue-footer-bg-2: #1c2433;
 
+  --catalogue-brand-red: #cc1024;
+  --catalogue-brand-red-deep: #8f0f1d;
   --catalogue-accent: #b91c1c;
   --catalogue-accent-strong: #991b1b;
   --catalogue-accent-alt: #7f1d1d;
@@ -84,7 +86,7 @@ body {
 }
 
 .navbar {
-  background: linear-gradient(90deg, rgba(128, 0, 0, 0.49), rgba(128, 0, 0, 0.99));
+  background: linear-gradient(180deg, var(--catalogue-brand-red), var(--catalogue-brand-red-deep));
   backdrop-filter: blur(14px);
   border-bottom: 1px solid rgba(142, 154, 172, 0.18);
   box-shadow: 0 12px 24px rgba(2, 6, 23, 0.22);
@@ -127,16 +129,16 @@ body {
 
 .nav-finder-button.active,
 .nav-finder-button[aria-current="page"] {
-  background: linear-gradient(135deg, #1d4ed8, #1e40af);
-  border-color: rgba(147, 197, 253, 0.9);
-  box-shadow: 0 20px 42px rgba(30, 64, 175, 0.34), 0 8px 18px rgba(2, 6, 23, 0.14);
+  background: linear-gradient(180deg, var(--catalogue-brand-red), var(--catalogue-brand-red-deep));
+  border-color: rgba(255, 255, 255, 0.28);
+  box-shadow: 0 20px 42px rgba(128, 0, 0, 0.28), 0 8px 18px rgba(2, 6, 23, 0.14);
 }
 
 .nav-type-button.active,
 .nav-type-button[aria-current="page"] {
-  background: linear-gradient(135deg, rgba(22, 101, 52, 0.98), rgba(34, 197, 94, 0.98));
-  border-color: rgba(187, 247, 208, 0.95) !important;
-  box-shadow: 0 22px 46px rgba(21, 128, 61, 0.42), 0 10px 20px rgba(2, 6, 23, 0.14);
+  background: linear-gradient(180deg, var(--catalogue-brand-red), var(--catalogue-brand-red-deep));
+  border-color: rgba(255, 255, 255, 0.28) !important;
+  box-shadow: 0 22px 46px rgba(128, 0, 0, 0.3), 0 10px 20px rgba(2, 6, 23, 0.14);
 }
 
 .card {

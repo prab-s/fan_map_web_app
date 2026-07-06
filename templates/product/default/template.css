@@ -3,9 +3,8 @@
   --black: #000000;
   --muted: #4d4d4d;
   --line: #c7d3e6;
-  /* --mid-blue: rgba(208, 225, 253, 0.8); */
-  --mid-red: rgb(198, 100, 100);
-  --deep-red: rgb(116, 35, 35);
+  --brand-red: #cc1024;
+  --brand-red-deep: #8f0f1d;
   --white: #ffffff;
 }
 
@@ -59,12 +58,11 @@ body.vt-sheet-body {
 .topbar {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   min-height: 20mm;
   margin: -6mm -12mm 4mm;
   padding: 6mm 12mm 0mm;
-  background:
-    linear-gradient(rgba(138, 12, 20, 0.96), rgba(198, 28, 36, 0.96)),
-    linear-gradient(90deg, #5a0a0f, #f04c5b);
+  background: linear-gradient(180deg, var(--brand-red), var(--brand-red-deep));
   overflow: hidden;
 }
 
@@ -72,6 +70,7 @@ body.vt-sheet-body {
   display: flex;
   align-items: center;
   min-width: 0;
+  text-align: right;
   font-weight: 700;
   overflow: hidden;
   text-overflow: ellipsis;
