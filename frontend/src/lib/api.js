@@ -782,15 +782,13 @@ export async function runBulkImport(
   {
     dryRun = false,
     downsampleImportedCurves = true,
-    downsamplePointCount = 5,
-    scaleEfficiencyPermissibleAgainstHighestRpm = true
+    downsamplePointCount = 5
   } = {}
 ) {
   const sp = new URLSearchParams();
   if (dryRun) sp.set('dry_run', 'true');
   if (downsampleImportedCurves) sp.set('downsample_imported_curves', 'true');
   if (downsamplePointCount != null) sp.set('downsample_point_count', String(downsamplePointCount));
-  if (scaleEfficiencyPermissibleAgainstHighestRpm) sp.set('scale_efficiency_permissible_against_highest_rpm', 'true');
   const formData = new FormData();
   for (const file of files) {
     const relativeName = file?.webkitRelativePath || file?.name || 'upload.bin';
@@ -809,7 +807,6 @@ export async function runBulkWorkbookImport(
     dryRun = false,
     downsampleImportedCurves = true,
     downsamplePointCount = 5,
-    scaleEfficiencyPermissibleAgainstHighestRpm = true,
     manifestJson = null
   } = {}
 ) {
@@ -817,7 +814,6 @@ export async function runBulkWorkbookImport(
   if (dryRun) sp.set('dry_run', 'true');
   if (downsampleImportedCurves) sp.set('downsample_imported_curves', 'true');
   if (downsamplePointCount != null) sp.set('downsample_point_count', String(downsamplePointCount));
-  if (scaleEfficiencyPermissibleAgainstHighestRpm) sp.set('scale_efficiency_permissible_against_highest_rpm', 'true');
   const formData = new FormData();
   if (manifestJson) {
     formData.append('manifest_json', typeof manifestJson === 'string' ? manifestJson : JSON.stringify(manifestJson));

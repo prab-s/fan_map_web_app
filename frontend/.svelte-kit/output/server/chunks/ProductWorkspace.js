@@ -221,7 +221,6 @@ function ProductWorkspace($$renderer, $$props) {
     let graphCsvFileName = "";
     let graphCsvDownsampleImportedCurves = true;
     let graphCsvDownsamplePointCount = 5;
-    let graphCsvNormalizeEfficiencyOverlays = false;
     let graphCsvImportSource = { text: "", fileName: "", productId: null };
     let graphCsvImportSignature = "";
     let graphCsvPreview = null;
@@ -1006,7 +1005,7 @@ function ProductWorkspace($$renderer, $$props) {
         efficiencyPoints = imported.efficiencyPoints;
         syncFanAcousticTableWithRpmLines(rpmLines);
         graphCsvFileName = fileName;
-        graphCsvImportSignature = `${selectedProductId ?? ""}|${downsampleImportedCurves ? "1" : "0"}|${downsampleImportedCurves ? downsamplePointCount : "full"}|${graphCsvNormalizeEfficiencyOverlays ? "1" : "0"}`;
+        graphCsvImportSignature = `${selectedProductId ?? ""}|${downsampleImportedCurves ? "1" : "0"}|${downsampleImportedCurves ? downsamplePointCount : "full"}`;
         const validTargets = /* @__PURE__ */ new Set([
           ...rpmLines.map((line) => `rpm:${line.id}`),
           ...currentOverlayLineDefinitions().map((definition) => `efficiency:${definition.key}`)
@@ -1018,7 +1017,7 @@ function ProductWorkspace($$renderer, $$props) {
           rpmPointForm = { ...rpmPointForm, rpm_line_id: String(rpmLines[0].id) };
         }
         if (showSuccess) {
-          addSuccess(`${`Loaded graph CSV from ${fileName}`}${graphCsvNormalizeEfficiencyOverlays ? " and scaled the overlay columns line by line against the highest RPM line" : ""}${downsampleImportedCurves ? `, downsampled each imported curve to ${downsamplePointCount} representative point${downsamplePointCount === 1 ? "" : "s"}` : ""}. Review the tables and chart, then press Save Changes to commit it.`);
+          addSuccess(`${`Loaded graph CSV from ${fileName}`}${downsampleImportedCurves ? `, downsampled each imported curve to ${downsamplePointCount} representative point${downsamplePointCount === 1 ? "" : "s"}` : ""}. Review the tables and chart, then press Save Changes to commit it.`);
         }
       } catch (e) {
         graphCsvError = e.message;
@@ -1280,7 +1279,7 @@ function ProductWorkspace($$renderer, $$props) {
         for (const p of efficiencyPoints) {
           for (const definition of currentOverlayLineDefinitions()) {
             if (p[definition.key] == null) continue;
-            const overlayPixel = chartInstance.convertToPixel({ xAxisIndex: 0, yAxisIndex: 1 }, [p.airflow, p[definition.key]]);
+            const overlayPixel = chartInstance.convertToPixel({ xAxisIndex: 0, yAxisIndex: 0 }, [p.airflow, p[definition.key]]);
             const dx2 = overlayPixel[0] - x;
             const dy2 = overlayPixel[1] - y;
             const d2 = Math.hypot(dx2, dy2);
@@ -1344,7 +1343,7 @@ function ProductWorkspace($$renderer, $$props) {
         }
         if (chartAddTarget.startsWith("efficiency:")) {
           const lineKey = chartAddTarget.split(":")[1];
-          const [airflow, value] = chartInstance.convertFromPixel({ xAxisIndex: 0, yAxisIndex: 1 }, [x, y]);
+          const [airflow, value] = chartInstance.convertFromPixel({ xAxisIndex: 0, yAxisIndex: 0 }, [x, y]);
           efficiencyPoints = [
             ...efficiencyPoints,
             {
@@ -1419,7 +1418,7 @@ function ProductWorkspace($$renderer, $$props) {
         }
       }
     }
-    if (graphCsvImportSource.text && graphCsvImportSource.productId === selectedProductId && `${selectedProductId ?? ""}|${"1"}|${String(graphCsvDownsamplePointCount)}|${"0"}` !== graphCsvImportSignature) {
+    if (graphCsvImportSource.text && graphCsvImportSource.productId === selectedProductId && `${selectedProductId ?? ""}|${"1"}|${String(graphCsvDownsamplePointCount)}` !== graphCsvImportSignature) {
       applyImportedGraphCsvSource({
         text: graphCsvImportSource.text,
         fileName: graphCsvImportSource.fileName || "graph-data.csv",
@@ -2444,15 +2443,7 @@ function ProductWorkspace($$renderer, $$props) {
               } else {
                 $$renderer4.push("<!--[-1-->");
               }
-              $$renderer4.push(`<!--]--></p> <label class="form-label" for="graph-csv-file">Import Graph CSV file</label> <div class="d-flex flex-wrap align-items-end gap-3 mb-2"><div class="form-check form-switch mb-0"><input class="form-check-input" id="graph-csv-downsample-enabled" type="checkbox"${attr("checked", graphCsvDownsampleImportedCurves, true)}/> <label class="form-check-label" for="graph-csv-downsample-enabled">Downsample imported curves</label></div> <div><label class="form-label form-label-sm mb-1" for="graph-csv-downsample-count">Points per curve</label> <input class="form-control form-control-sm" id="graph-csv-downsample-count" type="text" inputmode="numeric" pattern="[0-9]*" min="1" step="1"${attr("value", graphCsvDownsamplePointCount)}${attr("disabled", !graphCsvDownsampleImportedCurves, true)} style="width: 7rem;"/></div></div> `);
-              if (productSupportsGraphOverlays()) {
-                $$renderer4.push("<!--[0-->");
-                $$renderer4.push(`<div class="form-check form-switch mb-2"><input class="form-check-input" id="graph-csv-normalize-overlays" type="checkbox"${attr("checked", graphCsvNormalizeEfficiencyOverlays, true)}/> <label class="form-check-label" for="graph-csv-normalize-overlays">Scale imported efficiency/permissible lines against
-                            the highest RPM line</label></div>`);
-              } else {
-                $$renderer4.push("<!--[-1-->");
-              }
-              $$renderer4.push(`<!--]--> <p class="text-body-secondary small mb-2">`);
+              $$renderer4.push(`<!--]--></p> <label class="form-label" for="graph-csv-file">Import Graph CSV file</label> <div class="d-flex flex-wrap align-items-end gap-3 mb-2"><div class="form-check form-switch mb-0"><input class="form-check-input" id="graph-csv-downsample-enabled" type="checkbox"${attr("checked", graphCsvDownsampleImportedCurves, true)}/> <label class="form-check-label" for="graph-csv-downsample-enabled">Downsample imported curves</label></div> <div><label class="form-label form-label-sm mb-1" for="graph-csv-downsample-count">Points per curve</label> <input class="form-control form-control-sm" id="graph-csv-downsample-count" type="text" inputmode="numeric" pattern="[0-9]*" min="1" step="1"${attr("value", graphCsvDownsamplePointCount)}${attr("disabled", !graphCsvDownsampleImportedCurves, true)} style="width: 7rem;"/></div></div> <p class="text-body-secondary small mb-2">`);
               {
                 $$renderer4.push("<!--[0-->");
                 $$renderer4.push(`Each imported curve is resampled across its valid axis
@@ -2462,9 +2453,8 @@ function ProductWorkspace($$renderer, $$props) {
               $$renderer4.push(`<!--]--></p> `);
               if (productSupportsGraphOverlays()) {
                 $$renderer4.push("<!--[0-->");
-                $$renderer4.push(`<p class="text-body-secondary small mb-2">When scaling is on, each overlay line is scaled
-                          independently from its imported values using the
-                          interpolated highest RPM line.</p>`);
+                $$renderer4.push(`<p class="text-body-secondary small mb-2">Imported efficiency and permissible overlay points
+                          stay in their uploaded pressure units.</p>`);
               } else {
                 $$renderer4.push("<!--[-1-->");
               }

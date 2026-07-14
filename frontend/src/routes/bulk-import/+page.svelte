@@ -24,8 +24,6 @@
   let workbookMappings = [];
   let downsampleImportedCurves = true;
   let downsamplePointCount = 5;
-  let scaleEfficiencyPermissibleAgainstHighestRpm = true;
-  let overlayScaleTuningFactor = 0.99;
   let productTypes = [];
   let selectedProductTypeKey = DEFAULT_PRODUCT_TYPE_KEY;
   let selectedWorkbookSeriesId = '';
@@ -305,11 +303,6 @@
     const defaults = {
       downsample_imported_curves: downsampleImportedCurves,
       downsample_point_count: Number(downsamplePointCount) || 5,
-      scale_efficiency_permissible_against_highest_rpm: scaleEfficiencyPermissibleAgainstHighestRpm,
-      overlay_scale_tuning_factor:
-        Number.isFinite(Number(overlayScaleTuningFactor)) && Number(overlayScaleTuningFactor) > 0
-          ? Number(overlayScaleTuningFactor)
-          : 1,
       product_type_key: DEFAULT_PRODUCT_TYPE_KEY
     };
     if (defaultSeries) {
@@ -347,7 +340,6 @@
       dryRun: true,
       downsampleImportedCurves,
       downsamplePointCount,
-      scaleEfficiencyPermissibleAgainstHighestRpm,
       manifestJson: buildWorkbookManifestJson()
     });
     workbookReport = report;
@@ -442,7 +434,6 @@
         dryRun,
         downsampleImportedCurves,
         downsamplePointCount,
-        scaleEfficiencyPermissibleAgainstHighestRpm,
         manifestJson: buildWorkbookManifestJson()
       });
       workbookReport = report;
@@ -650,19 +641,6 @@
                     <label class="form-check-label" for="bulk-downsample">Downsample imported curves</label>
                   </div>
                 </div>
-                <div class="col-12 col-lg-6">
-                  <div class="form-check form-switch">
-                    <input
-                      class="form-check-input"
-                      id="bulk-scale-overlay"
-                      type="checkbox"
-                      bind:checked={scaleEfficiencyPermissibleAgainstHighestRpm}
-                    />
-                    <label class="form-check-label" for="bulk-scale-overlay">
-                      Scale imported efficiency/permissible lines against the highest RPM line
-                      </label>
-                  </div>
-                </div>
               </div>
               <div class="row g-3 mt-2 text-start">
                 <div class="col-12 col-lg-4">
@@ -677,20 +655,7 @@
                     disabled={!downsampleImportedCurves}
                   />
                 </div>
-                <div class="col-12 col-lg-4">
-                  <label class="form-label form-label-sm" for="bulk-overlay-tuning">Overlay scale tweak</label>
-                  <input
-                    id="bulk-overlay-tuning"
-                    class="form-control"
-                    type="number"
-                    min="0.5"
-                    max="1.5"
-                    step="0.01"
-                    bind:value={overlayScaleTuningFactor}
-                  />
-                  <div class="form-text">Use values below 1.00 to pull the imported efficiency lines down slightly.</div>
-                </div>
-                <div class="col-12 col-lg-4">
+                <div class="col-12 col-lg-8">
                   <label class="form-label form-label-sm" for="bulk-series-default">Default series for new products</label>
                   <select id="bulk-series-default" class="form-select" bind:value={selectedWorkbookSeriesId} on:change={handleWorkbookSeriesChange}>
                     <option value="">No default series</option>

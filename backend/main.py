@@ -1577,50 +1577,6 @@ def bulk_import_find_best_overlay_scale_factor(terminal_point: dict, rpm_profile
     return max(0.01, best_scale_factor * 1.01)
 
 
-def bulk_import_apply_overlay_scaling(
-    points: list[dict],
-    rpm_lines: list[dict],
-    rpm_points: list[dict],
-    *,
-    overlay_scale_tuning_factor: float = 1.0,
-):
-    high_res = bulk_import_build_high_resolution_highest_rpm_line(rpm_lines, rpm_points, 1)
-    if not high_res:
-        return [dict(point) for point in (points or [])]
-    high_res_profile = bulk_import_build_highest_rpm_profile(high_res)
-
-    next_points = [dict(point) for point in (points or [])]
-    overlay_keys = ["efficiency_centre", "efficiency_lower_end", "efficiency_higher_end", "permissible_use"]
-    tuning_factor = bulk_import_parse_number(overlay_scale_tuning_factor)
-    if tuning_factor is None or tuning_factor <= 0:
-        tuning_factor = 1.0
-    for overlay_key in overlay_keys:
-        overlay_line_points = sorted(
-            [
-                {"airflow": point.get("airflow"), "value": point.get(overlay_key), "point": point}
-                for point in next_points
-                if point.get("airflow") not in {None, ""} and point.get(overlay_key) not in {None, ""}
-            ],
-            key=lambda item: bulk_import_parse_number(item["airflow"]) or 0,
-        )
-        overlay_line_points = [
-            item
-            for item in overlay_line_points
-            if bulk_import_parse_number(item["airflow"]) is not None and bulk_import_parse_number(item["value"]) is not None
-        ]
-        if not overlay_line_points:
-            continue
-        terminal = overlay_line_points[-1]
-        scale_factor = bulk_import_find_best_overlay_scale_factor(terminal, high_res_profile)
-        if not scale_factor:
-            continue
-        scale_factor *= tuning_factor
-        for item in overlay_line_points:
-            item["point"]["airflow"] = round(bulk_import_parse_number(item["airflow"]) * scale_factor)
-            item["point"][overlay_key] = round(bulk_import_parse_number(item["value"]) * scale_factor)
-    return next_points
-
-
 def bulk_import_is_graph_sheet(rows: list[dict]) -> bool:
     if not rows:
         return False
@@ -1693,8 +1649,6 @@ def bulk_import_build_graph_state(
     rows: list[dict],
     downsample_imported_curves: bool = True,
     downsample_point_count: int = 5,
-    scale_overlay_lines: bool = True,
-    overlay_scale_tuning_factor: float = 1.0,
 ):
     if not rows:
         return {"rpmLines": [], "rpmPoints": [], "efficiencyPoints": []}
@@ -1797,14 +1751,6 @@ def bulk_import_build_graph_state(
         if downsample_imported_curves
         else next_efficiency_points
     )
-
-    if scale_overlay_lines:
-        adjusted_efficiency_points = bulk_import_apply_overlay_scaling(
-            adjusted_efficiency_points,
-            rpm_lines,
-            adjusted_rpm_points,
-            overlay_scale_tuning_factor=overlay_scale_tuning_factor,
-        )
 
     return {
         "rpmLines": rpm_lines,
@@ -1934,15 +1880,12 @@ def bulk_import_process_payloads(
     dry_run: bool,
     default_downsample_imported_curves: bool = True,
     default_downsample_point_count: int = 5,
-    default_scale_overlay_lines: bool = True,
 ) -> BulkImportResponse:
     report = BulkImportResponse(dry_run=dry_run)
     manifest = tables.get("__manifest__") if isinstance(tables.get("__manifest__"), dict) else {}
     defaults = dict(manifest.get("defaults") or {}) if isinstance(manifest, dict) else {}
     defaults.setdefault("downsample_imported_curves", default_downsample_imported_curves)
     defaults.setdefault("downsample_point_count", default_downsample_point_count)
-    defaults.setdefault("scale_efficiency_permissible_against_highest_rpm", default_scale_overlay_lines)
-    defaults.setdefault("overlay_scale_tuning_factor", 1.0)
     default_series_id = parse_int_or_none(defaults.get("series_id")) if "series_id" in defaults else None
     default_series_name = str(defaults.get("series_name") or "").strip() or None
     report.tables = [
@@ -2019,25 +1962,11 @@ def bulk_import_process_payloads(
         downsample_point_count = parse_int_or_none(
             sheet_config.get("downsample_point_count", defaults.get("downsample_point_count", 5))
         ) or 5
-        scale_overlays = bool(
-            sheet_config.get(
-                "scale_efficiency_permissible_against_highest_rpm",
-                defaults.get("scale_efficiency_permissible_against_highest_rpm", True),
-            )
-        )
-        overlay_scale_tuning_factor = bulk_import_parse_number(
-            sheet_config.get("overlay_scale_tuning_factor", defaults.get("overlay_scale_tuning_factor", 1.0))
-        )
-        if overlay_scale_tuning_factor is None or overlay_scale_tuning_factor <= 0:
-            overlay_scale_tuning_factor = 1.0
-
         try:
             graph_state = bulk_import_build_graph_state(
                 rows,
                 downsample_imported_curves=downsample_imported_curves,
                 downsample_point_count=downsample_point_count,
-                scale_overlay_lines=scale_overlays,
-                overlay_scale_tuning_factor=overlay_scale_tuning_factor,
             )
             graph_rpm_lines = bulk_import_attach_rpm_points_to_lines(graph_state["rpmLines"], graph_state["rpmPoints"])
             for entry in report.sheet_normalizations:
@@ -2362,7 +2291,6 @@ async def bulk_import_assets(
     dry_run: bool = False,
     downsample_imported_curves: bool = True,
     downsample_point_count: int = 5,
-    scale_efficiency_permissible_against_highest_rpm: bool = True,
     manifest_json: str | None = Form(None),
     files: list[UploadFile] = File(...),
     db: Session = Depends(get_db),
@@ -2387,7 +2315,6 @@ async def bulk_import_assets(
             dry_run,
             default_downsample_imported_curves=downsample_imported_curves,
             default_downsample_point_count=downsample_point_count,
-            default_scale_overlay_lines=scale_efficiency_permissible_against_highest_rpm,
         )
     except HTTPException:
         raise

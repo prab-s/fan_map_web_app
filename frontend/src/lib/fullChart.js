@@ -2002,11 +2002,11 @@ function buildDecoratedOverlayLineSeries({
 // ---------------------------------------------------------------------------
 // Overlay line series
 //
-// These are the efficiency / permissible lines on the secondary axis.
+// These are the efficiency / permissible lines on the main pressure axis.
 // ---------------------------------------------------------------------------
 
 // Builds the efficiency and permissible-use line series that sit on the
-// secondary axis.
+// main pressure axis.
 function buildEfficiencyAndPermissibleSeries(
   points,
   chartTheme,
@@ -2043,7 +2043,7 @@ function buildEfficiencyAndPermissibleSeries(
         color,
         lineWidth: definition.lineWidth,
         smooth,
-        yAxisIndex: 1,
+        yAxisIndex: 0,
         z: 999
       })
     );
@@ -2060,7 +2060,7 @@ function buildEfficiencyAndPermissibleSeries(
         type: 'custom',
         coordinateSystem: 'cartesian2d',
         xAxisIndex: 0,
-        yAxisIndex: 1,
+        yAxisIndex: 0,
         silent: true,
         tooltip: { show: false },
         emphasis: { disabled: true },
@@ -2124,7 +2124,7 @@ function buildEfficiencyAndPermissibleSeries(
         scaleSize: 1.6,
         itemStyle: { borderColor: '#000000', borderWidth: 2 }
       },
-      yAxisIndex: 1,
+      yAxisIndex: 0,
       z: 1000
     });
   }
@@ -2178,7 +2178,6 @@ export function buildFullChartOption({
     resolvedGraphConfig.graph_y_axis_label,
     resolvedGraphConfig.graph_y_axis_unit
   );
-  const showOverlayAxis = false;
   const flowValues = [
     ...rpmPoints.map((point) => Number(point.airflow)),
     ...efficiencyPoints.map((point) => Number(point.airflow))
@@ -2200,7 +2199,7 @@ export function buildFullChartOption({
   const pressureAxisTickInterval = getNiceAxisTickInterval(pressureAxisMax);
   const permissibleBoundaryData = efficiencyPoints
     .filter((point) => point.permissible_use != null)
-    .map((point) => [point.airflow ?? 0, (Number(point.permissible_use) / 100) * pressureAxisMax])
+    .map((point) => [point.airflow ?? 0, Number(point.permissible_use)])
     .filter((point) => !Number.isNaN(point[0]) && !Number.isNaN(point[1]))
     .sort((a, b) => a[0] - b[0]);
   const bandGraphBackgroundColor =
@@ -2292,52 +2291,27 @@ export function buildFullChartOption({
       max: flowAxisMax,
       splitLine: { lineStyle: { color: chartTheme.grid } }
     },
-    yAxis: [
-      {
-        type: 'value',
-        name: yAxisName,
-        nameTextStyle: {
-          color: chartTheme.text,
-          fontFamily: chartFontFamily,
-          fontSize: AXIS_NAME_FONT_SIZE,
-          fontWeight: AXIS_NAME_FONT_WEIGHT
-        },
-        axisLabel: {
-          color: chartTheme.text,
-          fontFamily: chartFontFamily,
-          fontSize: AXIS_LABEL_FONT_SIZE,
-          fontWeight: AXIS_LABEL_FONT_WEIGHT,
-          show: true,
-          formatter: buildAxisLabelFormatter(pressureAxisMax, pressureAxisTickInterval)
-        },
-        min: 0,
-        max: pressureAxisMax,
-        splitLine: { lineStyle: { color: chartTheme.grid } }
+    yAxis: {
+      type: 'value',
+      name: yAxisName,
+      nameTextStyle: {
+        color: chartTheme.text,
+        fontFamily: chartFontFamily,
+        fontSize: AXIS_NAME_FONT_SIZE,
+        fontWeight: AXIS_NAME_FONT_WEIGHT
       },
-      {
-        type: 'value',
-        show: false,
-        name: '',
-        nameTextStyle: {
-          color: chartTheme.text,
-          fontFamily: chartFontFamily,
-          fontSize: AXIS_NAME_FONT_SIZE,
-          fontWeight: AXIS_NAME_FONT_WEIGHT
-        },
-        axisLabel: {
-          color: chartTheme.text,
-          fontFamily: chartFontFamily,
-          fontSize: AXIS_LABEL_FONT_SIZE,
-          fontWeight: AXIS_LABEL_FONT_WEIGHT,
-          show: false
-        },
-        axisLine: { show: false },
-        axisTick: { show: false },
-        splitLine: { show: false },
-        min: 0,
-        max: 100
-      }
-    ],
+      axisLabel: {
+        color: chartTheme.text,
+        fontFamily: chartFontFamily,
+        fontSize: AXIS_LABEL_FONT_SIZE,
+        fontWeight: AXIS_LABEL_FONT_WEIGHT,
+        show: true,
+        formatter: buildAxisLabelFormatter(pressureAxisMax, pressureAxisTickInterval)
+      },
+      min: 0,
+      max: pressureAxisMax,
+      splitLine: { lineStyle: { color: chartTheme.grid } }
+    },
     series: [
       ...rpmSeriesBundle.series,
       ...buildEfficiencyAndPermissibleSeries(

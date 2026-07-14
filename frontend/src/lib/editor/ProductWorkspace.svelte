@@ -212,7 +212,6 @@
   let graphCsvInput = null;
   let graphCsvDownsampleImportedCurves = true;
   let graphCsvDownsamplePointCount = 5;
-  let graphCsvNormalizeEfficiencyOverlays = false;
   let graphCsvImportSource = {
     text: "",
     fileName: "",
@@ -248,8 +247,7 @@
     graphCsvImportSource.productId === selectedProductId &&
     `${selectedProductId ?? ""}|${graphCsvDownsampleImportedCurves ? "1" : "0"}|${String(
       graphCsvDownsamplePointCount ?? "",
-    )}|${graphCsvNormalizeEfficiencyOverlays ? "1" : "0"}` !==
-      graphCsvImportSignature
+    )}` !== graphCsvImportSignature
   ) {
     applyImportedGraphCsvSource({
       text: graphCsvImportSource.text,
@@ -3082,13 +3080,7 @@
       efficiency_higher_end: parseOptionalInteger(point.efficiency_higher_end),
       permissible_use: parseOptionalInteger(point.permissible_use),
     }));
-    const finalEfficiencyPoints = graphCsvNormalizeEfficiencyOverlays
-      ? applyLineByLineOverlayScaling(
-          importedOverlayPoints,
-          nextRpmLines,
-          adjustedRpmPoints,
-        )
-      : importedOverlayPoints;
+    const finalEfficiencyPoints = importedOverlayPoints;
 
     return {
       rpmLines: nextRpmLines.sort((a, b) => Number(a.rpm) - Number(b.rpm)),
@@ -3154,7 +3146,7 @@
       graphCsvFileName = fileName;
       graphCsvImportSignature = `${selectedProductId ?? ""}|${downsampleImportedCurves ? "1" : "0"}|${
         downsampleImportedCurves ? downsamplePointCount : "full"
-      }|${graphCsvNormalizeEfficiencyOverlays ? "1" : "0"}`;
+      }`;
       const validTargets = new Set([
         ...rpmLines.map((line) => `rpm:${line.id}`),
         ...currentOverlayLineDefinitions().map(
@@ -3170,10 +3162,6 @@
       if (showSuccess) {
         addSuccess(
           `${`Loaded graph CSV from ${fileName}`}${
-            graphCsvNormalizeEfficiencyOverlays
-              ? " and scaled the overlay columns line by line against the highest RPM line"
-              : ""
-          }${
             downsampleImportedCurves
               ? `, downsampled each imported curve to ${downsamplePointCount} representative point${downsamplePointCount === 1 ? "" : "s"}`
               : ""
@@ -4236,7 +4224,7 @@
         for (const definition of currentOverlayLineDefinitions()) {
           if (p[definition.key] == null) continue;
           const overlayPixel = chartInstance.convertToPixel(
-            { xAxisIndex: 0, yAxisIndex: 1 },
+            { xAxisIndex: 0, yAxisIndex: 0 },
             [p.airflow, p[definition.key]],
           );
           const dx2 = overlayPixel[0] - x;
@@ -4323,7 +4311,7 @@
       if (chartAddTarget.startsWith("efficiency:")) {
         const lineKey = chartAddTarget.split(":")[1];
         const [airflow, value] = chartInstance.convertFromPixel(
-          { xAxisIndex: 0, yAxisIndex: 1 },
+          { xAxisIndex: 0, yAxisIndex: 0 },
           [x, y],
         );
         efficiencyPoints = [
@@ -6321,23 +6309,6 @@
                           />
                         </div>
                       </div>
-                      {#if productSupportsGraphOverlays()}
-                        <div class="form-check form-switch mb-2">
-                          <input
-                            class="form-check-input"
-                            id="graph-csv-normalize-overlays"
-                            type="checkbox"
-                            bind:checked={graphCsvNormalizeEfficiencyOverlays}
-                          />
-                          <label
-                            class="form-check-label"
-                            for="graph-csv-normalize-overlays"
-                          >
-                            Scale imported efficiency/permissible lines against
-                            the highest RPM line
-                          </label>
-                        </div>
-                      {/if}
                       <p class="text-body-secondary small mb-2">
                         {#if graphCsvDownsampleImportedCurves}
                           Each imported curve is resampled across its valid axis
@@ -6349,9 +6320,8 @@
                       </p>
                       {#if productSupportsGraphOverlays()}
                         <p class="text-body-secondary small mb-2">
-                          When scaling is on, each overlay line is scaled
-                          independently from its imported values using the
-                          interpolated highest RPM line.
+                          Imported efficiency and permissible overlay points
+                          stay in their uploaded pressure units.
                         </p>
                       {/if}
                       <input

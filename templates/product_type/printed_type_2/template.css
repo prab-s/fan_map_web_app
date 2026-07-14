@@ -279,9 +279,19 @@ body.printed-type-2-template {
   font-size: 6mm;
 }
 
+.contact-card__icon svg {
+  width: 6mm;
+  height: 6mm;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .contact-cards {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 2mm;
   padding: 3mm;
   margin-bottom: 3mm;
