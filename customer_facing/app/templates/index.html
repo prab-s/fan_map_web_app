@@ -23,6 +23,23 @@
   </div>
 </section>
 
+{% if home_feature_gif_url %}
+<section class="mb-4 mb-lg-5">
+  <div class="card shadow-sm border-0 home-feature-gif-card">
+    <div class="card-body p-2 p-md-3">
+      <div class="home-feature-gif-frame">
+        <img
+          class="home-feature-gif-image"
+          src="{{ home_feature_gif_url }}"
+          alt="Featured product animation"
+          loading="lazy"
+        >
+      </div>
+    </div>
+  </div>
+</section>
+{% endif %}
+
 <section id="product-types" class="mb-4 mb-lg-5">
 
   <div class="row g-3">
