@@ -1,0 +1,230 @@
+<div class="modal fade quote-request-modal" id="quoteRequestModal" tabindex="-1" aria-labelledby="quoteRequestModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <form id="quoteRequestForm" class="quote-request-form" data-quote-request-form data-quote-request-email="{{ site_contact.admin_email }}">
+        <div class="modal-header">
+          <div>
+            <p class="section-kicker text-uppercase fw-semibold mb-1">Enquiries</p>
+            <h2 class="modal-title h4 mb-0" id="quoteRequestModalLabel">Tell us what you need</h2>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+
+        <div class="modal-body">
+          <div class="alert alert-danger d-none mb-3" role="alert" data-quote-request-status></div>
+          <div class="quote-request-context mb-4">
+            <!-- <div class="quote-request-context__eyebrow">Current page</div> -->
+            <div class="quote-request-context__title" data-quote-request-context-title>Loading context...</div>
+            <p class="quote-request-context__summary mb-0" data-quote-request-context-summary></p>
+            <div class="quote-request-context__chips mt-3" data-quote-request-context-chips></div>
+          </div>
+
+          <div class="row g-3 mb-4">
+            <div class="col-md-6">
+              <label class="form-label" for="quoteRequestName">Name</label>
+              <input class="form-control" id="quoteRequestName" name="name" autocomplete="name" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="quoteRequestCompany">Company</label>
+              <input class="form-control" id="quoteRequestCompany" name="company" autocomplete="organization">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="quoteRequestEmail">Email</label>
+              <input class="form-control" id="quoteRequestEmail" name="email" type="email" autocomplete="email" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="quoteRequestPhone">Phone number</label>
+              <input class="form-control" id="quoteRequestPhone" name="phone" autocomplete="tel">
+            </div>
+          </div>
+
+          <div class="quote-request-section mb-4">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+              <div>
+                <div class="quote-request-section__title">How should we quote this?</div>
+                <p class="quote-request-section__help mb-0">Choose the route that best matches what you need. We’ll use the page context to keep the enquiry specific.</p>
+              </div>
+            </div>
+            <div class="row g-3">
+              <div class="col-md-4">
+                <label class="quote-request-option-card h-100">
+                  <input class="quote-request-option-card__input" type="radio" name="request_type" value="standard" checked>
+                  <span class="quote-request-option-card__body">
+                    <span class="quote-request-option-card__title">Quote this item</span>
+                    <span class="quote-request-option-card__text">Use the current product or series as the starting point.</span>
+                  </span>
+                </label>
+              </div>
+              <div class="col-md-4">
+                <label class="quote-request-option-card h-100">
+                  <input class="quote-request-option-card__input" type="radio" name="request_type" value="tailored">
+                  <span class="quote-request-option-card__body">
+                    <span class="quote-request-option-card__title">Tailored product</span>
+                    <span class="quote-request-option-card__text">I need something that does not exist in the current catalogue.</span>
+                  </span>
+                </label>
+              </div>
+              <div class="col-md-4">
+                <label class="quote-request-option-card h-100">
+                  <input class="quote-request-option-card__input" type="radio" name="request_type" value="unsure">
+                  <span class="quote-request-option-card__body">
+                    <span class="quote-request-option-card__title">Help me choose</span>
+                    <span class="quote-request-option-card__text">Answer a few quick questions and we’ll point you in the right direction.</span>
+                  </span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="quote-request-section quote-request-helper mb-4 d-none" data-quote-request-helper>
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+              <div>
+                <div class="quote-request-section__title">Helpful questions</div>
+                <p class="quote-request-section__help mb-0">Tell us a few basics and we’ll narrow the enquiry down for you.</p>
+              </div>
+            </div>
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label" for="quoteRequestHelperThing">What kind of thing are you looking for?</label>
+                <input class="form-control" id="quoteRequestHelperThing" name="helper_thing" placeholder="Fan, silencer, controller, custom fabrication...">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="quoteRequestHelperRoomSize">What size is your room or space?</label>
+                <input class="form-control" id="quoteRequestHelperRoomSize" name="helper_room_size" placeholder="Approximate floor area or dimensions">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="quoteRequestHelperThreePhase">Do you have three phase power?</label>
+                <select class="form-select" id="quoteRequestHelperThreePhase" name="helper_three_phase">
+                  <option value="">-- choose option --</option>
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                  <option value="not-sure">Not sure</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="quoteRequestHelperConstraints">Any other constraints or preferences?</label>
+                <input class="form-control" id="quoteRequestHelperConstraints" name="helper_constraints" placeholder="Noise, size, access, install limits...">
+              </div>
+            </div>
+          </div>
+
+          <div class="quote-request-section mb-4" data-quote-request-attributes-section>
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+              <div>
+                <div class="quote-request-section__title">Desired attributes</div>
+                <p class="quote-request-section__help mb-0">We’ll suggest relevant attributes from the current product family, and you can adjust them as needed.</p>
+              </div>
+            </div>
+            <div class="quote-request-suggestions mb-3" data-quote-request-suggestions></div>
+            <div class="quote-request-attribute-grid">
+              <label class="quote-request-attribute-card">
+                <input class="quote-request-attribute-card__input" type="checkbox" value="airflow" id="quoteAttrAirflow" name="attributes">
+                <span class="quote-request-attribute-card__body">
+                  <span class="quote-request-attribute-card__title">Airflow</span>
+                  <span class="quote-request-attribute-card__text">Duty point or flow target</span>
+                </span>
+              </label>
+              <label class="quote-request-attribute-card">
+                <input class="quote-request-attribute-card__input" type="checkbox" value="pressure" id="quoteAttrPressure" name="attributes">
+                <span class="quote-request-attribute-card__body">
+                  <span class="quote-request-attribute-card__title">Pressure</span>
+                  <span class="quote-request-attribute-card__text">Static or total pressure</span>
+                </span>
+              </label>
+              <label class="quote-request-attribute-card">
+                <input class="quote-request-attribute-card__input" type="checkbox" value="power" id="quoteAttrPower" name="attributes">
+                <span class="quote-request-attribute-card__body">
+                  <span class="quote-request-attribute-card__title">Power</span>
+                  <span class="quote-request-attribute-card__text">Input or motor limit</span>
+                </span>
+              </label>
+              <label class="quote-request-attribute-card">
+                <input class="quote-request-attribute-card__input" type="checkbox" value="efficiency" id="quoteAttrEfficiency" name="attributes">
+                <span class="quote-request-attribute-card__body">
+                  <span class="quote-request-attribute-card__title">Efficiency</span>
+                  <span class="quote-request-attribute-card__text">Efficiency target or range</span>
+                </span>
+              </label>
+              <label class="quote-request-attribute-card">
+                <input class="quote-request-attribute-card__input" type="checkbox" value="noise" id="quoteAttrNoise" name="attributes">
+                <span class="quote-request-attribute-card__body">
+                  <span class="quote-request-attribute-card__title">Noise</span>
+                  <span class="quote-request-attribute-card__text">Acoustic constraints</span>
+                </span>
+              </label>
+              <label class="quote-request-attribute-card">
+                <input class="quote-request-attribute-card__input" type="checkbox" value="size" id="quoteAttrSize" name="attributes">
+                <span class="quote-request-attribute-card__body">
+                  <span class="quote-request-attribute-card__title">Size</span>
+                  <span class="quote-request-attribute-card__text">Envelope or fit</span>
+                </span>
+              </label>
+              <label class="quote-request-attribute-card">
+                <input class="quote-request-attribute-card__input" type="checkbox" value="temperature" id="quoteAttrTemperature" name="attributes">
+                <span class="quote-request-attribute-card__body">
+                  <span class="quote-request-attribute-card__title">Temperature</span>
+                  <span class="quote-request-attribute-card__text">Operating temperature</span>
+                </span>
+              </label>
+              <label class="quote-request-attribute-card">
+                <input class="quote-request-attribute-card__input" type="checkbox" value="mounting" id="quoteAttrMounting" name="attributes">
+                <span class="quote-request-attribute-card__body">
+                  <span class="quote-request-attribute-card__title">Mounting</span>
+                  <span class="quote-request-attribute-card__text">Fixing or install style</span>
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <div class="quote-request-section quote-request-tailored-fields mb-4" data-quote-request-tailored-fields>
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+              <div>
+                <div class="quote-request-section__title">Tailored specification</div>
+                <p class="quote-request-section__help mb-0">Use these fields when the current catalogue item is not the right fit and you want a custom build or selection.</p>
+              </div>
+            </div>
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label" for="quoteRequestAirflowMin">Airflow minimum</label>
+                <input class="form-control" id="quoteRequestAirflowMin" name="airflow_min" inputmode="decimal" placeholder="e.g. 1200">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="quoteRequestAirflowMax">Airflow maximum</label>
+                <input class="form-control" id="quoteRequestAirflowMax" name="airflow_max" inputmode="decimal" placeholder="e.g. 1800">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="quoteRequestPressureMin">Pressure minimum</label>
+                <input class="form-control" id="quoteRequestPressureMin" name="pressure_min" inputmode="decimal" placeholder="e.g. 300">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="quoteRequestPressureMax">Pressure maximum</label>
+                <input class="form-control" id="quoteRequestPressureMax" name="pressure_max" inputmode="decimal" placeholder="e.g. 750">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="quoteRequestPowerLimit">Power limit</label>
+                <input class="form-control" id="quoteRequestPowerLimit" name="power_limit" inputmode="decimal" placeholder="e.g. 2.2 kW">
+              </div>
+            </div>
+          </div>
+
+          <div class="mb-0">
+            <label class="form-label" for="quoteRequestNotes">Additional notes</label>
+            <input class="form-control mb-3" id="quoteRequestNotes" name="short_notes" placeholder="Project size, application, constraints">
+            <label class="form-label" for="quoteRequestDetails">Tell us more</label>
+            <textarea class="form-control" id="quoteRequestDetails" name="details" rows="5" placeholder="Include application details, dimensions, target duty point, lead time, or anything that will help us recommend the right solution."></textarea>
+          </div>
+
+          <input type="text" class="d-none" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+        </div>
+
+        <div class="modal-footer d-flex flex-wrap justify-content-between gap-2">
+          <div class="small text-muted">Your enquiry will be sent directly to the Vent-Tech team.</div>
+          <div class="d-flex gap-2">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-primary" data-quote-request-submit>Send enquiry</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>

@@ -1,16 +1,20 @@
+import asyncio
 import logging
 import time
 import hashlib
 import colorsys
 import html
+import re
 
+import httpx
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import RedirectResponse
 
 from app.api_client import api, ApiClientError
 from app.catalogue_cache import catalogue_cache
+from app.config import settings
 from app.seo import seo_meta
-from app.slug import product_url, products_url, series_url
+from app.slug import product_type_url, product_url, products_url, series_url
 from app.view_templates import templates
 
 router = APIRouter()
@@ -20,7 +24,7 @@ logger = logging.getLogger(__name__)
 async def common_context():
     await catalogue_cache.refresh_if_stale()
     product_types = catalogue_cache.product_types()
-    return {"product_types": product_types}
+    return {"product_types": product_types, "quote_request_context": {}}
 
 
 def parse_slug_id(value: str) -> int:
@@ -38,8 +42,257 @@ def download_group(title: str, description: str, items: list[dict]) -> dict:
     return {"title": title, "description": description, "links": [item for item in items if item.get("url")]}
 
 
+def _html_excerpt(value: str | None, limit: int = 180) -> str:
+    if not value:
+        return ""
+
+    text = re.sub(r"<[^>]+>", " ", str(value))
+    text = html.unescape(re.sub(r"\s+", " ", text)).strip()
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 3)].rstrip() + "..."
+
+
+def _extract_client_ip(request: Request) -> str:
+    forwarded_for = request.headers.get("x-forwarded-for", "").split(",")
+    for candidate in forwarded_for:
+        candidate = candidate.strip()
+        if candidate:
+            return candidate
+    x_real_ip = request.headers.get("x-real-ip", "").strip()
+    if x_real_ip:
+        return x_real_ip
+    return request.client.host if request.client else ""
+
+
+def _suggested_quote_attributes(page_type: str, product_type_key: str | None = None) -> list[str]:
+    page_type = str(page_type or "").strip().casefold()
+    product_type_key = str(product_type_key or "").strip().casefold()
+
+    if page_type == "product":
+        if product_type_key == "fan":
+            return ["airflow", "pressure", "noise", "power", "efficiency", "size"]
+        if product_type_key == "silencer":
+            return ["noise", "pressure", "size"]
+        if product_type_key == "speed_controller":
+            return ["power", "mounting", "size"]
+        return ["size", "mounting", "power"]
+
+    if page_type == "series":
+        if product_type_key == "fan":
+            return ["airflow", "pressure", "noise", "power", "efficiency"]
+        return ["size", "power", "mounting"]
+
+    if page_type == "product-type":
+        if product_type_key == "fan":
+            return ["airflow", "pressure", "noise", "power"]
+        if product_type_key == "silencer":
+            return ["noise", "size", "pressure"]
+        return ["size", "mounting", "power"]
+
+    if page_type == "engineering-services":
+        return ["size", "mounting", "temperature"]
+
+    return []
+
+
 def request_quote_url() -> str:
-    return "mailto:admin@venttech.co.nz?subject=Vent-Tech%20quote%20request"
+    return "#quoteRequestModal"
+
+
+QUOTE_REQUEST_ATTRIBUTE_LABELS = {
+    "airflow": "Airflow",
+    "pressure": "Pressure",
+    "power": "Power",
+    "efficiency": "Efficiency",
+    "noise": "Noise",
+    "size": "Size",
+    "temperature": "Temperature",
+    "mounting": "Mounting",
+}
+
+
+QUOTE_REQUEST_REQUEST_TYPE_LABELS = {
+    "standard": "Quote this item",
+    "tailored": "Tailored enquiry",
+    "unsure": "Help me choose",
+}
+
+
+def _clean_single_line(value: object, limit: int = 200) -> str:
+    cleaned = re.sub(r"\s+", " ", html.unescape(str(value or ""))).strip()
+    return cleaned[:limit]
+
+
+def _clean_multiline(value: object, limit: int = 2000) -> str:
+    cleaned = html.unescape(str(value or ""))
+    cleaned = cleaned.replace("\r\n", "\n").replace("\r", "\n")
+    cleaned = re.sub(r"[ \t]+\n", "\n", cleaned).strip()
+    return cleaned[:limit]
+
+
+def _quote_request_subject(payload: dict) -> str:
+    page_title = _clean_single_line(payload.get("page_card_title") or payload.get("page_title") or "Vent-Tech enquiry", limit=120)
+    request_type = _clean_single_line(payload.get("request_type") or "", limit=40)
+    type_label = QUOTE_REQUEST_REQUEST_TYPE_LABELS.get(request_type, "Enquiry")
+    return f"Vent-Tech enquiry - {page_title} - {type_label}"
+
+
+def _quote_request_body(payload: dict) -> str:
+    attributes = payload.get("attributes") or []
+    if not isinstance(attributes, list):
+        attributes = []
+    attribute_labels = [QUOTE_REQUEST_ATTRIBUTE_LABELS.get(str(attribute), str(attribute)) for attribute in attributes if str(attribute).strip()]
+    lines = [
+        "Vent-Tech enquiry",
+        "",
+        f"Request type: {QUOTE_REQUEST_REQUEST_TYPE_LABELS.get(str(payload.get('request_type') or ''), 'Enquiry')}",
+        f"Name: {_clean_single_line(payload.get('name'), 120) or 'Not provided'}",
+        f"Company: {_clean_single_line(payload.get('company'), 160) or 'Not provided'}",
+        f"Email: {_clean_single_line(payload.get('email'), 160) or 'Not provided'}",
+        f"Phone: {_clean_single_line(payload.get('phone'), 80) or 'Not provided'}",
+        f"Desired attributes: {', '.join(attribute_labels) if attribute_labels else 'Not specified'}",
+        f"Airflow range: {_clean_single_line(payload.get('airflow_min'), 40) or 'Not specified'} - {_clean_single_line(payload.get('airflow_max'), 40) or 'Not specified'}",
+        f"Pressure range: {_clean_single_line(payload.get('pressure_min'), 40) or 'Not specified'} - {_clean_single_line(payload.get('pressure_max'), 40) or 'Not specified'}",
+        f"Power limit: {_clean_single_line(payload.get('power_limit'), 60) or 'Not specified'}",
+        f"Helper: {_clean_single_line(payload.get('helper_thing'), 120) or 'Not specified'}",
+        f"Room size: {_clean_single_line(payload.get('helper_room_size'), 120) or 'Not specified'}",
+        f"Three phase power: {_clean_single_line(payload.get('helper_three_phase'), 40) or 'Not specified'}",
+        f"Helper notes: {_clean_single_line(payload.get('helper_constraints'), 160) or 'Not specified'}",
+        f"Current page: {_clean_single_line(payload.get('page_url') or payload.get('page_url_fallback') or '', 500) or 'Not provided'}",
+    ]
+
+    if payload.get("page_card_title") or payload.get("page_card_summary"):
+        lines.append(
+            f"Page card: {_clean_single_line(payload.get('page_card_title'), 120) or 'Not provided'}"
+            f" - {_clean_single_line(payload.get('page_card_summary'), 500) or 'Not provided'}"
+        )
+
+    page_bits: list[str] = []
+    for label, key in (
+        ("Product type", "product_type"),
+        ("Series", "series"),
+        ("Product", "product"),
+    ):
+        value = payload.get(key)
+        if isinstance(value, dict):
+            summary = value.get("label") or value.get("name") or value.get("model") or value.get("id")
+            if summary:
+                page_bits.append(f"{label}: {_clean_single_line(summary, 120)}")
+    if page_bits:
+        lines.append(f"Context: {' | '.join(page_bits)}")
+
+    short_notes = _clean_multiline(payload.get("short_notes"), 300)
+    if short_notes:
+        lines.extend(["", f"Additional notes: {short_notes}"])
+
+    details = _clean_multiline(payload.get("details"), 2000)
+    if details:
+        lines.extend(["", "Details:", details])
+
+    lines.extend([
+        "",
+        f"Page type: {_clean_single_line(payload.get('page_type'), 80) or 'Not provided'}",
+        "",
+        "Please reply to the customer by email and treat this as an enquiry.",
+    ])
+    return "\n".join(lines)
+
+
+def _normalize_quote_request_payload(payload: dict) -> dict:
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Invalid enquiry payload.")
+
+    normalized = {
+        "name": _clean_single_line(payload.get("name"), 120),
+        "company": _clean_single_line(payload.get("company"), 160),
+        "email": _clean_single_line(payload.get("email"), 160),
+        "phone": _clean_single_line(payload.get("phone"), 80),
+        "request_type": _clean_single_line(payload.get("request_type"), 32).casefold(),
+        "attributes": [str(item).strip().casefold() for item in (payload.get("attributes") or []) if str(item).strip()],
+        "airflow_min": _clean_single_line(payload.get("airflow_min"), 40),
+        "airflow_max": _clean_single_line(payload.get("airflow_max"), 40),
+        "pressure_min": _clean_single_line(payload.get("pressure_min"), 40),
+        "pressure_max": _clean_single_line(payload.get("pressure_max"), 40),
+        "power_limit": _clean_single_line(payload.get("power_limit"), 60),
+        "helper_thing": _clean_single_line(payload.get("helper_thing"), 120),
+        "helper_room_size": _clean_single_line(payload.get("helper_room_size"), 120),
+        "helper_three_phase": _clean_single_line(payload.get("helper_three_phase"), 40),
+        "helper_constraints": _clean_single_line(payload.get("helper_constraints"), 160),
+        "short_notes": _clean_multiline(payload.get("short_notes"), 300),
+        "details": _clean_multiline(payload.get("details"), 2000),
+        "page_type": _clean_single_line(payload.get("page_type"), 80),
+        "page_title": _clean_single_line(payload.get("page_title"), 200),
+        "page_summary": _clean_single_line(payload.get("page_summary"), 500),
+        "page_card_title": _clean_single_line(payload.get("page_card_title"), 200),
+        "page_card_summary": _clean_single_line(payload.get("page_card_summary"), 500),
+        "page_url": _clean_single_line(payload.get("page_url"), 500),
+        "website": _clean_single_line(payload.get("website"), 200),
+        "product_type": payload.get("product_type") if isinstance(payload.get("product_type"), dict) else {},
+        "series": payload.get("series") if isinstance(payload.get("series"), dict) else {},
+        "product": payload.get("product") if isinstance(payload.get("product"), dict) else {},
+    }
+
+    if normalized["website"]:
+        raise HTTPException(status_code=400, detail="Enquiry rejected.")
+
+    if not normalized["name"] or not normalized["email"]:
+        raise HTTPException(status_code=400, detail="Name and email are required.")
+
+    if normalized["request_type"] not in QUOTE_REQUEST_REQUEST_TYPE_LABELS:
+        normalized["request_type"] = "unsure"
+
+    return normalized
+
+
+def build_quote_request_context(
+    request: Request,
+    *,
+    page_type: str,
+    page_title: str,
+    page_summary: str,
+    page_card_title: str | None = None,
+    page_card_summary: str | None = None,
+    product_type: dict | None = None,
+    series: dict | None = None,
+    product: dict | None = None,
+) -> dict:
+    context: dict[str, object] = {
+        "pageType": page_type,
+        "pageTitle": page_title,
+        "pageSummary": page_summary,
+        "pageCardTitle": page_card_title or page_title,
+        "pageCardSummary": page_card_summary or page_summary,
+        "pageUrl": str(request.url),
+        "primaryLabel": page_title,
+        "requestType": "standard" if page_type in {"product", "series", "product-type"} else "tailored" if page_type == "engineering-services" else "unsure",
+        "suggestedAttributes": [],
+    }
+
+    if product_type:
+        context["productType"] = {
+            "key": product_type.get("key"),
+            "label": product_type.get("label"),
+            "url": product_type_url(product_type),
+        }
+
+    if series:
+        context["series"] = {
+            "id": series.get("id"),
+            "name": series.get("name"),
+            "url": series_url(series),
+        }
+
+    if product:
+        context["product"] = {
+            "id": product.get("id"),
+            "model": product.get("model"),
+            "url": product_url(product),
+        }
+
+    context["suggestedAttributes"] = _suggested_quote_attributes(page_type, (product_type or {}).get("key"))
+
+    return context
 
 
 def product_type_downloads(selected_type: dict) -> list[dict]:
@@ -552,6 +805,14 @@ async def homepage(request: Request):
         ),
         "featured_product_type": featured_product_type,
         "home_product_types": home_product_types,
+        "quote_request_context": build_quote_request_context(
+            request,
+            page_type="home",
+            page_title="Vent-tech catalogue",
+            page_summary="Browse product types, product series, and model pages.",
+            page_card_title="Vent-tech catalogue",
+            page_card_summary="Browse product types, product series, and model pages.",
+        ),
     })
     logger.info("Rendered homepage in %.1fms (%d product types)", (time.perf_counter() - start) * 1000.0, len(product_types))
     return templates.TemplateResponse(request, "index.html", context)
@@ -570,6 +831,14 @@ async def products_page(request: Request):
             products_url(),
         ),
         "products": products,
+        "quote_request_context": build_quote_request_context(
+            request,
+            page_type="products",
+            page_title="Product Finder",
+            page_summary="Find suitable industrial products by product type and specification range.",
+            page_card_title="Product Finder",
+            page_card_summary="Find suitable industrial products by product type and specification range.",
+        ),
     })
     logger.info(
         "Rendered products page in %.1fms (%d products, %d product types)",
@@ -591,8 +860,30 @@ async def contact_page(request: Request):
             "/contact",
         ),
         "request_quote_url": request_quote_url(),
+        "quote_request_context": build_quote_request_context(
+            request,
+            page_type="contact",
+            page_title="Contact Vent-Tech",
+            page_summary="Get in touch for selection support, quotations, and project enquiries.",
+            page_card_title="Contact Vent-Tech",
+            page_card_summary="Get in touch for selection support, quotations, and project enquiries.",
+        ),
     })
     return templates.TemplateResponse(request, "contact.html", context)
+
+
+@router.get("/past-projects")
+async def past_projects_page(request: Request):
+    context = await common_context()
+    context.update({
+        "request": request,
+        "seo": seo_meta(
+            "Past Projects",
+            "Browse a placeholder showcase of past customer projects, completed work, and example outcomes.",
+            "/past-projects",
+        ),
+    })
+    return templates.TemplateResponse(request, "past_projects.html", context)
 
 
 @router.get("/engineering-services")
@@ -606,6 +897,14 @@ async def engineering_services_page(request: Request):
             "/engineering-services",
         ),
         "request_quote_url": request_quote_url(),
+        "quote_request_context": build_quote_request_context(
+            request,
+            page_type="engineering-services",
+            page_title="Engineering services",
+            page_summary="Discuss fabrication support, custom parts, or tailored build work.",
+            page_card_title="Engineering services",
+            page_card_summary="Discuss fabrication support, custom parts, or tailored build work.",
+        ),
         "services": [
             {
                 "title": "Laser cutter",
@@ -660,6 +959,56 @@ async def engineering_services_page(request: Request):
     return templates.TemplateResponse(request, "engineering_services.html", context)
 
 
+@router.post("/api/quote-requests")
+async def submit_quote_request(request: Request):
+    try:
+        payload = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid enquiry payload.") from exc
+
+    normalized = _normalize_quote_request_payload(payload)
+    normalized["client_ip"] = _extract_client_ip(request)
+    normalized["user_agent"] = request.headers.get("user-agent", "")
+    normalized["referrer"] = request.headers.get("referer", "")
+    normalized["origin"] = request.headers.get("origin", "")
+    normalized["page_context"] = {
+        "product_type": normalized.get("product_type") or {},
+        "series": normalized.get("series") or {},
+        "product": normalized.get("product") or {},
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            response = await client.post(
+                f"{settings.backend_api_base_url}/api/quote-requests",
+                json=normalized,
+                headers={
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                },
+            )
+            if not response.is_success:
+                detail = "We could not send your enquiry right now."
+                try:
+                    payload = response.json()
+                    if isinstance(payload, dict):
+                        detail = str(payload.get("detail") or payload.get("message") or detail)
+                except Exception:
+                    detail = response.text or detail
+                raise HTTPException(status_code=response.status_code, detail=detail)
+            result = response.json()
+    except httpx.HTTPError as exc:
+        logger.exception("Quote request proxy failed")
+        raise HTTPException(status_code=502, detail="We could not send your enquiry right now.") from exc
+
+    logger.info(
+        "Submitted enquiry for %s (%s)",
+        normalized["page_card_title"] or normalized["page_title"] or normalized["page_type"],
+        normalized["email"],
+    )
+    return result
+
+
 @router.get("/finder")
 async def finder_page_redirect():
     return RedirectResponse(products_url(), status_code=307)
@@ -689,6 +1038,15 @@ async def product_type_page(request: Request, product_type_key: str):
         "products": products,
         "product_type_downloads": product_type_downloads(selected_type),
         "request_quote_url": request_quote_url(),
+        "quote_request_context": build_quote_request_context(
+            request,
+            page_type="product-type",
+            page_title=selected_type["label"],
+            page_summary=f"Browse {selected_type['label']} series and products.",
+            page_card_title=selected_type["label"],
+            page_card_summary=f"Browse {selected_type['label']} series and products.",
+            product_type=selected_type,
+        ),
     })
     logger.info(
         "Rendered product type page %s in %.1fms (%d series, %d products)",
@@ -732,6 +1090,16 @@ async def series_page(request: Request, series_slug: str):
         "series_downloads": series_downloads(series),
         "product_type_downloads": product_type_downloads(product_type) if product_type else [],
         "request_quote_url": request_quote_url(),
+        "quote_request_context": build_quote_request_context(
+            request,
+            page_type="series",
+            page_title=series["name"],
+            page_summary=f"View product information, specifications, graphs, PDFs, and models for {series['name']}.",
+            page_card_title=series["name"],
+            page_card_summary=_html_excerpt(series.get("description1_html")) or _html_excerpt(series.get("description2_html")) or f"{product_type['label'] if product_type else 'Series'} range",
+            product_type=product_type,
+            series=series,
+        ),
         "series_graph": build_series_graph_payload(series, product_type, cached_products),
         "series_performance_table_html": render_series_performance_table_html(series, cached_products),
         "series_sections": optional_sections(
@@ -784,6 +1152,17 @@ async def product_page(request: Request, product_slug: str):
         "series_downloads": series_downloads(series) if series else [],
         "product_type_downloads": product_type_downloads(product_type) if product_type else [],
         "request_quote_url": request_quote_url(),
+        "quote_request_context": build_quote_request_context(
+            request,
+            page_type="product",
+            page_title=product["model"],
+            page_summary=f"View specifications, graphs, images, and PDFs for {product['model']}.",
+            page_card_title=product["model"],
+            page_card_summary=_html_excerpt(product.get("description1_html")) or _html_excerpt(product.get("description2_html")) or (series["name"] if series else product.get("product_type_label", "Product")),
+            product_type=product_type,
+            series=series,
+            product=product,
+        ),
         "product_graph": build_product_graph_payload(product, product_type),
         "product_sections": optional_sections(
             ("Overview", product.get("description1_html")),

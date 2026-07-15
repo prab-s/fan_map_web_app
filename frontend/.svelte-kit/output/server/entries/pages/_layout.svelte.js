@@ -42,6 +42,7 @@ function _layout($$renderer, $$props) {
     let templateBuilderActive = false;
     let bulkImportActive = false;
     let setupActive = false;
+    let enquiriesActive = false;
     const PUBLIC_ROUTE_PREFIXES = ["/series", "/products"];
     currentPath = store_get($$store_subs ??= {}, "$page", page).url.pathname;
     isPublicRoute = PUBLIC_ROUTE_PREFIXES.some((prefix) => currentPath === prefix || currentPath.startsWith(`${prefix}/`));
@@ -51,6 +52,7 @@ function _layout($$renderer, $$props) {
     templateBuilderActive = currentPath === "/template-builder" || currentPath.startsWith("/template-builder/");
     bulkImportActive = currentPath === "/bulk-import" || currentPath.startsWith("/bulk-import/");
     setupActive = currentPath === "/setup" || currentPath.startsWith("/setup/");
+    enquiriesActive = currentPath === "/enquiries" || currentPath.startsWith("/enquiries/");
     $$renderer2.push(`<div class="app-shell">`);
     if (isPublicRoute) {
       $$renderer2.push("<!--[0-->");
@@ -73,29 +75,32 @@ function _layout($$renderer, $$props) {
     } else {
       $$renderer2.push("<!--[-1-->");
       $$renderer2.push(`<header class="topbar navbar navbar-expand-lg"><div class="container-fluid app-frame px-0 d-flex align-items-center gap-3 flex-wrap justify-content-center"><div class="topbar-brand navbar-brand mb-0 text-center text-lg-start"><div><p class="small text-uppercase text-body-secondary fw-semibold mb-1"><strong>Internal Facing</strong></p></div> <span class="small text-body-secondary">`);
-      if (editorActive) {
+      if (enquiriesActive) {
         $$renderer2.push("<!--[0-->");
+        $$renderer2.push(`Enquiries`);
+      } else if (editorActive) {
+        $$renderer2.push("<!--[1-->");
         $$renderer2.push(`Editor`);
       } else if (viewerActive) {
-        $$renderer2.push("<!--[1-->");
+        $$renderer2.push("<!--[2-->");
         $$renderer2.push(`Viewer`);
       } else if (currentPath.startsWith("/template-builder-v2")) {
-        $$renderer2.push("<!--[2-->");
+        $$renderer2.push("<!--[3-->");
         $$renderer2.push(`Template Builder V2`);
       } else if (templateBuilderActive) {
-        $$renderer2.push("<!--[3-->");
+        $$renderer2.push("<!--[4-->");
         $$renderer2.push(`Template Builder`);
       } else if (setupActive) {
-        $$renderer2.push("<!--[4-->");
+        $$renderer2.push("<!--[5-->");
         $$renderer2.push(`Setup`);
       } else if (bulkImportActive) {
-        $$renderer2.push("<!--[5-->");
+        $$renderer2.push("<!--[6-->");
         $$renderer2.push(`Bulk Import`);
       } else {
         $$renderer2.push("<!--[-1-->");
         $$renderer2.push(`Overview`);
       }
-      $$renderer2.push(`<!--]--></span></div> <nav class="nav nav-underline justify-content-center mx-auto" aria-label="Primary"><a${attr_class(`nav-link ${homeActive ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/"${attr("aria-current", homeActive ? "page" : void 0)}>Home</a> <a${attr_class(`nav-link ${editorActive ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/editor"${attr("aria-current", editorActive ? "page" : void 0)}>Editor</a> <a${attr_class(`nav-link ${viewerActive ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/viewer"${attr("aria-current", viewerActive ? "page" : void 0)}>Viewer</a> <a${attr_class(`nav-link ${templateBuilderActive ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/template-builder"${attr("aria-current", templateBuilderActive ? "page" : void 0)}>Template Builder</a> `);
+      $$renderer2.push(`<!--]--></span></div> <nav class="nav nav-underline justify-content-center mx-auto" aria-label="Primary"><a${attr_class(`nav-link ${homeActive ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/"${attr("aria-current", homeActive ? "page" : void 0)}>Home</a> <a${attr_class(`nav-link ${enquiriesActive ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/enquiries"${attr("aria-current", enquiriesActive ? "page" : void 0)}>Enquiries</a> <a${attr_class(`nav-link ${editorActive ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/editor"${attr("aria-current", editorActive ? "page" : void 0)}>Editor</a> <a${attr_class(`nav-link ${viewerActive ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/viewer"${attr("aria-current", viewerActive ? "page" : void 0)}>Viewer</a> <a${attr_class(`nav-link ${templateBuilderActive ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/template-builder"${attr("aria-current", templateBuilderActive ? "page" : void 0)}>Template Builder</a> `);
       if (store_get($$store_subs ??= {}, "$auth", auth).authenticated) {
         $$renderer2.push("<!--[0-->");
         $$renderer2.push(`<a${attr_class(`nav-link ${bulkImportActive ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/bulk-import"${attr("aria-current", bulkImportActive ? "page" : void 0)}>Bulk Import</a>`);

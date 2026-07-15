@@ -3,6 +3,7 @@ import csv
 import base64
 import datetime
 import httpx
+import smtplib
 import json
 import ipaddress
 import math
@@ -22,6 +23,7 @@ import tempfile
 import threading
 import zipfile
 import time
+import ssl
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -29,6 +31,7 @@ from pathlib import Path
 from typing import Optional
 from uuid import uuid4
 from xml.etree import ElementTree as ET
+from email.message import EmailMessage
 
 import html5lib
 from fastapi import APIRouter, FastAPI, Depends, HTTPException, Query, Request, UploadFile, File, Form
@@ -68,6 +71,7 @@ from backend.models import (
     ProductTypeEfficiencyPointPreset,
     ProductParameterGroup,
     ProductParameter,
+    QuoteRequest,
     User,
 )
 from backend.models import AppSettings
@@ -131,6 +135,12 @@ from backend.schemas import (
     ProductTypePdfResponse,
     SetupLogEntryResponse,
     PublicAccessLogEntryResponse,
+    QuoteRequestNotificationSettings,
+    QuoteRequestCreate,
+    QuoteRequestResponse,
+    QuoteRequestEmailTestRequest,
+    QuoteRequestEmailTestResponse,
+    QuoteRequestStatusUpdate,
 )
 
 SAFE_CHARS_RE = re.compile(r"[^a-z0-9]+")
@@ -195,6 +205,23 @@ DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 POSTGRES_DB = os.getenv("POSTGRES_DB", "").strip()
 POSTGRES_USER = os.getenv("POSTGRES_USER", "").strip()
 PASSWORD_HASH_ITERATIONS = 600_000
+QUOTE_REQUEST_RECIPIENT_EMAILS = [
+    email.strip()
+    for email in os.getenv("QUOTE_REQUEST_RECIPIENT_EMAILS", os.getenv("QUOTE_REQUEST_RECIPIENT_EMAIL", "admin@venttech.co.nz")).split(",")
+    if email.strip()
+]
+QUOTE_REQUEST_THROTTLE_WINDOW_SECONDS = int(os.getenv("QUOTE_REQUEST_THROTTLE_WINDOW_SECONDS", "900"))
+QUOTE_REQUEST_THROTTLE_MAX_ATTEMPTS = int(os.getenv("QUOTE_REQUEST_THROTTLE_MAX_ATTEMPTS", "3"))
+QUOTE_REQUEST_THROTTLE_STATE: dict[str, deque[float]] = {}
+QUOTE_REQUEST_THROTTLE_LOCK = threading.Lock()
+SMTP_HOST = os.getenv("SMTP_HOST", "").strip()
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USERNAME = os.getenv("SMTP_USERNAME", "").strip()
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "").strip()
+SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL", "").strip()
+SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", "Vent-Tech website").strip()
+SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").strip().lower() in {"1", "true", "yes", "on"}
+SMTP_USE_SSL = os.getenv("SMTP_USE_SSL", "false").strip().lower() in {"1", "true", "yes", "on"}
 POSTGRES_CLIENT_IMAGE = os.getenv("PG_CLIENT_IMAGE", "docker.io/library/postgres:16").strip() or "docker.io/library/postgres:16"
 MAINTENANCE_JOBS: dict[str, dict] = {}
 
@@ -5893,6 +5920,230 @@ def require_admin_user(current_user: User = Depends(get_current_user)) -> User:
     return current_user
 
 
+QUOTE_REQUEST_REQUEST_TYPE_LABELS = {
+    "standard": "Quote this item",
+    "tailored": "Tailored product",
+    "unsure": "Not sure yet",
+}
+
+QUOTE_REQUEST_ATTRIBUTE_LABELS = {
+    "airflow": "Airflow",
+    "pressure": "Pressure",
+    "power": "Power",
+    "efficiency": "Efficiency",
+    "noise": "Noise",
+    "size": "Size",
+    "temperature": "Temperature",
+    "mounting": "Mounting",
+}
+
+
+def _quote_request_parse_recipient_emails(raw_value: object | None) -> list[str]:
+    if not raw_value:
+        return []
+
+    if isinstance(raw_value, list):
+        candidates = raw_value
+    else:
+        candidates = str(raw_value).split(",")
+
+    emails: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        email = _quote_request_clean(candidate, 320)
+        if not email or email in seen:
+            continue
+        seen.add(email)
+        emails.append(email)
+    return emails
+
+
+def _quote_request_recipient_emails_from_settings(db: Session | None = None) -> list[str]:
+    configured = _quote_request_parse_recipient_emails(QUOTE_REQUEST_RECIPIENT_EMAILS)
+    if db is None:
+        return configured
+
+    settings = get_or_create_app_settings(db)
+    stored_emails = _quote_request_parse_recipient_emails(getattr(settings, "quote_request_recipient_emails", None))
+    return stored_emails or configured
+
+
+def _quote_request_throttle_key(payload: QuoteRequestCreate, request: Request) -> str:
+    client_ip = _quote_request_clean(payload.client_ip or _extract_client_ip(request), 64)
+    if client_ip:
+        return client_ip
+    return "unknown"
+
+
+def _quote_request_check_throttle(key: str) -> None:
+    now = time.time()
+    cutoff = now - QUOTE_REQUEST_THROTTLE_WINDOW_SECONDS
+
+    with QUOTE_REQUEST_THROTTLE_LOCK:
+        bucket = QUOTE_REQUEST_THROTTLE_STATE.setdefault(key, deque())
+        while bucket and bucket[0] < cutoff:
+            bucket.popleft()
+
+        if len(bucket) >= QUOTE_REQUEST_THROTTLE_MAX_ATTEMPTS:
+            raise HTTPException(
+                status_code=429,
+                detail="Too many enquiry submissions from this address. Please wait a little before trying again.",
+            )
+
+        bucket.append(now)
+
+
+def _quote_request_clean(value: object, limit: int = 200) -> str:
+    cleaned = re.sub(r"\s+", " ", html.unescape(str(value or ""))).strip()
+    return cleaned[:limit]
+
+
+def _quote_request_clean_multiline(value: object, limit: int = 4000) -> str:
+    cleaned = html.unescape(str(value or ""))
+    cleaned = cleaned.replace("\r\n", "\n").replace("\r", "\n")
+    cleaned = re.sub(r"[ \t]+\n", "\n", cleaned).strip()
+    return cleaned[:limit]
+
+
+def _quote_request_subject(record: QuoteRequest) -> str:
+    page_title = _quote_request_clean(record.page_card_title or record.page_title or "Vent-Tech quote request", 120)
+    type_label = QUOTE_REQUEST_REQUEST_TYPE_LABELS.get(record.request_type or "", "Quote request")
+    return f"Vent-Tech quote request - {page_title} - {type_label}"
+
+
+def _quote_request_body(record: QuoteRequest) -> str:
+    attributes = record.attributes if isinstance(record.attributes, list) else []
+    attribute_labels = [QUOTE_REQUEST_ATTRIBUTE_LABELS.get(str(attribute), str(attribute)) for attribute in attributes if str(attribute).strip()]
+    lines = [
+        "Vent-Tech quote request",
+        "",
+        f"Status: {record.status}",
+        f"Request type: {QUOTE_REQUEST_REQUEST_TYPE_LABELS.get(record.request_type or '', 'Quote request')}",
+        f"Name: {record.name}",
+        f"Company: {record.company or 'Not provided'}",
+        f"Email: {record.email}",
+        f"Phone: {record.phone or 'Not provided'}",
+        f"Desired attributes: {', '.join(attribute_labels) if attribute_labels else 'Not specified'}",
+        f"Airflow range: {record.airflow_min or 'Not specified'} - {record.airflow_max or 'Not specified'}",
+        f"Pressure range: {record.pressure_min or 'Not specified'} - {record.pressure_max or 'Not specified'}",
+        f"Power limit: {record.power_limit or 'Not specified'}",
+        f"Current page: {record.page_url or 'Not provided'}",
+        f"Page card: {(record.page_card_title or 'Not provided')} - {(record.page_card_summary or 'Not provided')}",
+        f"Page type: {record.page_type or 'Not provided'}",
+        f"Verification: {record.verification_provider} / {record.verification_status}",
+        f"Email status: {record.email_status}",
+    ]
+    if record.short_notes:
+        lines.extend(["", f"Additional notes: {_quote_request_clean_multiline(record.short_notes, 300)}"])
+    if record.details:
+        lines.extend(["", "Details:", _quote_request_clean_multiline(record.details, 4000)])
+    if record.context_json:
+        lines.extend(["", "Context:", json.dumps(record.context_json, ensure_ascii=False, indent=2)])
+    return "\n".join(lines)
+
+
+def _build_quote_request_email(record: QuoteRequest, recipient_emails: list[str]) -> EmailMessage:
+    message = EmailMessage()
+    recipient_emails = recipient_emails or ["admin@venttech.co.nz"]
+    from_email = SMTP_FROM_EMAIL or SMTP_USERNAME or recipient_emails[0]
+    from_name = SMTP_FROM_NAME or "Vent-Tech website"
+
+    message["To"] = ", ".join(recipient_emails)
+    message["From"] = f"{from_name} <{from_email}>"
+    message["Reply-To"] = record.email
+    message["Subject"] = _quote_request_subject(record)
+    message.set_content(_quote_request_body(record))
+    return message
+
+
+def _build_quote_request_test_email(recipient_email: str) -> EmailMessage:
+    message = EmailMessage()
+    from_email = SMTP_FROM_EMAIL or SMTP_USERNAME or recipient_email
+    from_name = SMTP_FROM_NAME or "Vent-Tech website"
+
+    message["To"] = recipient_email
+    message["From"] = f"{from_name} <{from_email}>"
+    message["Subject"] = "Vent-Tech SMTP test"
+    message.set_content(
+        "This is a test email from the Vent-Tech enquiry system.\n\n"
+        "If you received this message, SMTP delivery is working."
+    )
+    return message
+
+
+def _send_quote_request_email(message: EmailMessage) -> None:
+    if not SMTP_HOST:
+        raise RuntimeError("SMTP_HOST is not configured.")
+
+    context = ssl.create_default_context()
+    if SMTP_USE_SSL:
+        server = smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=20, context=context)
+    else:
+        server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20)
+
+    try:
+        server.ehlo()
+        if SMTP_USE_TLS and not SMTP_USE_SSL:
+            server.starttls(context=context)
+            server.ehlo()
+        if SMTP_USERNAME:
+            server.login(SMTP_USERNAME, SMTP_PASSWORD)
+        server.send_message(message)
+    finally:
+        try:
+            server.quit()
+        except Exception:
+            server.close()
+
+
+def _normalise_quote_request_payload(payload: QuoteRequestCreate) -> dict:
+    attributes = [str(item).strip().casefold() for item in (payload.attributes or []) if str(item).strip()]
+    request_type = str(payload.request_type or "unsure").strip().casefold()
+    if request_type not in QUOTE_REQUEST_REQUEST_TYPE_LABELS:
+        request_type = "unsure"
+
+    context_json = {
+        "page_type": payload.page_type or "",
+        "page_title": payload.page_title or "",
+        "page_summary": payload.page_summary or "",
+        "page_card_title": payload.page_card_title or "",
+        "page_card_summary": payload.page_card_summary or "",
+        "page_url": payload.page_url or "",
+        "product_type": payload.product_type or {},
+        "series": payload.series or {},
+        "product": payload.product or {},
+    }
+    if isinstance(payload.page_context, dict):
+        context_json.update({key: value for key, value in payload.page_context.items() if value not in (None, "")})
+
+    return {
+        "name": _quote_request_clean(payload.name, 120),
+        "company": _quote_request_clean(payload.company, 160),
+        "email": _quote_request_clean(payload.email, 160),
+        "phone": _quote_request_clean(payload.phone, 80),
+        "request_type": request_type,
+        "attributes": attributes,
+        "airflow_min": _quote_request_clean(payload.airflow_min, 40),
+        "airflow_max": _quote_request_clean(payload.airflow_max, 40),
+        "pressure_min": _quote_request_clean(payload.pressure_min, 40),
+        "pressure_max": _quote_request_clean(payload.pressure_max, 40),
+        "power_limit": _quote_request_clean(payload.power_limit, 60),
+        "short_notes": _quote_request_clean_multiline(payload.short_notes, 300),
+        "details": _quote_request_clean_multiline(payload.details, 4000),
+        "page_type": _quote_request_clean(payload.page_type, 80),
+        "page_title": _quote_request_clean(payload.page_title, 200),
+        "page_summary": _quote_request_clean(payload.page_summary, 500),
+        "page_card_title": _quote_request_clean(payload.page_card_title, 200),
+        "page_card_summary": _quote_request_clean(payload.page_card_summary, 500),
+        "page_url": _quote_request_clean(payload.page_url, 500),
+        "client_ip": _quote_request_clean(payload.client_ip, 64),
+        "user_agent": _quote_request_clean(payload.user_agent, 500),
+        "referrer": _quote_request_clean(payload.referrer, 500),
+        "origin": _quote_request_clean(payload.origin, 500),
+        "context_json": context_json,
+    }
+
+
 bulk_import_router.add_api_route(
     "/api/bulk-import",
     bulk_import_assets,
@@ -7558,6 +7809,181 @@ def start_refresh_series_pdf_job(series_id: int):
         }
 
     return serialize_maintenance_job(start_maintenance_job(f"refresh_series_pdf_{series_id}", work))
+
+
+def _serialize_quote_request(record: QuoteRequest) -> QuoteRequestResponse:
+    return QuoteRequestResponse(
+        id=record.id,
+        created_at=record.created_at.isoformat() if record.created_at else None,
+        updated_at=record.updated_at.isoformat() if record.updated_at else None,
+        status=record.status,
+        email_status=record.email_status,
+        email_error=record.email_error,
+        verification_provider=record.verification_provider,
+        verification_status=record.verification_status,
+        verification_error=record.verification_error,
+        name=record.name,
+        company=record.company,
+        email=record.email,
+        phone=record.phone,
+        request_type=record.request_type,
+        attributes=list(record.attributes or []),
+        airflow_min=record.airflow_min,
+        airflow_max=record.airflow_max,
+        pressure_min=record.pressure_min,
+        pressure_max=record.pressure_max,
+        power_limit=record.power_limit,
+        short_notes=record.short_notes,
+        details=record.details,
+        page_type=record.page_type,
+        page_title=record.page_title,
+        page_summary=record.page_summary,
+        page_card_title=record.page_card_title,
+        page_card_summary=record.page_card_summary,
+        page_url=record.page_url,
+        client_ip=record.client_ip,
+        user_agent=record.user_agent,
+        referrer=record.referrer,
+        origin=record.origin,
+        product_type=(record.context_json or {}).get("product_type") or {},
+        series=(record.context_json or {}).get("series") or {},
+        product=(record.context_json or {}).get("product") or {},
+        context_json=record.context_json or {},
+    )
+
+
+@app.post("/api/quote-requests", response_model=QuoteRequestResponse, tags=["Public", "Enquiries"])
+async def create_quote_request(body: QuoteRequestCreate, request: Request, db: Session = Depends(get_db)):
+    if body.website:
+        raise HTTPException(status_code=400, detail="Enquiry request rejected.")
+
+    record_data = _normalise_quote_request_payload(body)
+    recipient_emails = _quote_request_recipient_emails_from_settings(db)
+    throttle_key = _quote_request_throttle_key(body, request)
+    _quote_request_check_throttle(throttle_key)
+    record = QuoteRequest(
+        status="new",
+        email_status="pending",
+        email_error=None,
+        verification_provider="honeypot",
+        verification_status="passed",
+        verification_error=None,
+        **record_data,
+    )
+    db.add(record)
+    db.flush()
+
+    if not SMTP_HOST:
+        record.email_status = "not_configured"
+        record.email_error = "SMTP_HOST is not configured."
+        logger.info("Quote request email skipped because SMTP is not configured")
+    else:
+        try:
+            email_message = _build_quote_request_email(record, recipient_emails)
+            await asyncio.to_thread(_send_quote_request_email, email_message)
+        except Exception as exc:
+            record.email_status = "failed"
+            record.email_error = str(exc)
+            logger.exception("Quote request email delivery failed")
+        else:
+            record.email_status = "sent"
+            record.email_error = None
+
+    db.commit()
+    db.refresh(record)
+    logger.info(
+        "Stored quote request %s for %s (%s)",
+        record.id,
+        record.page_card_title or record.page_title or record.page_type,
+        record.email,
+    )
+    return _serialize_quote_request(record)
+
+
+@app.get("/api/settings/quote-request-notifications", response_model=QuoteRequestNotificationSettings, dependencies=[Depends(get_current_user)], tags=["Maintenance"])
+def get_quote_request_notification_settings(db: Session = Depends(get_db)):
+    return QuoteRequestNotificationSettings(
+        quote_request_recipient_emails=_quote_request_recipient_emails_from_settings(db),
+    )
+
+
+@app.put("/api/settings/quote-request-notifications", response_model=QuoteRequestNotificationSettings, dependencies=[Depends(get_current_user)], tags=["Maintenance"])
+def update_quote_request_notification_settings(body: QuoteRequestNotificationSettings, db: Session = Depends(get_db)):
+    settings = get_or_create_app_settings(db)
+    emails = _quote_request_parse_recipient_emails(body.quote_request_recipient_emails)
+    settings.quote_request_recipient_emails = ", ".join(emails) if emails else None
+    db.commit()
+    db.refresh(settings)
+    return QuoteRequestNotificationSettings(quote_request_recipient_emails=emails)
+
+
+@app.post("/api/settings/quote-request-email-test", response_model=QuoteRequestEmailTestResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"])
+async def send_quote_request_email_test(body: QuoteRequestEmailTestRequest):
+    if not SMTP_HOST:
+        raise HTTPException(status_code=400, detail="SMTP_HOST is not configured.")
+
+    recipient_email = _quote_request_clean(body.recipient_email, 160)
+    if not recipient_email:
+        raise HTTPException(status_code=400, detail="Recipient email is required.")
+
+    try:
+        message = _build_quote_request_test_email(recipient_email)
+        await asyncio.to_thread(_send_quote_request_email, message)
+    except Exception as exc:
+        logger.exception("SMTP test email delivery failed")
+        raise HTTPException(status_code=500, detail=f"Unable to send SMTP test email: {exc}") from exc
+
+    return QuoteRequestEmailTestResponse(
+        message="SMTP test email sent.",
+        recipient_email=recipient_email,
+    )
+
+
+@app.get("/api/quote-requests", response_model=list[QuoteRequestResponse], dependencies=[Depends(get_current_user)], tags=["Enquiries"], summary="List enquiries")
+def list_quote_requests(
+    db: Session = Depends(get_db),
+    status: Optional[str] = Query(None),
+    limit: int = Query(200, ge=1, le=1000),
+):
+    query = db.query(QuoteRequest)
+    if status:
+        query = query.filter(QuoteRequest.status == status)
+    records = query.order_by(QuoteRequest.created_at.desc(), QuoteRequest.id.desc()).limit(limit).all()
+    return [_serialize_quote_request(record) for record in records]
+
+
+@app.patch("/api/quote-requests/{quote_request_id}", response_model=QuoteRequestResponse, dependencies=[Depends(get_current_user)], tags=["Enquiries"], summary="Update an enquiry")
+def update_quote_request(
+    quote_request_id: int,
+    body: QuoteRequestStatusUpdate,
+    db: Session = Depends(get_db),
+):
+    record = db.get(QuoteRequest, quote_request_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Enquiry not found")
+
+    status = str(body.status or "").strip().casefold()
+    if status not in {"new", "quoted", "closed"}:
+        raise HTTPException(status_code=400, detail="Invalid enquiry status.")
+
+    record.status = status
+    db.commit()
+    db.refresh(record)
+    return _serialize_quote_request(record)
+
+
+@app.delete("/api/quote-requests/{quote_request_id}", dependencies=[Depends(get_current_user)], tags=["Enquiries"], summary="Delete an enquiry")
+def delete_quote_request(
+    quote_request_id: int,
+    db: Session = Depends(get_db),
+):
+    record = db.get(QuoteRequest, quote_request_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Enquiry not found")
+
+    db.delete(record)
+    db.commit()
+    return {"deleted": True, "id": quote_request_id}
 
 
 @app.get("/api/auth/session", response_model=AuthSessionResponse, tags=["Public", "Authentication"])

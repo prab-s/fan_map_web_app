@@ -9,13 +9,34 @@
   </ol>
 </nav>
 
+<div class="card shadow-sm border-0 section-card mb-4">
+  <div class="card-body py-3">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+      <div>
+        <p class="section-kicker text-uppercase fw-semibold mb-1">Need a hand?</p>
+        <h2 class="h5 mb-0">Start with a guided enquiry if you are not sure where to begin</h2>
+      </div>
+      <a
+        class="btn btn-primary"
+        href="#quoteRequestModal"
+        data-quote-request-trigger
+        data-quote-request-default-type="unsure"
+        data-bs-toggle="modal"
+        data-bs-target="#quoteRequestModal"
+      >
+        Help me choose
+      </a>
+    </div>
+  </div>
+</div>
+
 <div id="finder-loading" class="alert alert-light border d-flex align-items-center gap-2 mb-4" role="status" aria-live="polite">
   <div class="spinner-border spinner-border-sm text-secondary" aria-hidden="true"></div>
   <div>Loading product filters...</div>
 </div>
 
-<div class="row g-4">
-  <aside class="col-lg-3">
+<div class="row g-4 finder-layout">
+  <aside class="col-lg-3 finder-layout__sidebar">
     <form id="finder-form" class="card shadow-sm border-0 section-card">
       <div class="card-body">
         <h2 class="h5 mb-3">Filter products</h2>
@@ -29,7 +50,7 @@
         </select>
 
         <label class="form-label">Search</label>
-        <input class="form-control" name="search" placeholder="Model or keyword">
+        <input class="form-control" name="search" placeholder="Model, description, or keyword">
 
         <div class="d-flex align-items-center justify-content-between mt-4 mb-2">
           <p class="text-muted small mb-0">Choose a product type to reveal the available engineering filters.</p>
@@ -53,7 +74,7 @@
     </form>
   </aside>
 
-  <section class="col-lg-9">
+  <section class="col-lg-9 finder-layout__results">
     <div class="card shadow-sm border-0 mb-4 section-card">
       <div class="card-body">
         <h2 class="h5 mb-3">Browse by product type</h2>

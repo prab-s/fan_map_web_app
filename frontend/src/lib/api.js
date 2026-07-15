@@ -205,6 +205,37 @@ export async function getSeries(params = {}) {
   return r.json();
 }
 
+export async function getQuoteRequests(params = {}) {
+  const sp = new URLSearchParams(params).toString();
+  const r = await apiFetch('/quote-requests' + (sp ? `?${sp}` : ''));
+  return r.json();
+}
+
+export async function deleteQuoteRequest(id) {
+  const r = await apiFetch(`/quote-requests/${encodeURIComponent(String(id))}`, {
+    method: 'DELETE'
+  });
+  return r.json();
+}
+
+export async function sendQuoteRequestEmailTest(body) {
+  const r = await apiFetch('/settings/quote-request-email-test', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  return r.json();
+}
+
+export async function updateQuoteRequestStatus(id, status) {
+  const r = await apiFetch(`/quote-requests/${encodeURIComponent(String(id))}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status })
+  });
+  return r.json();
+}
+
 export async function getSeriesById(id) {
   const r = await apiFetch(`/series/${encodeURIComponent(String(id))}`);
   return r.json();

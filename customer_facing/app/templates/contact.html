@@ -22,7 +22,13 @@
         <div class="card-body">
           <div class="small text-uppercase text-muted fw-semibold mb-1">Request a quote</div>
           <p class="text-muted mb-3">Send the project details through and the team can point you to the right product type, series, or model datasheet.</p>
-          <a class="btn btn-primary w-100" href="{{ request_quote_url }}">Request a Quote</a>
+          <a
+            class="btn btn-primary w-100"
+            href="{{ request_quote_url }}"
+            data-quote-request-trigger
+            data-bs-toggle="modal"
+            data-bs-target="#quoteRequestModal"
+          >Enquire</a>
         </div>
       </div>
     </div>

@@ -52,7 +52,13 @@
       <div class="download-group">
         <div class="small text-uppercase text-muted fw-semibold mb-2">Support</div>
         <div class="d-grid gap-2">
-          <a class="btn btn-primary btn-sm text-start" href="{{ site_contact.request_quote_url }}">
+          <a
+            class="btn btn-primary btn-sm text-start"
+            href="{{ site_contact.request_quote_url }}"
+            data-quote-request-trigger
+            data-bs-toggle="modal"
+            data-bs-target="#quoteRequestModal"
+          >
             <span class="d-block fw-semibold">Request a quote</span>
             <span class="d-block small text-muted">Send a project or model enquiry</span>
           </a>

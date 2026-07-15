@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb small mb-0">
+    <li class="breadcrumb-item"><a href="/">Home</a></li>
+    <li class="breadcrumb-item active" aria-current="page">Past Projects</li>
+  </ol>
+</nav>
+
+<section class="page-hero mb-4">
+  <div class="row g-4 align-items-end">
+    <div class="col-lg-8">
+      <p class="section-kicker text-uppercase fw-semibold mb-2">Past Projects</p>
+      <h1 class="display-6 mb-3">A quick look at previous project highlights</h1>
+      <p class="lead text-muted mb-0">
+        This page is a placeholder for now. We’ll use it to highlight finished jobs, case studies, before-and-after
+        examples, and the kinds of outcomes customers can expect when they work with Vent-Tech.
+      </p>
+    </div>
+    <div class="col-lg-4">
+      <div class="hero-callout card shadow-sm">
+        <div class="card-body">
+          <div class="small text-uppercase text-muted fw-semibold mb-1">Coming soon</div>
+          <p class="text-muted mb-0">
+            Add project photos, short summaries, and key project details here once the content is ready.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="surface-section mb-4">
+  <div class="past-projects-carousel card shadow-sm border-0 section-card mx-auto">
+    <div class="card-body p-3 p-md-4">
+      <div class="d-flex flex-wrap align-items-end justify-content-between gap-2 mb-3">
+        <div>
+          <p class="section-kicker text-uppercase fw-semibold mb-2">Project collage</p>
+          <h2 class="h5 mb-0">Compact carousel of previous work</h2>
+        </div>
+        <p class="text-muted small mb-0">Placeholder visuals for now, ready to replace with real project images.</p>
+      </div>
+
+      <div id="pastProjectsCarousel" class="carousel slide" data-bs-ride="carousel" data-bs-interval="5500">
+        <div class="carousel-indicators">
+          <button type="button" data-bs-target="#pastProjectsCarousel" data-bs-slide-to="0" class="active" aria-current="true" aria-label="Collage 1"></button>
+          <button type="button" data-bs-target="#pastProjectsCarousel" data-bs-slide-to="1" aria-label="Collage 2"></button>
+          <button type="button" data-bs-target="#pastProjectsCarousel" data-bs-slide-to="2" aria-label="Collage 3"></button>
+        </div>
+
+        <div class="carousel-inner">
+          <div class="carousel-item active">
+            <div class="project-collage-grid">
+              <figure class="project-collage-tile project-collage-tile--wide">
+                <img src="/static/media/laser-cutter.svg" alt="Placeholder project image showing laser cutting work" loading="lazy">
+                <figcaption>
+                  <span class="project-collage-tile__label">Laser cutting</span>
+                  <span class="project-collage-tile__text">Precision sheet work and repeatable cut profiles</span>
+                </figcaption>
+              </figure>
+              <figure class="project-collage-tile">
+                <img src="/static/media/brake-press.svg" alt="Placeholder project image showing brake press work" loading="lazy">
+                <figcaption>
+                  <span class="project-collage-tile__label">Brake pressing</span>
+                  <span class="project-collage-tile__text">Clean folds, returns, and formed sections</span>
+                </figcaption>
+              </figure>
+              <figure class="project-collage-tile">
+                <img src="/static/media/roller.svg" alt="Placeholder project image showing rolling work" loading="lazy">
+                <figcaption>
+                  <span class="project-collage-tile__label">Rolling</span>
+                  <span class="project-collage-tile__text">Curved sections and controlled radii</span>
+                </figcaption>
+              </figure>
+              <figure class="project-collage-tile">
+                <img src="/static/media/flanger.svg" alt="Placeholder project image showing flanging work" loading="lazy">
+                <figcaption>
+                  <span class="project-collage-tile__label">Flanging</span>
+                  <span class="project-collage-tile__text">Stiffened edges and tidy assembly details</span>
+                </figcaption>
+              </figure>
+            </div>
+          </div>
+
+          <div class="carousel-item">
+            <div class="project-collage-grid">
+              <figure class="project-collage-tile">
+                <img src="/static/media/brake-press.svg" alt="Placeholder project image showing formed metalwork" loading="lazy">
+                <figcaption>
+                  <span class="project-collage-tile__label">Custom forming</span>
+                  <span class="project-collage-tile__text">Parts shaped for fit, strength, and finish</span>
+                </figcaption>
+              </figure>
+              <figure class="project-collage-tile project-collage-tile--tall">
+                <img src="/static/media/laser-cutter.svg" alt="Placeholder project image showing fabricated panels" loading="lazy">
+                <figcaption>
+                  <span class="project-collage-tile__label">Panel sets</span>
+                  <span class="project-collage-tile__text">Flat patterns and repeated parts for assemblies</span>
+                </figcaption>
+              </figure>
+              <figure class="project-collage-tile">
+                <img src="/static/media/flanger.svg" alt="Placeholder project image showing edge finishing" loading="lazy">
+                <figcaption>
+                  <span class="project-collage-tile__label">Edge finishing</span>
+                  <span class="project-collage-tile__text">Neat details for durable finished components</span>
+                </figcaption>
+              </figure>
+              <figure class="project-collage-tile">
+                <img src="/static/media/roller.svg" alt="Placeholder project image showing rolled sections" loading="lazy">
+                <figcaption>
+                  <span class="project-collage-tile__label">Curved sections</span>
+                  <span class="project-collage-tile__text">Controlled arcs for fit and airflow paths</span>
+                </figcaption>
+              </figure>
+            </div>
+          </div>
+
+          <div class="carousel-item">
+            <div class="project-collage-grid">
+              <figure class="project-collage-tile project-collage-tile--wide">
+                <img src="/static/media/flanger.svg" alt="Placeholder project image showing a completed metal fabrication job" loading="lazy">
+                <figcaption>
+                  <span class="project-collage-tile__label">Finished jobs</span>
+                  <span class="project-collage-tile__text">A simple place for the final delivered result</span>
+                </figcaption>
+              </figure>
+              <figure class="project-collage-tile">
+                <img src="/static/media/laser-cutter.svg" alt="Placeholder project image showing repeat fabrication" loading="lazy">
+                <figcaption>
+                  <span class="project-collage-tile__label">Repeat runs</span>
+                  <span class="project-collage-tile__text">Consistent outcomes across multiple pieces</span>
+                </figcaption>
+              </figure>
+              <figure class="project-collage-tile">
+                <img src="/static/media/brake-press.svg" alt="Placeholder project image showing workshop fabrication" loading="lazy">
+                <figcaption>
+                  <span class="project-collage-tile__label">Workshop support</span>
+                  <span class="project-collage-tile__text">Useful examples of practical fabrication work</span>
+                </figcaption>
+              </figure>
+              <figure class="project-collage-tile">
+                <img src="/static/media/roller.svg" alt="Placeholder project image showing rounded fabrication" loading="lazy">
+                <figcaption>
+                  <span class="project-collage-tile__label">Rounded forms</span>
+                  <span class="project-collage-tile__text">Curved metalwork with a tidy finished edge</span>
+                </figcaption>
+              </figure>
+            </div>
+          </div>
+        </div>
+
+        <button class="carousel-control-prev" type="button" data-bs-target="#pastProjectsCarousel" data-bs-slide="prev">
+          <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+          <span class="visually-hidden">Previous collage</span>
+        </button>
+        <button class="carousel-control-next" type="button" data-bs-target="#pastProjectsCarousel" data-bs-slide="next">
+          <span class="carousel-control-next-icon" aria-hidden="true"></span>
+          <span class="visually-hidden">Next collage</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="surface-section mb-4">
+  <div class="row g-4">
+    <div class="col-lg-4">
+      <div class="card shadow-sm border-0 section-card h-100">
+        <div class="card-body p-4">
+          <p class="section-kicker text-uppercase fw-semibold mb-2">Project snapshots</p>
+          <h2 class="h5 mb-3">Short, visual summaries</h2>
+          <p class="text-muted mb-0">
+            This section can later hold a grid of project cards with photos, the problem to solve, and the finished
+            result.
+          </p>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-4">
+      <div class="card shadow-sm border-0 section-card h-100">
+        <div class="card-body p-4">
+          <p class="section-kicker text-uppercase fw-semibold mb-2">Industries served</p>
+          <h2 class="h5 mb-3">Examples by sector</h2>
+          <p class="text-muted mb-0">
+            Use this space for industry-specific examples, like ventilation, fabrication support, commercial builds,
+            or custom engineering jobs.
+          </p>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-4">
+      <div class="card shadow-sm border-0 section-card h-100">
+        <div class="card-body p-4">
+          <p class="section-kicker text-uppercase fw-semibold mb-2">What to show</p>
+          <h2 class="h5 mb-3">A few useful details</h2>
+          <p class="text-muted mb-0">
+            Photos, project goals, fabrication steps, and any notable outcomes would all fit nicely here when the
+            content is available.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

@@ -28,7 +28,10 @@ export const nodes = [
 	() => import('./nodes/24'),
 	() => import('./nodes/25'),
 	() => import('./nodes/26'),
-	() => import('./nodes/27')
+	() => import('./nodes/27'),
+	() => import('./nodes/28'),
+	() => import('./nodes/29'),
+	() => import('./nodes/30')
 ];
 
 export const server_loads = [];
@@ -45,21 +48,24 @@ export const dictionary = {
 		"/editor/product-types/create": [10],
 		"/editor/product-types/edit": [11],
 		"/editor/product-types/edit/[product_type]": [12],
-		"/editor/series": [13],
-		"/editor/series/create": [14],
-		"/editor/series/edit": [15],
-		"/editor/series/edit/[series]": [16],
-		"/entry": [17],
-		"/map": [18],
-		"/products": [19],
-		"/products/type/[product_type]": [21],
-		"/products/[product]": [20],
-		"/series/[series]": [22],
-		"/setup": [23],
-		"/template-builder-v2": [25],
-		"/template-builder": [24],
-		"/viewer": [26],
-		"/viewer/[tab]/[[record]]": [27]
+		"/editor/quote-requests": [13],
+		"/editor/series": [14],
+		"/editor/series/create": [15],
+		"/editor/series/edit": [16],
+		"/editor/series/edit/[series]": [17],
+		"/enquiries": [18],
+		"/entry": [19],
+		"/map": [20],
+		"/products": [21],
+		"/products/type/[product_type]": [23],
+		"/products/[product]": [22],
+		"/quotes": [24],
+		"/series/[series]": [25],
+		"/setup": [26],
+		"/template-builder-v2": [28],
+		"/template-builder": [27],
+		"/viewer": [29],
+		"/viewer/[tab]/[[record]]": [30]
 	};
 
 export const hooks = {

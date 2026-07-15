@@ -1,5 +1,7 @@
 import json
 import logging
+import html
+import re
 
 from app.config import settings
 
@@ -24,6 +26,76 @@ def coerce_float(value):
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _normalize_search_text(value) -> str:
+    if value in (None, ""):
+        return ""
+    text = html.unescape(str(value))
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text.casefold()
+
+
+def _build_search_pattern(search: str) -> re.Pattern | None:
+    normalized_search = _normalize_search_text(search)
+    if not normalized_search:
+        return None
+
+    if "*" not in normalized_search:
+        return None
+
+    escaped = re.escape(normalized_search).replace(r"\*", ".*")
+    return re.compile(escaped)
+
+
+def _product_search_haystack(product: dict) -> str:
+    parts: list[str] = []
+
+    for key in (
+        "model",
+        "series_name",
+        "product_type_label",
+        "description1_html",
+        "description2_html",
+        "description1",
+        "description2",
+        "summary",
+        "short_description",
+        "keywords",
+    ):
+        value = product.get(key)
+        if value not in (None, ""):
+            parts.append(_normalize_search_text(value))
+
+    for group in product.get("parameter_groups", []) or []:
+        group_name = group.get("group_name")
+        if group_name not in (None, ""):
+            parts.append(_normalize_search_text(group_name))
+        for parameter in group.get("parameters", []) or []:
+            for key in ("parameter_name", "value_string", "unit"):
+                value = parameter.get(key)
+                if value not in (None, ""):
+                    parts.append(_normalize_search_text(value))
+            value_number = parameter.get("value_number")
+            if value_number not in (None, ""):
+                parts.append(_normalize_search_text(value_number))
+
+    return " ".join(part for part in parts if part)
+
+
+def _product_matches_search(product: dict, normalized_search: str, wildcard_pattern: re.Pattern | None = None) -> bool:
+    if not normalized_search:
+        return True
+
+    haystack = _product_search_haystack(product)
+    if not haystack:
+        return False
+
+    if wildcard_pattern is not None:
+        return bool(wildcard_pattern.search(haystack))
+
+    return normalized_search in haystack
 
 
 def parse_parameter_filters(raw_filters: str | None) -> list[dict]:
@@ -287,7 +359,8 @@ def filter_products(
     parameter_filters: list[dict] | None = None,
 ) -> list[dict]:
     normalized_type_key = str(product_type_key or "").strip()
-    normalized_search = str(search or "").strip().casefold()
+    normalized_search = _normalize_search_text(search)
+    wildcard_pattern = _build_search_pattern(normalized_search)
     normalized_series_id = str(series_id).strip() if series_id not in (None, "") else ""
     normalized_filters = parameter_filters or []
 
@@ -295,7 +368,7 @@ def filter_products(
     for product in products:
         if normalized_type_key and (product.get("product_type_key") or "") != normalized_type_key:
             continue
-        if normalized_search and normalized_search not in str(product.get("model") or "").casefold():
+        if not _product_matches_search(product, normalized_search, wildcard_pattern):
             continue
         if normalized_series_id and str(product.get("series_id") or "").strip() != normalized_series_id:
             continue

@@ -253,7 +253,7 @@ def _route_group_for_path(path: str) -> str:
         return "public-api"
     if path.startswith("/api/"):
         return "internal-api"
-    if path.startswith("/series/") or path.startswith("/products/") or path in {"/", "/contact", "/engineering-services", "/finder/results"}:
+    if path.startswith("/series/") or path.startswith("/products/") or path in {"/", "/contact", "/past-projects", "/engineering-services", "/finder/results"}:
         return "public-page"
     return "other"
 
@@ -266,7 +266,7 @@ def _page_route_group_for_path(path: str) -> str:
         return "series-page"
     if path.startswith("/products/"):
         return "product-page"
-    if path in {"/contact", "/engineering-services", "/finder/results"}:
+    if path in {"/contact", "/past-projects", "/engineering-services", "/finder/results"}:
         return "public-page"
     return "other"
 

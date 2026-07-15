@@ -34,6 +34,8 @@
           {% endfor %}
         </div>
 
+        <span class="nav-actions-divider d-none d-lg-block" aria-hidden="true"></span>
+
         <a
           class="btn btn-outline-light nav-service-button btn-sm"
           href="/engineering-services"
@@ -42,6 +44,26 @@
           {% endif %}
         >
           Engineering Services
+        </a>
+
+        <a
+          class="btn btn-outline-light nav-projects-button btn-sm"
+          href="/past-projects"
+          {% if request.url.path.startswith('/past-projects') %}
+            aria-current="page"
+          {% endif %}
+        >
+          Past Projects
+        </a>
+
+        <a
+          class="btn btn-outline-light nav-contact-button btn-sm"
+          href="/contact"
+          {% if request.url.path.startswith('/contact') %}
+            aria-current="page"
+          {% endif %}
+        >
+          Contact
         </a>
 
       </div>

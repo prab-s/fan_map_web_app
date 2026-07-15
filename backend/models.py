@@ -8,7 +8,7 @@ import colorsys
 import json
 import html
 
-from sqlalchemy import Boolean, Column, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, JSON, String, Text, func
 from sqlalchemy.orm import relationship
 
 from backend.database import Base
@@ -675,6 +675,45 @@ class AppSettings(Base):
     id = Column(Integer, primary_key=True, index=True)
     band_graph_background_color = Column(String(32), nullable=True)
     band_graph_label_text_color = Column(String(32), nullable=True)
+    quote_request_recipient_emails = Column(Text, nullable=True)
+
+
+class QuoteRequest(Base):
+    __tablename__ = "quote_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    status = Column(String(32), nullable=False, default="new")
+    email_status = Column(String(32), nullable=False, default="pending")
+    email_error = Column(Text, nullable=True)
+    verification_provider = Column(String(32), nullable=False, default="none")
+    verification_status = Column(String(32), nullable=False, default="not_configured")
+    verification_error = Column(Text, nullable=True)
+    name = Column(String(120), nullable=False)
+    company = Column(String(160), nullable=True)
+    email = Column(String(160), nullable=False)
+    phone = Column(String(80), nullable=True)
+    request_type = Column(String(32), nullable=False, default="unsure")
+    attributes = Column(JSON, nullable=False, default=list)
+    airflow_min = Column(String(40), nullable=True)
+    airflow_max = Column(String(40), nullable=True)
+    pressure_min = Column(String(40), nullable=True)
+    pressure_max = Column(String(40), nullable=True)
+    power_limit = Column(String(60), nullable=True)
+    short_notes = Column(String(300), nullable=True)
+    details = Column(Text, nullable=True)
+    page_type = Column(String(80), nullable=True)
+    page_title = Column(String(200), nullable=True)
+    page_summary = Column(String(500), nullable=True)
+    page_card_title = Column(String(200), nullable=True)
+    page_card_summary = Column(String(500), nullable=True)
+    page_url = Column(String(500), nullable=True)
+    client_ip = Column(String(64), nullable=True)
+    user_agent = Column(Text, nullable=True)
+    referrer = Column(Text, nullable=True)
+    origin = Column(Text, nullable=True)
+    context_json = Column(JSON, nullable=False, default=dict)
 
 
 class ProductParameterGroup(Base):

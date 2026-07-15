@@ -29,8 +29,13 @@
             <li class="d-flex gap-2"><span class="service-bullet">04</span><span>Flanging for stiffened edges and better assembly</span></li>
           </ul>
           <div class="d-flex flex-wrap gap-2 mt-3">
-            <a class="btn btn-primary" href="{{ request_quote_url }}">Request a Quote</a>
-            <a class="btn btn-outline-secondary" href="/contact">Talk to the team</a>
+            <a
+              class="btn btn-primary"
+              href="{{ request_quote_url }}"
+              data-quote-request-trigger
+              data-bs-toggle="modal"
+              data-bs-target="#quoteRequestModal"
+            >Enquire</a>
           </div>
         </div>
       </div>
@@ -106,7 +111,7 @@
 <section class="engineering-cta page-hero mb-4">
   <div class="row g-4 align-items-center">
     <div class="col-lg-8">
-      <p class="section-kicker text-uppercase fw-semibold mb-2">Next step</p>
+      <p class="section-kicker text-uppercase text-primary fw-semibold mb-2">Next step</p>
       <h2 class="h4 mb-2">Send us the drawing, dimensions, or rough idea and we can advise on the best process.</h2>
       <p class="text-muted mb-0">
         If a part needs multiple operations, we can help talk through the order of work and what will give the cleanest
@@ -114,7 +119,13 @@
       </p>
     </div>
     <div class="col-lg-4 text-lg-end">
-      <a class="btn btn-primary btn-lg" href="{{ request_quote_url }}">Request a Quote</a>
+      <a
+        class="btn btn-primary btn-lg"
+        href="{{ request_quote_url }}"
+        data-quote-request-trigger
+        data-bs-toggle="modal"
+        data-bs-target="#quoteRequestModal"
+      >Enquire</a>
     </div>
   </div>
 </section>

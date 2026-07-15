@@ -29,7 +29,7 @@ declare module "$app/types" {
 	type MatcherParam<M> = M extends (param : string) => param is (infer U extends string) ? U : string;
 
 	export interface AppTypes {
-		RouteId(): "/" | "/bulk-import" | "/catalogue" | "/editor" | "/editor/create" | "/editor/edit" | "/editor/edit/[product]" | "/editor/product-types" | "/editor/product-types/create" | "/editor/product-types/edit" | "/editor/product-types/edit/[product_type]" | "/editor/product" | "/editor/product/create" | "/editor/product/edit" | "/editor/series" | "/editor/series/create" | "/editor/series/edit" | "/editor/series/edit/[series]" | "/entry" | "/map" | "/products" | "/products/type" | "/products/type/[product_type]" | "/products/[product]" | "/series" | "/series/[series]" | "/setup" | "/template-builder-v2" | "/template-builder" | "/viewer" | "/viewer/[tab]" | "/viewer/[tab]/[[record]]";
+		RouteId(): "/" | "/bulk-import" | "/catalogue" | "/editor" | "/editor/create" | "/editor/edit" | "/editor/edit/[product]" | "/editor/product-types" | "/editor/product-types/create" | "/editor/product-types/edit" | "/editor/product-types/edit/[product_type]" | "/editor/product" | "/editor/product/create" | "/editor/product/edit" | "/editor/quote-requests" | "/editor/series" | "/editor/series/create" | "/editor/series/edit" | "/editor/series/edit/[series]" | "/enquiries" | "/entry" | "/map" | "/products" | "/products/type" | "/products/type/[product_type]" | "/products/[product]" | "/quotes" | "/series" | "/series/[series]" | "/setup" | "/template-builder-v2" | "/template-builder" | "/viewer" | "/viewer/[tab]" | "/viewer/[tab]/[[record]]";
 		RouteParams(): {
 			"/editor/edit/[product]": { product: string };
 			"/editor/product-types/edit/[product_type]": { product_type: string };
@@ -55,16 +55,19 @@ declare module "$app/types" {
 			"/editor/product": Record<string, never>;
 			"/editor/product/create": Record<string, never>;
 			"/editor/product/edit": Record<string, never>;
+			"/editor/quote-requests": Record<string, never>;
 			"/editor/series": { series?: string };
 			"/editor/series/create": Record<string, never>;
 			"/editor/series/edit": { series?: string };
 			"/editor/series/edit/[series]": { series: string };
+			"/enquiries": Record<string, never>;
 			"/entry": Record<string, never>;
 			"/map": Record<string, never>;
 			"/products": { product_type?: string; product?: string };
 			"/products/type": { product_type?: string };
 			"/products/type/[product_type]": { product_type: string };
 			"/products/[product]": { product: string };
+			"/quotes": Record<string, never>;
 			"/series": { series?: string };
 			"/series/[series]": { series: string };
 			"/setup": Record<string, never>;
@@ -74,7 +77,7 @@ declare module "$app/types" {
 			"/viewer/[tab]": { tab: string; record?: string };
 			"/viewer/[tab]/[[record]]": { tab: string; record?: string }
 		};
-		Pathname(): "/" | "/bulk-import" | "/catalogue" | "/editor" | "/editor/create" | "/editor/edit" | `/editor/edit/${string}` & {} | "/editor/product-types" | "/editor/product-types/create" | "/editor/product-types/edit" | `/editor/product-types/edit/${string}` & {} | "/editor/series" | "/editor/series/create" | "/editor/series/edit" | `/editor/series/edit/${string}` & {} | "/entry" | "/map" | "/products" | `/products/type/${string}` & {} | `/products/${string}` & {} | `/series/${string}` & {} | "/setup" | "/template-builder-v2" | "/template-builder" | "/viewer" | `/viewer/${string}${string}` & {};
+		Pathname(): "/" | "/bulk-import" | "/catalogue" | "/editor" | "/editor/create" | "/editor/edit" | `/editor/edit/${string}` & {} | "/editor/product-types" | "/editor/product-types/create" | "/editor/product-types/edit" | `/editor/product-types/edit/${string}` & {} | "/editor/quote-requests" | "/editor/series" | "/editor/series/create" | "/editor/series/edit" | `/editor/series/edit/${string}` & {} | "/enquiries" | "/entry" | "/map" | "/products" | `/products/type/${string}` & {} | `/products/${string}` & {} | "/quotes" | `/series/${string}` & {} | "/setup" | "/template-builder-v2" | "/template-builder" | "/viewer" | `/viewer/${string}${string}` & {};
 		ResolvedPathname(): `${"" | `/${string}`}${ReturnType<AppTypes['Pathname']>}`;
 		Asset(): "/favicon.png" | string & {};
 	}

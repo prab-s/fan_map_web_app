@@ -669,11 +669,102 @@ class MaintenanceJobResponse(BaseModel):
     completed_at: Optional[str] = None
 
 
+class QuoteRequestCreate(BaseModel):
+    name: str
+    company: Optional[str] = None
+    email: str
+    phone: Optional[str] = None
+    request_type: Optional[str] = None
+    attributes: list[str] = Field(default_factory=list)
+    airflow_min: Optional[str] = None
+    airflow_max: Optional[str] = None
+    pressure_min: Optional[str] = None
+    pressure_max: Optional[str] = None
+    power_limit: Optional[str] = None
+    short_notes: Optional[str] = None
+    details: Optional[str] = None
+    page_type: Optional[str] = None
+    page_title: Optional[str] = None
+    page_summary: Optional[str] = None
+    page_card_title: Optional[str] = None
+    page_card_summary: Optional[str] = None
+    page_url: Optional[str] = None
+    client_ip: Optional[str] = None
+    user_agent: Optional[str] = None
+    referrer: Optional[str] = None
+    origin: Optional[str] = None
+    product_type: Optional[dict] = None
+    series: Optional[dict] = None
+    product: Optional[dict] = None
+    website: Optional[str] = None
+    page_context: Optional[dict] = None
+
+
+class QuoteRequestResponse(BaseModel):
+    id: int
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    status: str
+    email_status: str
+    email_error: Optional[str] = None
+    verification_provider: str
+    verification_status: str
+    verification_error: Optional[str] = None
+    name: str
+    company: Optional[str] = None
+    email: str
+    phone: Optional[str] = None
+    request_type: str
+    attributes: list[str] = Field(default_factory=list)
+    airflow_min: Optional[str] = None
+    airflow_max: Optional[str] = None
+    pressure_min: Optional[str] = None
+    pressure_max: Optional[str] = None
+    power_limit: Optional[str] = None
+    short_notes: Optional[str] = None
+    details: Optional[str] = None
+    page_type: Optional[str] = None
+    page_title: Optional[str] = None
+    page_summary: Optional[str] = None
+    page_card_title: Optional[str] = None
+    page_card_summary: Optional[str] = None
+    page_url: Optional[str] = None
+    client_ip: Optional[str] = None
+    user_agent: Optional[str] = None
+    referrer: Optional[str] = None
+    origin: Optional[str] = None
+    product_type: Optional[dict] = None
+    series: Optional[dict] = None
+    product: Optional[dict] = None
+    context_json: dict = Field(default_factory=dict)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class QuoteRequestStatusUpdate(BaseModel):
+    status: str
+
+
 class BandGraphStyleSettings(BaseModel):
     band_graph_background_color: Optional[str] = None
     band_graph_label_text_color: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class QuoteRequestNotificationSettings(BaseModel):
+    quote_request_recipient_emails: list[str] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class QuoteRequestEmailTestRequest(BaseModel):
+    recipient_email: str
+
+
+class QuoteRequestEmailTestResponse(BaseModel):
+    message: str
+    recipient_email: str
 
 
 class LoginRequest(BaseModel):

@@ -30,6 +30,7 @@ templates.env.globals["site_name"] = settings.site_name
 templates.env.globals["app_build_marker"] = settings.app_build_marker
 templates.env.globals["finder_debug"] = settings.finder_debug
 templates.env.globals["backend_api_base_url"] = settings.backend_api_base_url
+templates.env.globals["quote_request_endpoint_url"] = "/api/quote-requests"
 templates.env.globals["site_contact"] = {
     "address": "576c Fergusson Drive, Upper Hutt 5018, Wellington",
     "gerald_email": "gerald@venttech.co.nz",
@@ -38,6 +39,6 @@ templates.env.globals["site_contact"] = {
     "gerald_phone": "022 0697 270",
     "mahendra_phone": "027 5560 197",
     "admin_phone": "04 595 1403",
-    "request_quote_url": "mailto:admin@venttech.co.nz?subject=Vent-Tech%20quote%20request",
+    "request_quote_url": "#quoteRequestModal",
 }
 templates.env.filters["format_numeric_value"] = format_numeric_value

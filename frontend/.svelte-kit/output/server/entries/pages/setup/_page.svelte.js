@@ -166,6 +166,8 @@ function _page($$renderer, $$props) {
     let newUsername = "";
     let newPassword = "";
     let newIsAdmin = false;
+    let smtpTestRecipient = "admin@venttech.co.nz";
+    let sendingSmtpTest = false;
     let maintenanceLoading = false;
     let maintenanceErrorToast = "";
     let products = [];
@@ -486,7 +488,11 @@ function _page($$renderer, $$props) {
     $$renderer2.push(`<!--]--></tbody></table></div></div></div> `);
     if (store_get($$store_subs ??= {}, "$auth", auth).is_admin) {
       $$renderer2.push("<!--[0-->");
-      $$renderer2.push(`<div class="card shadow-sm"><div class="card-body bg-body-secondary bg-opacity-10"><div class="d-flex justify-content-between align-items-start gap-2"><div><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Debug</p> <h2 class="h4 mb-1">Live Logs</h2> <p class="text-body-secondary mb-0">Open a live terminal-style feed of the backend logs from this page.</p></div> <button class="btn btn-outline-primary btn-sm" type="button">${escape_html("Show Logs")}</button></div> `);
+      $$renderer2.push(`<div class="card shadow-sm"><div class="card-body bg-body-secondary bg-opacity-10"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Enquiries</p> <h2 class="h4">SMTP test</h2> <p class="text-body-secondary mb-3">Send a quick test email through the current SMTP settings to confirm delivery is working.</p> <form class="vstack gap-3"><div><label class="form-label" for="smtp-test-recipient">Recipient email</label> <input id="smtp-test-recipient" class="form-control" type="email"${attr("value", smtpTestRecipient)} placeholder="admin@venttech.co.nz"/></div> `);
+      {
+        $$renderer2.push("<!--[-1-->");
+      }
+      $$renderer2.push(`<!--]--> <button class="btn btn-primary align-self-start" type="submit"${attr("disabled", sendingSmtpTest, true)}>${escape_html("Send Test Email")}</button></form></div></div> <div class="card shadow-sm"><div class="card-body bg-body-secondary bg-opacity-10"><div class="d-flex justify-content-between align-items-start gap-2"><div><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Debug</p> <h2 class="h4 mb-1">Live Logs</h2> <p class="text-body-secondary mb-0">Open a live terminal-style feed of the backend logs from this page.</p></div> <button class="btn btn-outline-primary btn-sm" type="button">${escape_html("Show Logs")}</button></div> `);
       {
         $$renderer2.push("<!--[-1-->");
       }

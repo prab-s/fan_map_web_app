@@ -18,6 +18,7 @@
   let templateBuilderActive = false;
   let bulkImportActive = false;
   let setupActive = false;
+  let enquiriesActive = false;
   let telemetrySentForPath = '';
   const PUBLIC_ROUTE_PREFIXES = ['/series', '/products'];
   const TELEMETRY_ENDPOINT = '/api/client-telemetry';
@@ -30,6 +31,7 @@
   $: templateBuilderActive = currentPath === '/template-builder' || currentPath.startsWith('/template-builder/');
   $: bulkImportActive = currentPath === '/bulk-import' || currentPath.startsWith('/bulk-import/');
   $: setupActive = currentPath === '/setup' || currentPath.startsWith('/setup/');
+  $: enquiriesActive = currentPath === '/enquiries' || currentPath.startsWith('/enquiries/');
 
   onMount(() => {
     initTheme();
@@ -177,11 +179,12 @@
           <div>
             <p class="small text-uppercase text-body-secondary fw-semibold mb-1"><strong>Internal Facing</strong></p>
           </div>
-          <span class="small text-body-secondary">{#if editorActive}Editor{:else if viewerActive}Viewer{:else if currentPath.startsWith('/template-builder-v2')}Template Builder V2{:else if templateBuilderActive}Template Builder{:else if setupActive}Setup{:else if bulkImportActive}Bulk Import{:else}Overview{/if}</span>
+          <span class="small text-body-secondary">{#if enquiriesActive}Enquiries{:else if editorActive}Editor{:else if viewerActive}Viewer{:else if currentPath.startsWith('/template-builder-v2')}Template Builder V2{:else if templateBuilderActive}Template Builder{:else if setupActive}Setup{:else if bulkImportActive}Bulk Import{:else}Overview{/if}</span>
         </div>
 
         <nav class="nav nav-underline justify-content-center mx-auto" aria-label="Primary">
           <a class={`nav-link ${homeActive ? 'active text-body fw-medium' : 'text-body-secondary'}`} href="/" aria-current={homeActive ? 'page' : undefined}>Home</a>
+          <a class={`nav-link ${enquiriesActive ? 'active text-body fw-medium' : 'text-body-secondary'}`} href="/enquiries" aria-current={enquiriesActive ? 'page' : undefined}>Enquiries</a>
           <a class={`nav-link ${editorActive ? 'active text-body fw-medium' : 'text-body-secondary'}`} href="/editor" aria-current={editorActive ? 'page' : undefined}>Editor</a>
           <a class={`nav-link ${viewerActive ? 'active text-body fw-medium' : 'text-body-secondary'}`} href="/viewer" aria-current={viewerActive ? 'page' : undefined}>Viewer</a>
           <a class={`nav-link ${templateBuilderActive ? 'active text-body fw-medium' : 'text-body-secondary'}`} href="/template-builder" aria-current={templateBuilderActive ? 'page' : undefined}>Template Builder</a>

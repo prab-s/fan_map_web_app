@@ -32,7 +32,13 @@
         {% if series %}
         <a class="btn btn-outline-secondary" href="{{ series_url(series) }}">Series page</a>
         {% endif %}
-        <a class="btn btn-outline-secondary" href="{{ request_quote_url }}">Request a Quote</a>
+        <a
+          class="btn btn-outline-secondary"
+          href="{{ request_quote_url }}"
+          data-quote-request-trigger
+          data-bs-toggle="modal"
+          data-bs-target="#quoteRequestModal"
+        >Request a Quote</a>
       </div>
       <hr>
       {% if product_downloads %}

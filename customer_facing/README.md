@@ -87,3 +87,5 @@ http://localhost:8004
 - Data is sourced dynamically from the read-only `/api/cms/...` API surface.
 - Designed for SEO-friendly routing and clean URLs.
 - The app does not import internal backend modules at runtime; it talks to the API over HTTP.
+- Quote requests are submitted through the backend API, which stores the record and sends the notification email.
+- Quote request spam protection uses a hidden honeypot field plus backend throttling.

@@ -410,6 +410,21 @@
       "_equality.js"
     ]
   },
+  "src/routes/editor/quote-requests/+page.js": {
+    "file": "entries/pages/editor/quote-requests/_page.js",
+    "name": "entries/pages/editor/quote-requests/_page",
+    "src": "src/routes/editor/quote-requests/+page.js",
+    "isEntry": true
+  },
+  "src/routes/editor/quote-requests/+page.svelte": {
+    "file": "entries/pages/editor/quote-requests/_page.svelte.js",
+    "name": "entries/pages/editor/quote-requests/_page.svelte",
+    "src": "src/routes/editor/quote-requests/+page.svelte",
+    "isEntry": true,
+    "imports": [
+      "_index2.js"
+    ]
+  },
   "src/routes/editor/series/+page.js": {
     "file": "entries/pages/editor/series/_page.js",
     "name": "entries/pages/editor/series/_page",
@@ -470,6 +485,23 @@
       "_index2.js",
       "_ManagePageShell.js",
       "_SeriesWorkspace.js",
+      "_equality.js"
+    ]
+  },
+  "src/routes/enquiries/+page.js": {
+    "file": "entries/pages/enquiries/_page.js",
+    "name": "entries/pages/enquiries/_page",
+    "src": "src/routes/enquiries/+page.js",
+    "isEntry": true
+  },
+  "src/routes/enquiries/+page.svelte": {
+    "file": "entries/pages/enquiries/_page.svelte.js",
+    "name": "entries/pages/enquiries/_page.svelte",
+    "src": "src/routes/enquiries/+page.svelte",
+    "isEntry": true,
+    "imports": [
+      "_index2.js",
+      "_ManagePageShell.js",
       "_equality.js"
     ]
   },
@@ -566,6 +598,21 @@
     ],
     "css": [
       "_app/immutable/assets/_page.xJJ4eKvo.css"
+    ]
+  },
+  "src/routes/quotes/+page.js": {
+    "file": "entries/pages/quotes/_page.js",
+    "name": "entries/pages/quotes/_page",
+    "src": "src/routes/quotes/+page.js",
+    "isEntry": true
+  },
+  "src/routes/quotes/+page.svelte": {
+    "file": "entries/pages/quotes/_page.svelte.js",
+    "name": "entries/pages/quotes/_page.svelte",
+    "src": "src/routes/quotes/+page.svelte",
+    "isEntry": true,
+    "imports": [
+      "_index2.js"
     ]
   },
   "src/routes/series/[series]/+page.js": {

@@ -62,6 +62,24 @@ SESSION_SECRET=A_LONG_RANDOM_SECRET
 AUTH_COOKIE_SECURE=false
 ```
 
+Enquiry requests are stored and emailed by this backend. The recipient list can be managed from the internal Setup page and is stored in the app settings table, with the environment variable as a fallback.
+
+```bash
+QUOTE_REQUEST_RECIPIENT_EMAILS=enquiries@venttech.co.nz,admin@venttech.co.nz
+QUOTE_REQUEST_THROTTLE_WINDOW_SECONDS=900
+QUOTE_REQUEST_THROTTLE_MAX_ATTEMPTS=3
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_USERNAME=smtp-user
+SMTP_PASSWORD=smtp-password
+SMTP_FROM_EMAIL=notifications@venttech.co.nz
+SMTP_FROM_NAME=Vent-Tech website
+SMTP_USE_TLS=true
+SMTP_USE_SSL=false
+```
+
+If you want a ready-made checklist, start from [`backend/.env.example`](/home/user1/Documents/fan_graphs_website/backend/.env.example). The recipient list is comma-separated, so one enquiry can be delivered to multiple inboxes at once.
+
 ## Migrations
 
 Alembic is included for schema preparation and future DB migrations.

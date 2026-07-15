@@ -18,7 +18,13 @@
       <p class="lead text-muted mb-3">Browse the relevant series, then drill into the exact model PDF when you need the details.</p>
       <div class="d-flex flex-wrap gap-2">
         <a class="btn btn-primary" href="{{ products_url() }}">Back to Products</a>
-        <a class="btn btn-outline-secondary" href="{{ request_quote_url }}">Request a Quote</a>
+        <a
+          class="btn btn-outline-secondary"
+          href="{{ request_quote_url }}"
+          data-quote-request-trigger
+          data-bs-toggle="modal"
+          data-bs-target="#quoteRequestModal"
+        >Request a Quote</a>
       </div>
     </div>
     <div class="col-lg-4">

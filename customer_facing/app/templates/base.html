@@ -30,6 +30,14 @@
     }
   </script>
   <script>
+    window.__QUOTE_REQUEST_CONFIG__ = {{ {
+      "endpointUrl": quote_request_endpoint_url
+    } | tojson }};
+  </script>
+  <script>
+    window.__QUOTE_REQUEST_CONTEXT__ = {{ quote_request_context | default({}) | tojson }};
+  </script>
+  <script>
     (function () {
       try {
         const endpoint = "/api/client-telemetry";
@@ -94,6 +102,8 @@
     {% block content %}{% endblock %}
   </main>
 
+  {% include "partials/quote_request_modal.html" %}
+
   <footer class="site-footer border-top mt-5 py-5">
     <div class="container site-shell">
       <div class="row g-4">
@@ -151,7 +161,13 @@
           <p class="footer-text mb-3">
             Keep the right PDF attached to the relevant product type, series, or model page, then use the team below for selection help.
           </p>
-          <a class="btn btn-outline-light btn-sm" href="{{ site_contact.request_quote_url }}">Request a Quote</a>
+          <a
+            class="btn btn-outline-light btn-sm"
+            href="{{ site_contact.request_quote_url }}"
+            data-quote-request-trigger
+            data-bs-toggle="modal"
+            data-bs-target="#quoteRequestModal"
+          >Enquire</a>
         </div>
       </div>
       <div class="footer-bottom mt-4 pt-3 d-flex flex-wrap justify-content-between gap-2 small">
@@ -163,6 +179,7 @@
   <script
     src="/static/vendor/bootstrap.bundle.min.js"
   ></script>
+  <script src="/static/js/quote-request.js" defer></script>
   {% block page_scripts %}{% endblock %}
   <!-- build: {{ app_build_marker }} -->
 </body>

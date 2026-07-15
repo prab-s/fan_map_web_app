@@ -43,6 +43,7 @@ KNOWN_APP_TABLES = {
     "efficiency_points",
     "product_images",
     "series_images",
+    "quote_requests",
     "app_settings",
 }
 

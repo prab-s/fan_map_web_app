@@ -30,6 +30,7 @@
     startRestoreDataBackupBundleJob,
     startRestoreDatabaseBackupBundleJob,
     updateProductType,
+    sendQuoteRequestEmailTest,
     updateUser,
     updateUserPassword,
     updateProductTypePresets
@@ -51,6 +52,9 @@
   let newUsername = '';
   let newPassword = '';
   let newIsAdmin = false;
+  let smtpTestRecipient = 'admin@venttech.co.nz';
+  let sendingSmtpTest = false;
+  let smtpTestError = '';
   let maintenanceLoading = false;
   let maintenanceErrorToast = '';
   let maintenanceErrorToastTimeout = null;
@@ -266,6 +270,20 @@
       userError = error?.message || 'Unable to load users.';
     } finally {
       loadingUsers = false;
+    }
+  }
+
+  async function sendSmtpTestEmail() {
+    sendingSmtpTest = true;
+    smtpTestError = '';
+    clearSuccessToast();
+    try {
+      const result = await sendQuoteRequestEmailTest({ recipient_email: smtpTestRecipient });
+      addSuccess(result?.message || 'SMTP test email sent.');
+    } catch (error) {
+      smtpTestError = error?.message || 'Unable to send SMTP test email.';
+    } finally {
+      sendingSmtpTest = false;
     }
   }
 
@@ -1134,6 +1152,37 @@
     </div>
 
     {#if $auth.is_admin}
+      <div class="card shadow-sm">
+        <div class="card-body bg-body-secondary bg-opacity-10">
+          <p class="small text-uppercase text-body-secondary fw-semibold mb-1">Enquiries</p>
+          <h2 class="h4">SMTP test</h2>
+          <p class="text-body-secondary mb-3">
+            Send a quick test email through the current SMTP settings to confirm delivery is working.
+          </p>
+
+          <form class="vstack gap-3" on:submit|preventDefault={sendSmtpTestEmail}>
+            <div>
+              <label class="form-label" for="smtp-test-recipient">Recipient email</label>
+              <input
+                id="smtp-test-recipient"
+                class="form-control"
+                type="email"
+                bind:value={smtpTestRecipient}
+                placeholder="admin@venttech.co.nz"
+              >
+            </div>
+
+            {#if smtpTestError}
+              <div class="alert alert-danger py-2 mb-0">{smtpTestError}</div>
+            {/if}
+
+            <button class="btn btn-primary align-self-start" type="submit" disabled={sendingSmtpTest}>
+              {sendingSmtpTest ? 'Sending...' : 'Send Test Email'}
+            </button>
+          </form>
+        </div>
+      </div>
+
     <div class="card shadow-sm">
       <div class="card-body bg-body-secondary bg-opacity-10">
         <div class="d-flex justify-content-between align-items-start gap-2">
