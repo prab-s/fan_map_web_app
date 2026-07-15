@@ -805,7 +805,6 @@ async def homepage(request: Request):
         ),
         "featured_product_type": featured_product_type,
         "home_product_types": home_product_types,
-        "home_feature_gif_url": settings.home_feature_gif_url,
         "quote_request_context": build_quote_request_context(
             request,
             page_type="home",

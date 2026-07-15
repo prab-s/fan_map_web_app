@@ -720,37 +720,11 @@ body {
   border: 1px solid rgba(142, 154, 172, 0.34);
   border-radius: 0.625rem;
   box-shadow: 0 14px 28px rgba(2, 6, 23, 0.1);
-  background: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.98);
 }
 
 .chooser-copy {
   max-width: 48rem;
-}
-
-.home-feature-gif-card {
-  border: 1px solid rgba(142, 154, 172, 0.42);
-  border-radius: 0.875rem;
-  box-shadow: 0 28px 64px rgba(2, 6, 23, 0.18), 0 8px 18px rgba(127, 29, 29, 0.08);
-  overflow: hidden;
-  background:
-    radial-gradient(circle at top left, rgba(185, 28, 28, 0.12), transparent 42%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(242, 246, 250, 0.96));
-}
-
-.home-feature-gif-frame {
-  aspect-ratio: 21 / 9;
-  overflow: hidden;
-  border-radius: 0.625rem;
-  background:
-    linear-gradient(135deg, rgba(15, 23, 42, 0.02), rgba(185, 28, 28, 0.05)),
-    rgba(255, 255, 255, 0.82);
-}
-
-.home-feature-gif-image {
-  width: 100%;
-  height: 100%;
-  display: block;
-  object-fit: cover;
 }
 
 .finder-empty-hint {
@@ -962,6 +936,43 @@ body {
   box-shadow: 0 40px 84px rgba(2, 6, 23, 0.4), 0 12px 26px rgba(127, 29, 29, 0.14);
 }
 
+.home-intro-section {
+  position: relative;
+  overflow: hidden;
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+  padding: 1.5rem 0;
+  border-top: 1px solid rgba(142, 154, 172, 0.34);
+  border-bottom: 1px solid rgba(142, 154, 172, 0.34);
+  box-shadow: 0 30px 68px rgba(2, 6, 23, 0.18), 0 8px 20px rgba(127, 29, 29, 0.08);
+  background-color: #f4f7fa;
+  background: url("/static/media/home-bg-art-1.png") center center / cover no-repeat;
+}
+
+.home-intro-section--flush {
+  margin-top: -1.5rem;
+}
+
+.home-intro-section__inner {
+  position: relative;
+  z-index: 1;
+  width: min(90vw, 1600px);
+  max-width: none;
+  margin: 0 auto;
+  padding: 3rem 1.5rem 3rem;
+}
+
+.home-intro-section > .home-intro-section__inner > .chooser-callout,
+.home-intro-section > .home-intro-section__inner > .row {
+  position: relative;
+  z-index: 1;
+}
+
+.home-intro-section > .home-intro-section__inner > .row {
+  margin-top: 2rem;
+}
+
 .family-card-image-wrap {
   background: linear-gradient(180deg, rgba(185, 28, 28, 0.08), rgba(127, 29, 29, 0.02));
   height: 168px;
@@ -1048,6 +1059,24 @@ body {
 
 .family-card-image-mark::after {
   inset: auto 12px 18px 12px;
+}
+
+.home-intro-section .family-card {
+  background: rgba(255, 255, 255, 0.96);
+}
+
+@media (max-width: 991.98px) {
+  .home-intro-section {
+    padding: 1rem 0;
+  }
+
+  .home-intro-section__inner {
+    padding: 1.25rem 1rem 1.5rem;
+  }
+
+  .home-intro-section .chooser-callout {
+    margin-bottom: 1rem;
+  }
 }
 
 .feature-panel {
