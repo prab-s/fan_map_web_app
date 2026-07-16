@@ -860,6 +860,16 @@ export async function runBulkWorkbookImport(
   return r.json();
 }
 
+export async function parseGraphDataUpload(file) {
+  const formData = new FormData();
+  formData.append('file', file, file?.name || 'graph-data.csv');
+  const r = await apiFetch('/graph-data/parse', {
+    method: 'POST',
+    body: formData
+  });
+  return r.json();
+}
+
 export async function uploadBulkProductImages(productId, files) {
   const formData = new FormData();
   for (const file of files) {

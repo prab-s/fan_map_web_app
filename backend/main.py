@@ -1057,8 +1057,8 @@ def normalize_bulk_import_name(value: str | None) -> str:
         "templateid": "template_id",
         "showrpmbandshading": "show_rpm_band_shading",
         "green_system": "efficiency_centre",
-        "upper_red_curve": "efficiency_lower_end",
-        "lower_red_curve": "efficiency_higher_end",
+        "upper_red_curve": "efficiency_higher_end",
+        "lower_red_curve": "efficiency_lower_end",
         "red_high": "efficiency_higher_end",
         "red_low": "efficiency_lower_end",
         "grey_curve": "permissible_use",
@@ -1071,6 +1071,82 @@ def normalize_bulk_import_name(value: str | None) -> str:
         return f"pressure_{rpm_match.group(1)}rpm"
 
     return normalized
+
+
+def bulk_import_is_missing_value(value) -> bool:
+    return isinstance(value, str) and value.strip().upper() == "#N/A"
+
+
+def bulk_import_parse_numeric_candidate(value):
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool):
+        return int(value)
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(parsed):
+        return None
+    return parsed
+
+
+def bulk_import_copy_zero_airflow_values(rows: list[dict]) -> list[dict]:
+    if not rows:
+        return rows
+
+    next_rows = [dict(row) for row in rows]
+    first_row = next_rows[0]
+    keys = list(first_row.keys())
+
+    for key in keys[1:]:
+        if not bulk_import_is_missing_value(first_row.get(key)):
+            continue
+
+        for row in next_rows[1:]:
+            candidate = row.get(key)
+            if bulk_import_parse_numeric_candidate(candidate) is None:
+                continue
+            first_row[key] = candidate
+            break
+
+    return next_rows
+
+
+def bulk_import_find_highest_efficiency_overlay_key(rows: list[dict]) -> str | None:
+    overlay_keys = ["efficiency_centre", "efficiency_higher_end", "efficiency_lower_end"]
+    best_key = None
+    best_value = float("-inf")
+
+    for key in overlay_keys:
+        for row in rows or []:
+            candidate = bulk_import_parse_numeric_candidate(row.get(key))
+            if candidate is None or candidate <= best_value:
+                continue
+            best_value = candidate
+            best_key = key
+
+    return best_key
+
+
+def bulk_import_copy_permissible_use_from_highest_efficiency_line(rows: list[dict]) -> list[dict]:
+    if not rows:
+        return rows
+
+    next_rows = [dict(row) for row in rows]
+    source_key = bulk_import_find_highest_efficiency_overlay_key(next_rows)
+    if not source_key:
+        return next_rows
+
+    for row in next_rows:
+        permissible_use = row.get("permissible_use")
+        if permissible_use is not None and not bulk_import_is_missing_value(permissible_use):
+            continue
+        highest_efficiency_value = row.get(source_key)
+        if bulk_import_parse_numeric_candidate(highest_efficiency_value) is None:
+            continue
+        row["permissible_use"] = highest_efficiency_value
+    return next_rows
 
 
 def normalize_bulk_import_row(row: dict) -> dict:
@@ -1086,10 +1162,18 @@ def normalize_bulk_import_row(row: dict) -> dict:
             value = value.strip()
             if not value:
                 continue
+            if value.upper() == "#N/A":
+                continue
             if value.lower() in {"true", "false"}:
                 value = value.lower() == "true"
         normalized[key] = value
     return normalized
+
+
+def normalize_bulk_import_rows(rows: list[dict]) -> list[dict]:
+    copied_rows = bulk_import_copy_zero_airflow_values(rows)
+    copied_rows = bulk_import_copy_permissible_use_from_highest_efficiency_line(copied_rows)
+    return [normalize_bulk_import_row(row) for row in copied_rows]
 
 
 def normalize_bulk_import_source_name(filename: str) -> str:
@@ -1103,7 +1187,8 @@ def bulk_import_sheet_key(value: str | None) -> str:
 def load_bulk_import_csv(file_name: str, content: bytes) -> list[dict]:
     text = content.decode("utf-8-sig")
     reader = csv.DictReader(io.StringIO(text))
-    return [normalize_bulk_import_row(row) for row in reader if any(str(value or "").strip() for value in row.values())]
+    rows = [row for row in reader if any(str(value or "").strip() for value in row.values())]
+    return normalize_bulk_import_rows(rows)
 
 
 def load_bulk_import_workbook(file_name: str, content: bytes) -> tuple[dict[str, list[dict]], dict[str, dict]]:
@@ -1130,7 +1215,7 @@ def load_bulk_import_workbook(file_name: str, content: bytes) -> tuple[dict[str,
 
         raw_headers = [str(header or "").strip() for header in rows[0]]
         normalized_headers = [normalize_bulk_import_name(header) for header in rows[0]]
-        table_rows: list[dict] = []
+        raw_table_rows: list[dict] = []
         for raw_row in rows[1:]:
             row_data: dict = {}
             for index, header in enumerate(normalized_headers):
@@ -1147,7 +1232,8 @@ def load_bulk_import_workbook(file_name: str, content: bytes) -> tuple[dict[str,
                         value = value.lower() == "true"
                 row_data[header] = value
             if any(value is not None for value in row_data.values()):
-                table_rows.append(row_data)
+                raw_table_rows.append(row_data)
+        table_rows = normalize_bulk_import_rows(raw_table_rows)
         tables[sheet_name] = table_rows
         sheet_meta[sheet_name] = {
             "sheet_name": sheet_name,
@@ -1156,6 +1242,37 @@ def load_bulk_import_workbook(file_name: str, content: bytes) -> tuple[dict[str,
             "normalized_headers": normalized_headers,
         }
     return tables, sheet_meta
+
+
+def load_graph_import_rows(file_name: str, content: bytes) -> list[list]:
+    suffix = Path(str(file_name or "")).suffix.lower()
+    if suffix == ".csv":
+        text = content.decode("utf-8-sig")
+        reader = csv.reader(io.StringIO(text))
+        return [
+            ["" if cell is None else cell for cell in row]
+            for row in reader
+            if any(str(cell or "").strip() for cell in row)
+        ]
+
+    if suffix in {".xlsx", ".xlsm"}:
+        try:
+            from openpyxl import load_workbook
+        except ImportError as exc:
+            raise HTTPException(status_code=500, detail="Excel workbook imports require the openpyxl package.") from exc
+
+        workbook = load_workbook(io.BytesIO(content), data_only=True)
+        for sheet in workbook.worksheets:
+            rows = []
+            for raw_row in sheet.iter_rows(values_only=True):
+                row = ["" if cell is None else cell for cell in raw_row]
+                if any(str(cell or "").strip() for cell in row):
+                    rows.append(row)
+            if rows:
+                return rows
+        return []
+
+    raise HTTPException(status_code=400, detail="Please upload a CSV or Excel workbook.")
 
 
 def load_bulk_import_manifest(content: bytes | str) -> dict:
@@ -1361,23 +1478,29 @@ def bulk_import_build_interpolated_series(
     sampled = []
     axis = min_axis
     while axis <= max_axis:
+        interpolated_value = bulk_import_interpolate_value(numeric_points, axis)
+        if interpolated_value is None:
+            axis += safe_step
+            continue
         sampled.append(
             {
                 **numeric_points[0]["point"],
                 axis_key: round(axis, 3),
-                value_key: round(bulk_import_interpolate_value(numeric_points, axis) or 0),
+                value_key: round(interpolated_value),
             }
         )
         axis += safe_step
 
     if sampled and sampled[-1][axis_key] != round(max_axis, 3):
-        sampled.append(
-            {
-                **numeric_points[0]["point"],
-                axis_key: round(max_axis, 3),
-                value_key: round(bulk_import_interpolate_value(numeric_points, max_axis) or 0),
-            }
-        )
+        interpolated_value = bulk_import_interpolate_value(numeric_points, max_axis)
+        if interpolated_value is not None:
+            sampled.append(
+                {
+                    **numeric_points[0]["point"],
+                    axis_key: round(max_axis, 3),
+                    value_key: round(interpolated_value),
+                }
+            )
 
     seen = set()
     result = []
@@ -1390,7 +1513,13 @@ def bulk_import_build_interpolated_series(
     return result
 
 
-def bulk_import_downsample_series(points: list[dict], axis_key: str = "airflow", value_key: str = "pressure", target_count: int = 5):
+def bulk_import_downsample_series(
+    points: list[dict],
+    axis_key: str = "airflow",
+    value_key: str = "pressure",
+    target_count: int = 5,
+    precision: int = 0,
+):
     numeric_points = (
         [
             {
@@ -1418,14 +1547,18 @@ def bulk_import_downsample_series(points: list[dict], axis_key: str = "airflow",
         )
 
     template = numeric_points[0]["point"]
-    sampled = [
-        {
-            **template,
-            axis_key: axis,
-            value_key: round(bulk_import_interpolate_value(numeric_points, axis) or 0),
-        }
-        for axis in sample_axes
-    ]
+    sampled = []
+    for axis in sample_axes:
+        interpolated_value = bulk_import_interpolate_value(numeric_points, axis)
+        if interpolated_value is None:
+            continue
+        sampled.append(
+            {
+                **template,
+                axis_key: round(axis, precision),
+                value_key: round(interpolated_value, precision),
+            }
+        )
 
     seen = set()
     result = []
@@ -1443,7 +1576,29 @@ def bulk_import_downsample_overlay_points(points: list[dict], value_keys: list[s
 
     for value_key in value_keys:
         series_points = [point for point in (points or []) if point.get(value_key) is not None]
-        sampled_points = bulk_import_downsample_series(series_points, "airflow", value_key, target_count)
+        sampled_points = bulk_import_downsample_series(
+            series_points,
+            "airflow",
+            value_key,
+            target_count,
+            precision=0,
+        )
+        peak_point = max(
+            (
+                point
+                for point in series_points
+                if bulk_import_parse_number(point.get("airflow")) is not None
+                and bulk_import_parse_number(point.get(value_key)) is not None
+            ),
+            key=lambda point: bulk_import_parse_number(point.get(value_key)) or float("-inf"),
+            default=None,
+        )
+        if peak_point is not None and not any(
+            bulk_import_parse_number(sampled_point.get("airflow"))
+            == bulk_import_parse_number(peak_point.get("airflow"))
+            for sampled_point in sampled_points
+        ):
+            sampled_points.append(dict(peak_point))
         for sampled_point in sampled_points:
             airflow = bulk_import_parse_number(sampled_point.get("airflow"))
             value = bulk_import_parse_number(sampled_point.get(value_key))
@@ -1461,6 +1616,92 @@ def bulk_import_downsample_overlay_points(points: list[dict], value_keys: list[s
             merged_points[merge_key][value_key] = round(value)
 
     return sorted(merged_points.values(), key=lambda point: point["airflow"])
+
+
+def bulk_import_scale_overlay_points_to_highest_rpm_line(
+    points: list[dict],
+    rpm_lines: list[dict],
+    rpm_points: list[dict],
+):
+    if not points:
+        return points
+
+    highest_line = sorted(
+        [
+            line
+            for line in (rpm_lines or [])
+            if bulk_import_parse_number(line.get("id")) is not None
+            and bulk_import_parse_number(line.get("rpm")) is not None
+        ],
+        key=lambda line: bulk_import_parse_number(line.get("rpm")) or 0,
+        reverse=True,
+    )
+    if not highest_line:
+        return points
+    highest_line = highest_line[0]
+    highest_rpm_line_points = sorted(
+        [
+            {
+                "airflow": bulk_import_parse_number(point.get("airflow")),
+                "pressure": bulk_import_parse_number(point.get("pressure")),
+            }
+            for point in (rpm_points or [])
+            if bulk_import_parse_number(point.get("rpm_line_id"))
+            == bulk_import_parse_number(highest_line.get("id"))
+        ],
+        key=lambda point: point["airflow"] or 0,
+    )
+    highest_rpm_line_points = [
+        point
+        for point in highest_rpm_line_points
+        if point["airflow"] is not None and point["pressure"] is not None
+    ]
+    if not highest_rpm_line_points:
+        return points
+    rpm_profile = bulk_import_build_highest_rpm_profile(highest_rpm_line_points)
+
+    overlay_keys = [
+        "efficiency_centre",
+        "efficiency_lower_end",
+        "efficiency_higher_end",
+        "permissible_use",
+    ]
+    scaled_points: list[dict] = [dict(point) for point in points]
+
+    for key in overlay_keys:
+        key_points = sorted(
+            [
+                {
+                    "airflow": bulk_import_parse_number(point.get("airflow")),
+                    "value": bulk_import_parse_number(point.get(key)),
+                }
+                for point in (points or [])
+                if bulk_import_parse_number(point.get("airflow")) is not None
+                and bulk_import_parse_number(point.get(key)) is not None
+            ],
+            key=lambda point: point["airflow"] or 0,
+        )
+        if not key_points:
+            continue
+
+        peak_point = max(
+            key_points,
+            key=lambda point: (
+                point["value"] if point["value"] is not None else float("-inf"),
+                point["airflow"] if point["airflow"] is not None else float("-inf"),
+            ),
+        )
+        scale_factor = bulk_import_find_best_overlay_scale_factor(peak_point, rpm_profile)
+        if scale_factor is None or not math.isfinite(scale_factor):
+            continue
+
+        for scaled_point in scaled_points:
+            value = bulk_import_parse_number(scaled_point.get(key))
+            if value is None:
+                continue
+            scaled_point[key] = round(value * scale_factor)
+
+    return scaled_points
 
 
 def bulk_import_build_high_resolution_highest_rpm_line(rpm_lines: list[dict], rpm_points: list[dict], step: float = 1):
@@ -1492,6 +1733,59 @@ def bulk_import_build_high_resolution_highest_rpm_line(rpm_lines: list[dict], rp
     return bulk_import_build_interpolated_series(highest_line_points, "airflow", "pressure", step)
 
 
+def bulk_import_solve_overlay_scale_factor(terminal_point: dict, rpm_profile: dict):
+    if not terminal_point or not rpm_profile:
+        return None
+
+    terminal_airflow = bulk_import_parse_number(terminal_point.get("airflow"))
+    terminal_value = bulk_import_parse_number(terminal_point.get("value"))
+    if terminal_airflow is None or terminal_value is None or terminal_airflow <= 0 or terminal_value <= 0:
+        return None
+
+    points = bulk_import_normalised_graph_series(rpm_profile.get("points") or [], "axis", "value")
+    if len(points) < 2:
+        return None
+
+    candidates = []
+    for index in range(len(points) - 1):
+        left = points[index]
+        right = points[index + 1]
+        left_axis = bulk_import_parse_number(left.get("axis"))
+        left_value = bulk_import_parse_number(left.get("value"))
+        right_axis = bulk_import_parse_number(right.get("axis"))
+        right_value = bulk_import_parse_number(right.get("value"))
+        if None in (left_axis, left_value, right_axis, right_value):
+            continue
+        if right_axis <= left_axis:
+            continue
+
+        slope = (right_value - left_value) / (right_axis - left_axis)
+        denominator = terminal_value - slope * terminal_airflow
+        if abs(denominator) < 1e-12:
+            continue
+
+        scale_factor = (left_value - slope * left_axis) / denominator
+        if not math.isfinite(scale_factor) or scale_factor <= 0:
+            continue
+
+        scaled_airflow = terminal_airflow * scale_factor
+        if scaled_airflow < left_axis - 1e-9 or scaled_airflow > right_axis + 1e-9:
+            continue
+
+        target_value = bulk_import_interpolate_value(points, scaled_airflow)
+        if target_value is None or not math.isfinite(target_value):
+            continue
+
+        residual = abs(target_value - terminal_value * scale_factor)
+        candidates.append((residual, abs(scale_factor - 1), scale_factor))
+
+    if candidates:
+        candidates.sort(key=lambda item: (item[0], item[1], item[2]))
+        return candidates[0][2]
+
+    return None
+
+
 def bulk_import_normalised_graph_series(points: list[dict], axis_key: str = "airflow", value_key: str = "pressure"):
     return sorted(
         [
@@ -1517,7 +1811,9 @@ def bulk_import_chart_space_axis_extents(line_points: list[dict]):
     return {
         "flowMax": (flow_raw_max * 1.05) if flow_raw_max > 0 else 1,
         "pressureMax": (pressure_raw_max * 1.05) if pressure_raw_max > 0 else 1,
-        "overlayMax": 100,
+        # Overlay values are pressure-based now, so keep them on the same scale
+        # as the RPM curve rather than the old percentage-style 0-100 range.
+        "overlayMax": (pressure_raw_max * 1.05) if pressure_raw_max > 0 else 1,
     }
 
 
@@ -1547,7 +1843,7 @@ def bulk_import_chart_space_difference_at_scaled_terminal_point(
     if target_pressure is None or not math.isfinite(target_pressure):
         return float("inf")
 
-    axis_extents = rpm_profile.get("axis_extents") or {"overlayMax": 100, "pressureMax": 1}
+    axis_extents = rpm_profile.get("axis_extents") or {"overlayMax": 1, "pressureMax": 1}
     overlay_position = scaled_point["pressure"] / axis_extents["overlayMax"]
     rpm_position = target_pressure / axis_extents["pressureMax"]
     return abs(overlay_position - rpm_position)
@@ -1562,46 +1858,18 @@ def bulk_import_find_best_overlay_scale_factor(terminal_point: dict, rpm_profile
     if terminal_airflow is None or terminal_value is None or terminal_airflow <= 0 or terminal_value <= 0:
         return None
 
-    axis_extents = rpm_profile.get("axis_extents") or {"flowMax": 1, "pressureMax": 1, "overlayMax": 100}
-    best_scale_factor = 1
-    best_error = float("inf")
-    min_scale = 0.05
-    max_scale = 4
-    passes = 6
-    steps = 60
+    target_pressure = bulk_import_interpolate_value(
+        rpm_profile.get("points") or [],
+        terminal_airflow,
+    )
+    if target_pressure is None or not math.isfinite(target_pressure):
+        return None
 
-    for _ in range(passes):
-        for step_index in range(steps + 1):
-            ratio = 0 if steps == 0 else step_index / steps
-            scale_factor = min_scale + (max_scale - min_scale) * ratio
-            error = bulk_import_chart_space_difference_at_scaled_terminal_point(
-                terminal_point,
-                scale_factor,
-                rpm_profile,
-            )
-            if error < best_error:
-                best_error = error
-                best_scale_factor = scale_factor
+    scale_factor = target_pressure / terminal_value
+    if not math.isfinite(scale_factor) or scale_factor <= 0:
+        return None
 
-        window = (max_scale - min_scale) / 4 if max_scale > min_scale else 0.5
-        min_scale = max(0.01, best_scale_factor - window)
-        max_scale = best_scale_factor + window
-
-    fine_min = max(0.01, best_scale_factor - (max_scale - min_scale) / steps if steps > 0 else best_scale_factor - 0.1)
-    fine_max = best_scale_factor + (max_scale - min_scale) / steps if steps > 0 else best_scale_factor + 0.1
-    for step_index in range(steps + 1):
-        ratio = 0 if steps == 0 else step_index / steps
-        scale_factor = fine_min + (fine_max - fine_min) * ratio
-        error = bulk_import_chart_space_difference_at_scaled_terminal_point(
-            terminal_point,
-            scale_factor,
-            rpm_profile,
-        )
-        if error < best_error:
-            best_error = error
-            best_scale_factor = scale_factor
-
-    return max(0.01, best_scale_factor * 1.01)
+    return max(0.01, scale_factor)
 
 
 def bulk_import_is_graph_sheet(rows: list[dict]) -> bool:
@@ -1759,6 +2027,23 @@ def bulk_import_build_graph_state(
                 has_overlay = True
         if has_overlay:
             next_efficiency_points.append(efficiency_point)
+
+    source_overlay_key = bulk_import_find_highest_efficiency_overlay_key(next_efficiency_points)
+    if source_overlay_key:
+        for point in next_efficiency_points:
+            permissible_use = point.get("permissible_use")
+            if permissible_use is not None and permissible_use != "":
+                continue
+            source_value = point.get(source_overlay_key)
+            if source_value is None or source_value == "":
+                continue
+            point["permissible_use"] = source_value
+
+    next_efficiency_points = bulk_import_scale_overlay_points_to_highest_rpm_line(
+        next_efficiency_points,
+        rpm_lines,
+        next_rpm_points,
+    )
 
     if downsample_imported_curves:
         next_rpm_points_by_line = {}
@@ -6751,6 +7036,27 @@ app.add_middleware(
 )
 
 app.include_router(bulk_import_router)
+
+
+@app.post(
+    "/api/graph-data/parse",
+    dependencies=[Depends(get_current_user)],
+    tags=["Products"],
+    summary="Parse a graph CSV or workbook",
+)
+async def parse_graph_data_upload(file: UploadFile = File(...)):
+    raw_name = normalize_bulk_import_source_name(file.filename or "")
+    contents = await file.read()
+    rows = load_graph_import_rows(raw_name, contents)
+    if len(rows) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail="Choose a graph data file with a header row and at least one data row.",
+        )
+    return {
+        "file_name": raw_name,
+        "rows": rows,
+    }
 
 
 @app.on_event("startup")

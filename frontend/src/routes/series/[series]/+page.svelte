@@ -1,6 +1,7 @@
 <script>
   import ECharts from '$lib/ECharts.svelte';
   import { getChartTheme, theme } from '$lib/config.js';
+  import { getDescriptionSections } from '$lib/descriptionSections.js';
   import { buildFullChartOption } from '$lib/fullChart.js';
 
   export let data = {};
@@ -12,6 +13,7 @@
   let seriesTitle = 'Series';
   let productTypeLabel = 'Series';
   let pageTitle = 'Series';
+  let seriesDescriptionSections = [];
 
   $: series = data?.series ?? null;
   $: seriesGraphPayload = series?.series_graph_payload ?? null;
@@ -30,6 +32,7 @@
         adaptGraphBackgroundToTheme: true
       })
     : {};
+  $: seriesDescriptionSections = getDescriptionSections(series || {});
 
   $: seriesTitle = series?.name || 'Series';
   $: productTypeLabel = series?.product_type_label || series?.product_type_key || 'Series';
@@ -119,41 +122,17 @@
   </section>
 
   <section class="row g-4">
-    <div class="col-12 col-lg-6">
-      <div class="card shadow-sm h-100 border-0">
-        <div class="card-body p-4">
-          <p class="section-label mb-2">Description 1</p>
-          <div class="public-html">{@html series?.description1_html || '<p class="text-body-secondary mb-0">Not provided.</p>'}</div>
+    {#each seriesDescriptionSections as section}
+      <div class="col-12 col-lg-6">
+        <div class="card shadow-sm h-100 border-0">
+          <div class="card-body p-4">
+            <p class="section-label mb-2">{section.title}</p>
+            <div class="public-html">{@html section.html || '<p class="text-body-secondary mb-0">Not provided.</p>'}</div>
+          </div>
         </div>
       </div>
-    </div>
+    {/each}
 
-    <div class="col-12 col-lg-6">
-      <div class="card shadow-sm h-100 border-0">
-        <div class="card-body p-4">
-          <p class="section-label mb-2">Description 2</p>
-          <div class="public-html">{@html series?.description2_html || '<p class="text-body-secondary mb-0">Not provided.</p>'}</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="col-12 col-lg-6">
-      <div class="card shadow-sm h-100 border-0">
-        <div class="card-body p-4">
-          <p class="section-label mb-2">Description 3</p>
-          <div class="public-html">{@html series?.description3_html || '<p class="text-body-secondary mb-0">Not provided.</p>'}</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="col-12 col-lg-6">
-      <div class="card shadow-sm h-100 border-0">
-        <div class="card-body p-4">
-          <p class="section-label mb-2">Comments</p>
-          <div class="public-html">{@html series?.comments_html || '<p class="text-body-secondary mb-0">Not provided.</p>'}</div>
-        </div>
-      </div>
-    </div>
   </section>
 </div>
 

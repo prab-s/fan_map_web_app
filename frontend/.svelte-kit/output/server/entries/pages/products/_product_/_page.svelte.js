@@ -1,6 +1,7 @@
-import { s as store_get, h as head, e as escape_html, b as attr, u as unsubscribe_stores, f as bind_props } from "../../../../chunks/index2.js";
+import { s as store_get, h as head, e as escape_html, b as attr, d as ensure_array_like, u as unsubscribe_stores, f as bind_props } from "../../../../chunks/index2.js";
 import { g as getChartTheme, b as buildFullChartOption, E as ECharts } from "../../../../chunks/fullChart.js";
 import { t as theme } from "../../../../chunks/config.js";
+import { a as getDescriptionSections } from "../../../../chunks/descriptionSections.js";
 import { f as fallback } from "../../../../chunks/equality.js";
 import { h as html } from "../../../../chunks/html.js";
 function _page($$renderer, $$props) {
@@ -13,6 +14,7 @@ function _page($$renderer, $$props) {
     let chartTheme = getChartTheme(store_get($$store_subs ??= {}, "$theme", theme));
     let chartOption = {};
     let pageTitle = "Product";
+    let productDescriptionSections = [];
     product = data?.product ?? null;
     productTypes = data?.productTypes ?? [];
     productType = productTypes.find((item) => String(item.key) === String(product?.product_type_key)) || null;
@@ -39,6 +41,7 @@ function _page($$renderer, $$props) {
       },
       adaptGraphBackgroundToTheme: true
     }) : {};
+    productDescriptionSections = getDescriptionSections(product || {});
     pageTitle = product ? `${product.model} | ${product.product_type_label || product.product_type_key || "Product"}` : "Product";
     head("1e2w8fh", $$renderer2, ($$renderer3) => {
       $$renderer3.title(($$renderer4) => {
@@ -90,7 +93,13 @@ function _page($$renderer, $$props) {
       $$renderer2.push("<!--[-1-->");
       $$renderer2.push(`<div class="empty-state svelte-1e2w8fh"><p class="mb-0">No graph data is available for this product yet.</p></div>`);
     }
-    $$renderer2.push(`<!--]--></div></section> <section class="row g-4"><div class="col-12 col-xl-6"><div class="card shadow-sm h-100 border-0"><div class="card-body p-4"><p class="section-label mb-2 svelte-1e2w8fh">Description 1</p> <div class="public-html svelte-1e2w8fh">${html(product?.description1_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div> <div class="col-12 col-xl-6"><div class="card shadow-sm h-100 border-0"><div class="card-body p-4"><p class="section-label mb-2 svelte-1e2w8fh">Description 2</p> <div class="public-html svelte-1e2w8fh">${html(product?.description2_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div> <div class="col-12 col-xl-6"><div class="card shadow-sm h-100 border-0"><div class="card-body p-4"><p class="section-label mb-2 svelte-1e2w8fh">Description 3</p> <div class="public-html svelte-1e2w8fh">${html(product?.description3_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div> <div class="col-12 col-xl-6"><div class="card shadow-sm h-100 border-0"><div class="card-body p-4"><p class="section-label mb-2 svelte-1e2w8fh">Comments</p> <div class="public-html svelte-1e2w8fh">${html(product?.comments_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div></section> `);
+    $$renderer2.push(`<!--]--></div></section> <section class="row g-4"><!--[-->`);
+    const each_array = ensure_array_like(productDescriptionSections);
+    for (let $$index = 0, $$length = each_array.length; $$index < $$length; $$index++) {
+      let section = each_array[$$index];
+      $$renderer2.push(`<div class="col-12 col-xl-6"><div class="card shadow-sm h-100 border-0"><div class="card-body p-4"><p class="section-label mb-2 svelte-1e2w8fh">${escape_html(section.title)}</p> <div class="public-html svelte-1e2w8fh">${html(section.html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div>`);
+    }
+    $$renderer2.push(`<!--]--></section> `);
     if (product?.primary_product_image_url) {
       $$renderer2.push("<!--[0-->");
       $$renderer2.push(`<section class="card shadow-sm border-0 mt-4"><div class="card-body p-4"><p class="section-label mb-3 svelte-1e2w8fh">Product Image</p> <img class="product-image-large svelte-1e2w8fh"${attr("src", product.primary_product_image_url)}${attr("alt", `${product.model} product image`)}/></div></section>`);

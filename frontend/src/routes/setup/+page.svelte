@@ -1753,7 +1753,7 @@
                                 <label class="form-label" for={`type-preset-rpm-line-${lineIndex}-band-color`}>Band colour</label>
                                 <div class="input-group">
                                   <input class="form-control form-control-color" id={`type-preset-rpm-line-${lineIndex}-band-color`} type="color" bind:value={line.band_color} on:input={() => (presetRpmLines = [...presetRpmLines])} />
-                                  <input class="form-control" type="text" bind:value={line.band_color} placeholder="#0066e3" on:input={() => (presetRpmLines = [...presetRpmLines])} />
+                                  <input class="form-control" type="text" bind:value={line.band_color} placeholder="#5E86A7" on:input={() => (presetRpmLines = [...presetRpmLines])} />
                                 </div>
                               </div>
                               <div class="col-12 col-md-4">

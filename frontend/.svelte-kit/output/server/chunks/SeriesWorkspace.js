@@ -2,6 +2,7 @@ import { b as attr, d as ensure_array_like, e as escape_html, f as bind_props, h
 import { f as fallback } from "./equality.js";
 import { g as goto } from "./client.js";
 import { i as deleteSeriesImage, j as reorderSeriesImages, k as uploadSeriesImages } from "./api.js";
+import { c as createDescriptionSectionDrafts, g as getDescriptionFieldCount } from "./descriptionSections.js";
 function SeriesMediaPanel($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
     let seriesForm = $$props["seriesForm"];
@@ -57,17 +58,15 @@ function SeriesWorkspace($$renderer, $$props) {
     let appliedInitialSeriesId = null;
     let appliedSeriesEditorUrlId = "";
     let hydratedSeriesId = "";
+    let seriesDescriptionSections = createDescriptionSectionDrafts();
+    getDescriptionFieldCount();
     function resetDraft(series = null) {
       return {
         id: series?.id ?? null,
         name: series?.name ?? "",
         product_type_key: series?.product_type_key ?? "",
         printed_template_id: series?.printed_template_id || series?.template_id || "",
-        online_template_id: series?.online_template_id || series?.template_id || "",
-        description1_html: series?.description1_html ?? "",
-        description2_html: series?.description2_html ?? "",
-        description3_html: series?.description3_html ?? "",
-        comments_html: series?.description4_html ?? series?.comments_html ?? ""
+        online_template_id: series?.online_template_id || series?.template_id || ""
       };
     }
     let seriesDraft = resetDraft();
@@ -89,6 +88,7 @@ function SeriesWorkspace($$renderer, $$props) {
         return;
       }
       hydratedSeriesId = normalizedSeriesId;
+      resetSeriesDescriptionSections(selected);
       seriesDraft = resetDraft(selected);
       seriesImages = selected.series_images || [];
       if (!seriesProductTypeFilter) {
@@ -101,6 +101,11 @@ function SeriesWorkspace($$renderer, $$props) {
       const nextUrl = nextSeriesId ? `/editor/series/edit/${encodeURIComponent(nextSeriesId)}` : "/editor/series/edit";
       if (`${window.location.pathname}${window.location.search}${window.location.hash}` === nextUrl) return;
       void goto(nextUrl, {});
+    }
+    function resetSeriesDescriptionSections(series = null) {
+      const nextSections = createDescriptionSectionDrafts(series || {});
+      seriesDescriptionSections = nextSections.map((section) => ({ ...section, html: section.html || "" }));
+      Math.max(getDescriptionFieldCount(series || {}), seriesDescriptionSections.length);
     }
     function seriesViewerUrl(seriesId = seriesDraft.id) {
       const nextSeriesId = seriesId == null || seriesId === "" ? "" : String(seriesId);
@@ -157,6 +162,7 @@ function SeriesWorkspace($$renderer, $$props) {
           seriesDraft = resetDraft();
           seriesImages = [];
           hydratedSeriesId = "";
+          resetSeriesDescriptionSections();
         }
       }
     }
@@ -307,27 +313,18 @@ function SeriesWorkspace($$renderer, $$props) {
           $$renderer4.push(`<!--]-->`);
         }
       );
-      $$renderer3.push(`</div> <div class="col-12"><label class="form-label" for="series-description1">Description1 (HTML)</label> <textarea class="form-control" id="series-description1" rows="3">`);
-      const $$body = escape_html(seriesDraft.description1_html);
-      if ($$body) {
-        $$renderer3.push(`${$$body}`);
+      $$renderer3.push(`</div> <div class="col-12"><div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2"><div><div class="form-label mb-0">Description sections</div> <div class="form-text">Add or remove as many HTML blocks as this series needs.</div></div> <button class="btn btn-outline-primary btn-sm" type="button">Add section</button></div> <div class="vstack gap-3"><!--[-->`);
+      const each_array_5 = ensure_array_like(seriesDescriptionSections);
+      for (let sectionIndex = 0, $$length = each_array_5.length; sectionIndex < $$length; sectionIndex++) {
+        let section = each_array_5[sectionIndex];
+        $$renderer3.push(`<div class="border rounded p-3 bg-body-tertiary"><div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2"><label class="form-label mb-0"${attr("for", `series-description-${sectionIndex + 1}`)}>${escape_html(section.title)}</label> <button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", seriesDescriptionSections.length === 1, true)}>Remove</button></div> <textarea class="form-control"${attr("id", `series-description-${sectionIndex + 1}`)} rows="3">`);
+        const $$body = escape_html(seriesDescriptionSections[sectionIndex].html);
+        if ($$body) {
+          $$renderer3.push(`${$$body}`);
+        }
+        $$renderer3.push(`</textarea></div>`);
       }
-      $$renderer3.push(`</textarea></div> <div class="col-12 col-lg-6"><label class="form-label" for="series-description2">Description2 (HTML)</label> <textarea class="form-control" id="series-description2" rows="3">`);
-      const $$body_1 = escape_html(seriesDraft.description2_html);
-      if ($$body_1) {
-        $$renderer3.push(`${$$body_1}`);
-      }
-      $$renderer3.push(`</textarea></div> <div class="col-12 col-lg-6"><label class="form-label" for="series-description3">Description3 (HTML)</label> <textarea class="form-control" id="series-description3" rows="3">`);
-      const $$body_2 = escape_html(seriesDraft.description3_html);
-      if ($$body_2) {
-        $$renderer3.push(`${$$body_2}`);
-      }
-      $$renderer3.push(`</textarea></div> <div class="col-12"><label class="form-label" for="series-comments">Comments (HTML)</label> <textarea class="form-control" id="series-comments" rows="3">`);
-      const $$body_3 = escape_html(seriesDraft.comments_html);
-      if ($$body_3) {
-        $$renderer3.push(`${$$body_3}`);
-      }
-      $$renderer3.push(`</textarea></div></div> <div class="d-flex flex-wrap gap-2 mt-3"><button class="btn btn-primary"${attr("disabled", saving, true)}>${escape_html(saving ? "Saving..." : "Save Series")}</button> `);
+      $$renderer3.push(`<!--]--></div></div></div> <div class="d-flex flex-wrap gap-2 mt-3"><button class="btn btn-primary"${attr("disabled", saving, true)}>${escape_html(saving ? "Saving..." : "Save Series")}</button> `);
       if (seriesDraft.id) {
         $$renderer3.push("<!--[0-->");
         $$renderer3.push(`<a class="btn btn-outline-primary"${attr("href", seriesViewerUrl(seriesDraft.id))}>View in Viewer</a>`);

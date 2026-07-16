@@ -1566,7 +1566,7 @@ cat > "$ROOT_DIR/app/static/js/product-graph.js" <<'EOF'
     return;
   }
 
-  const RPM_BAND_FALLBACK_COLORS = ['#0066e3', '#009760', '#e69100', '#ff399f', '#6e57b3', '#259eb0'];
+  const RPM_BAND_FALLBACK_COLORS = ['#5E86A7', '#CDA45C', '#6D9998', '#767596', '#40515A'];
 
   const themeName = document.documentElement.dataset.bsTheme === 'dark' ? 'dark' : 'light';
   const chartTheme = themeName === 'dark'
@@ -1755,13 +1755,12 @@ cat > "$ROOT_DIR/app/static/js/product-graph.js" <<'EOF'
     cursorX: null,
     cursorY: null
   };
-  const overlaySeriesLabels = new Set(overlayDefinitions.map((definition) => definition.label));
   const airflowUnit = String(graphConfig.graph_x_axis_unit || 'L/s').trim();
   const pressureUnit = String(graphConfig.graph_y_axis_unit || 'Pa').trim();
 
   function formatReading(value, unit) {
     const numeric = Number(value);
-    const formatted = Number.isFinite(numeric) ? String(Math.round(numeric)) : '';
+    const formatted = Number.isFinite(numeric) ? formatNumericValue(numeric) : '';
     return unit ? `${formatted} ${unit}` : formatted;
   }
 
@@ -1787,26 +1786,18 @@ cat > "$ROOT_DIR/app/static/js/product-graph.js" <<'EOF'
     },
     tooltip: {
       trigger: 'axis',
-      axisPointer: { type: 'line', snap: true },
+      axisPointer: {
+        type: 'cross',
+        snap: false,
+        lineStyle: {
+          type: 'dashed',
+          color: chartTheme.grid,
+          width: 1
+        },
+        label: { show: false }
+      },
       confine: true,
-      formatter: (params) => {
-        const items = Array.isArray(params) ? params : [params];
-        const rpmItems = items.filter((item) => item && item.seriesName && !overlaySeriesLabels.has(String(item.seriesName)));
-        if (!rpmItems.length) return '';
-        const cursorX = hoverState.cursorX ?? (Array.isArray(rpmItems[0]?.value) ? rpmItems[0].value[0] : rpmItems[0]?.axisValue);
-        const cursorY = hoverState.cursorY ?? (Array.isArray(rpmItems[0]?.value) ? rpmItems[0].value[1] : null);
-        const rows = rpmItems.map((item) => {
-          const value = Array.isArray(item.value) ? item.value : [item.value, null];
-          const xValue = value[0] != null ? value[0] : null;
-          const yValue = value[1] != null ? value[1] : null;
-          return `<div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;background:${item.color || chartTheme.accent};"></span>${item.seriesName}: ${formatReading(xValue, airflowUnit)} - ${formatReading(yValue, pressureUnit)}</div>`;
-        });
-        const lines = [
-          `<div style="margin-bottom:6px;font-weight:600;">Cursor : ${formatReading(cursorX, airflowUnit)} - ${formatReading(cursorY, pressureUnit)}</div>`
-        ];
-        lines.push(...rows);
-        return `<div style="font-family:${chartFontFamily};">${lines.join('')}</div>`;
-      }
+      formatter: () => `<div style="font-family:${chartFontFamily};"><div style="margin-bottom:6px;font-weight:600;">Cursor</div><div>Airflow: ${formatReading(hoverState.cursorX, airflowUnit)}</div><div>Pressure: ${formatReading(hoverState.cursorY, pressureUnit)}</div></div>`
     },
     grid: {
       left: '7%',

@@ -238,7 +238,7 @@
       '{{product.description1_html}}': '<p>Sample product description block. This is where the product overview appears.</p>',
       '{{product.description2_html}}': '<p>Sample product feature block. Add supporting product details here.</p>',
       '{{product.description3_html}}': '<p>Sample product specification block. Additional product detail appears here.</p>',
-      '{{product.comments_html}}': '<p>Sample product comments appear here.</p>',
+      '{{product.description4_html}}': '<p>Sample product description block. This is where supporting product details appear.</p>',
       '{{product.features_html}}': createPreviewList(['Key feature one', 'Key feature two', 'Key feature three']),
       '{{product.specifications_html}}': createPreviewTable('Specifications', [
         ['Duty', 'Continuous'],
@@ -298,6 +298,7 @@
       '{{series.description1_html}}': '<p>Sample series description shown in the editor preview.</p>',
       '{{series.description2_html}}': '<p>Additional series description preview text.</p>',
       '{{series.description3_html}}': '<p>Further series description preview text.</p>',
+      '{{series.description4_html}}': '<p>Additional series description preview text.</p>',
       '{{series.cover_image_html}}': `<div class="series-image-placeholder">Series cover preview</div>`,
       '{{series.primary_series_image_html}}': `<div class="series-image-placeholder">Primary series image preview</div>`,
       '{{series.secondary_series_image_html}}': `<div class="series-image-placeholder">Secondary series image preview</div>`,

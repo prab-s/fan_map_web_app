@@ -12,6 +12,11 @@
     updateSeries,
     uploadSeriesImages
   } from '$lib/api.js';
+  import {
+    createDescriptionFieldPayload,
+    createDescriptionSectionDrafts,
+    getDescriptionFieldCount
+  } from '$lib/descriptionSections.js';
   import SeriesMediaPanel from '$lib/editor/SeriesMediaPanel.svelte';
 
   export let initialMode = 'create';
@@ -31,6 +36,8 @@
   let appliedInitialSeriesId = null;
   let appliedSeriesEditorUrlId = '';
   let hydratedSeriesId = '';
+  let seriesDescriptionSections = createDescriptionSectionDrafts();
+  let seriesDescriptionFieldCount = getDescriptionFieldCount();
 
   function resetDraft(series = null) {
     return {
@@ -38,11 +45,7 @@
       name: series?.name ?? '',
       product_type_key: series?.product_type_key ?? '',
       printed_template_id: series?.printed_template_id || series?.template_id || '',
-      online_template_id: series?.online_template_id || series?.template_id || '',
-      description1_html: series?.description1_html ?? '',
-      description2_html: series?.description2_html ?? '',
-      description3_html: series?.description3_html ?? '',
-      comments_html: series?.description4_html ?? series?.comments_html ?? ''
+      online_template_id: series?.online_template_id || series?.template_id || ''
     };
   }
 
@@ -72,6 +75,7 @@
     }
 
     hydratedSeriesId = normalizedSeriesId;
+    resetSeriesDescriptionSections(selected);
     seriesDraft = resetDraft(selected);
     seriesImages = selected.series_images || [];
     if (!seriesProductTypeFilter) {
@@ -92,9 +96,41 @@
     seriesDraft = resetDraft();
     seriesImages = [];
     hydratedSeriesId = '';
+    resetSeriesDescriptionSections();
     performanceColumnGroups = [];
     pendingImageFiles = [];
     syncSeriesEditorUrl('');
+  }
+
+  function resetSeriesDescriptionSections(series = null) {
+    const nextSections = createDescriptionSectionDrafts(series || {});
+    seriesDescriptionSections = nextSections.map((section) => ({
+      ...section,
+      html: section.html || ''
+    }));
+    seriesDescriptionFieldCount = Math.max(
+      getDescriptionFieldCount(series || {}),
+      seriesDescriptionSections.length
+    );
+  }
+
+  function addSeriesDescriptionSection() {
+    seriesDescriptionSections = [
+      ...seriesDescriptionSections,
+      {
+        key: `description${seriesDescriptionSections.length + 1}_html`,
+        title: `Description ${seriesDescriptionSections.length + 1}`,
+        html: ''
+      }
+    ];
+  }
+
+  function removeSeriesDescriptionSection(index) {
+    const nextSections = seriesDescriptionSections.filter((_, sectionIndex) => sectionIndex !== index);
+    seriesDescriptionSections =
+      nextSections.length > 0
+        ? nextSections
+        : [{ key: 'description1_html', title: 'Description 1', html: '' }];
   }
 
   $: if (mode === 'edit' && String(selectedSeriesId) !== String(appliedSeriesEditorUrlId)) {
@@ -127,6 +163,7 @@
         seriesDraft = resetDraft();
         seriesImages = [];
         hydratedSeriesId = '';
+        resetSeriesDescriptionSections();
       }
     }
   }
@@ -139,6 +176,7 @@
     seriesImages = [];
     pendingImageFiles = [];
     hydratedSeriesId = '';
+    resetSeriesDescriptionSections();
     error = '';
     success = '';
   }
@@ -151,6 +189,7 @@
     seriesImages = [];
     pendingImageFiles = [];
     hydratedSeriesId = '';
+    resetSeriesDescriptionSections();
     error = '';
     success = '';
   }
@@ -163,6 +202,7 @@
     seriesImages = [];
     pendingImageFiles = [];
     hydratedSeriesId = '';
+    resetSeriesDescriptionSections();
     syncSeriesEditorUrl('');
     error = '';
     success = '';
@@ -176,6 +216,7 @@
       } else if (!selectedSeriesId && !initialSeriesId) {
         seriesDraft = resetDraft();
         seriesImages = [];
+        resetSeriesDescriptionSections();
       }
     } catch (e) {
       error = e.message;
@@ -192,10 +233,15 @@
         product_type_key: seriesDraft.product_type_key,
         printed_template_id: seriesDraft.printed_template_id || null,
         online_template_id: seriesDraft.online_template_id || null,
-        description1_html: seriesDraft.description1_html || null,
-        description2_html: seriesDraft.description2_html || null,
-        description3_html: seriesDraft.description3_html || null,
-        comments_html: seriesDraft.comments_html || null
+        description_sections: seriesDescriptionSections.map((section) => ({
+          key: section.key,
+          title: section.title,
+          html: section.html
+        })),
+        ...createDescriptionFieldPayload(
+          seriesDescriptionSections,
+          seriesDescriptionFieldCount
+        )
       };
 
       if (!body.product_type_key) {
@@ -398,20 +444,24 @@
             </select>
           </div>
           <div class="col-12">
-            <label class="form-label" for="series-description1">Description1 (HTML)</label>
-            <textarea class="form-control" id="series-description1" rows="3" bind:value={seriesDraft.description1_html}></textarea>
-          </div>
-          <div class="col-12 col-lg-6">
-            <label class="form-label" for="series-description2">Description2 (HTML)</label>
-            <textarea class="form-control" id="series-description2" rows="3" bind:value={seriesDraft.description2_html}></textarea>
-          </div>
-          <div class="col-12 col-lg-6">
-            <label class="form-label" for="series-description3">Description3 (HTML)</label>
-            <textarea class="form-control" id="series-description3" rows="3" bind:value={seriesDraft.description3_html}></textarea>
-          </div>
-          <div class="col-12">
-            <label class="form-label" for="series-comments">Comments (HTML)</label>
-            <textarea class="form-control" id="series-comments" rows="3" bind:value={seriesDraft.comments_html}></textarea>
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+              <div>
+                <div class="form-label mb-0">Description sections</div>
+                <div class="form-text">Add or remove as many HTML blocks as this series needs.</div>
+              </div>
+              <button class="btn btn-outline-primary btn-sm" type="button" on:click={addSeriesDescriptionSection}>Add section</button>
+            </div>
+            <div class="vstack gap-3">
+              {#each seriesDescriptionSections as section, sectionIndex}
+                <div class="border rounded p-3 bg-body-tertiary">
+                  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                    <label class="form-label mb-0" for={`series-description-${sectionIndex + 1}`}>{section.title}</label>
+                    <button class="btn btn-outline-danger btn-sm" type="button" on:click={() => removeSeriesDescriptionSection(sectionIndex)} disabled={seriesDescriptionSections.length === 1}>Remove</button>
+                  </div>
+                  <textarea class="form-control" id={`series-description-${sectionIndex + 1}`} rows="3" bind:value={seriesDescriptionSections[sectionIndex].html}></textarea>
+                </div>
+              {/each}
+            </div>
           </div>
         </div>
 

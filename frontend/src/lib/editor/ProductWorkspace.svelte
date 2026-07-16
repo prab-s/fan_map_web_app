@@ -29,6 +29,7 @@
     deleteEfficiencyPoint,
     refreshGraphImage,
     startRefreshProductPdfJob,
+    parseGraphDataUpload,
     uploadProductImages,
     reorderProductImages,
     deleteProductImage,
@@ -45,6 +46,11 @@
     getChartTheme,
     theme,
   } from "$lib/config.js";
+  import {
+    createDescriptionFieldPayload,
+    createDescriptionSectionDrafts,
+    getDescriptionFieldCount,
+  } from "$lib/descriptionSections.js";
   import {
     buildFullChartOption,
     FULL_CHART_LINE_DEFINITIONS,
@@ -128,11 +134,9 @@
     product_type_key: "",
     printed_template_id: "",
     online_template_id: "",
-    description1_html: "",
-    description2_html: "",
-    description3_html: "",
-    comments_html: "",
   };
+  let seriesDescriptionSections = createDescriptionSectionDrafts();
+  let seriesDescriptionFieldCount = getDescriptionFieldCount();
 
   let chartInstance = null;
   let draggingPoint = null;
@@ -192,6 +196,8 @@
 
   // Form state: new/edit fan
   let productForm = emptyProductForm();
+  let productDescriptionSections = createDescriptionSectionDrafts();
+  let productDescriptionFieldCount = getDescriptionFieldCount();
   let fanAcousticTable = createFanAcousticTableDraft();
 
   // Map point form (single)
@@ -213,7 +219,7 @@
   let graphCsvDownsampleImportedCurves = true;
   let graphCsvDownsamplePointCount = 5;
   let graphCsvImportSource = {
-    text: "",
+    rows: [],
     fileName: "",
     productId: null,
   };
@@ -243,20 +249,23 @@
   );
   $: productTemplateOptions = templateRegistry.product_templates ?? [];
   $: if (
-    graphCsvImportSource.text &&
+    graphCsvImportSource.rows.length &&
     graphCsvImportSource.productId === selectedProductId &&
     `${selectedProductId ?? ""}|${graphCsvDownsampleImportedCurves ? "1" : "0"}|${String(
       graphCsvDownsamplePointCount ?? "",
     )}` !== graphCsvImportSignature
   ) {
     applyImportedGraphCsvSource({
-      text: graphCsvImportSource.text,
+      rows: graphCsvImportSource.rows,
       fileName: graphCsvImportSource.fileName || "graph-data.csv",
       showSuccess: false,
       rememberSource: false,
     });
   }
-  $: graphCsvPreview = buildGraphCsvPreview(graphCsvImportSource.text);
+  $: graphCsvPreview = buildGraphCsvPreview(
+    graphCsvImportSource.rows,
+    graphCsvImportSource.fileName || "graph-data.csv",
+  );
   $: if (
     mode === "create" &&
     productForm.product_type_key &&
@@ -372,6 +381,11 @@
   }
 
   function resetSeriesDraft(series = null) {
+    seriesDescriptionSections = createDescriptionSectionDrafts(series || {});
+    seriesDescriptionFieldCount = Math.max(
+      getDescriptionFieldCount(series || {}),
+      seriesDescriptionSections.length,
+    );
     seriesDraft = {
       id: series?.id ?? null,
       name: series?.name ?? "",
@@ -380,10 +394,6 @@
         series?.printed_template_id || series?.template_id || "",
       online_template_id:
         series?.online_template_id || series?.template_id || "",
-      description1_html: series?.description1_html ?? "",
-      description2_html: series?.description2_html ?? "",
-      description3_html: series?.description3_html ?? "",
-      comments_html: series?.description4_html ?? series?.comments_html ?? "",
     };
   }
 
@@ -1098,6 +1108,39 @@
     specificationGroupOpenState = {};
   }
 
+  function resetProductDescriptionSections(record = null) {
+    const nextSections = createDescriptionSectionDrafts(record || {});
+    productDescriptionSections = nextSections.map((section) => ({
+      ...section,
+      html: section.html || "",
+    }));
+    productDescriptionFieldCount = Math.max(
+      getDescriptionFieldCount(record || {}),
+      productDescriptionSections.length,
+    );
+  }
+
+  function addProductDescriptionSection() {
+    productDescriptionSections = [
+      ...productDescriptionSections,
+      {
+        key: `description${productDescriptionSections.length + 1}_html`,
+        title: `Description ${productDescriptionSections.length + 1}`,
+        html: "",
+      },
+    ];
+  }
+
+  function removeProductDescriptionSection(index) {
+    const nextSections = productDescriptionSections.filter(
+      (_, sectionIndex) => sectionIndex !== index,
+    );
+    productDescriptionSections =
+      nextSections.length > 0
+        ? nextSections
+        : [{ key: "description1_html", title: "Description 1", html: "" }];
+  }
+
   function resetProductEditor(productTypeKey = "") {
     createTemplateSelectionSource = {
       printed: "auto",
@@ -1111,6 +1154,7 @@
       online_template_id: "",
       series_id: null,
     };
+    resetProductDescriptionSections();
     graphStyleForm = defaultGraphStyleForm();
     if (mode === "create") {
       applyCreateTypePresets(productTypeKey);
@@ -1302,11 +1346,11 @@
     return efficiencyPoints
       .filter((point) => !point._pending_delete)
       .map((point) => ({
-        airflow: parseOptionalNumber(point.airflow),
-        efficiency_centre: parseOptionalNumber(point.efficiency_centre),
-        efficiency_lower_end: parseOptionalNumber(point.efficiency_lower_end),
-        efficiency_higher_end: parseOptionalNumber(point.efficiency_higher_end),
-        permissible_use: parseOptionalNumber(point.permissible_use),
+        airflow: parseOptionalInteger(point.airflow),
+        efficiency_centre: parseOptionalInteger(point.efficiency_centre),
+        efficiency_lower_end: parseOptionalInteger(point.efficiency_lower_end),
+        efficiency_higher_end: parseOptionalInteger(point.efficiency_higher_end),
+        permissible_use: parseOptionalInteger(point.permissible_use),
       }));
   }
 
@@ -1317,9 +1361,7 @@
         airflow: parseOptionalInteger(point.airflow),
         efficiency_centre: parseOptionalInteger(point.efficiency_centre),
         efficiency_lower_end: parseOptionalInteger(point.efficiency_lower_end),
-        efficiency_higher_end: parseOptionalInteger(
-          point.efficiency_higher_end,
-        ),
+        efficiency_higher_end: parseOptionalInteger(point.efficiency_higher_end),
         permissible_use: parseOptionalInteger(point.permissible_use),
       }));
   }
@@ -1672,7 +1714,7 @@
 
   function isGraphCsvImportSave() {
     return (
-      graphCsvImportSource.text &&
+      graphCsvImportSource.rows.length &&
       graphCsvImportSource.productId === selectedProductId
     );
   }
@@ -1749,6 +1791,39 @@
     return String(value ?? "").trim() === "#N/A" ? "" : value;
   }
 
+  function isGraphCsvMissingValue(value) {
+    return String(value ?? "").trim() === "#N/A";
+  }
+
+  function parseGraphCsvNumericCandidate(value) {
+    if (value === "" || value == null) return null;
+    const parsed = parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  function carryForwardGraphCsvZeroAirflowValues(rows) {
+    if (!Array.isArray(rows) || rows.length < 2) return rows;
+
+    const nextRows = rows.map((row) => [...row]);
+    const zeroAirflowRow = nextRows[1];
+    const headerRow = nextRows[0] || [];
+
+    // If the zero-airflow value is missing, seed it with the first valid value
+    // found further down the same column.
+    for (let columnIndex = 1; columnIndex < headerRow.length; columnIndex += 1) {
+      if (!isGraphCsvMissingValue(zeroAirflowRow[columnIndex])) continue;
+
+      for (let rowIndex = 1; rowIndex < nextRows.length; rowIndex += 1) {
+        const candidate = nextRows[rowIndex][columnIndex];
+        if (parseGraphCsvNumericCandidate(candidate) == null) continue;
+        zeroAirflowRow[columnIndex] = candidate;
+        break;
+      }
+    }
+
+    return nextRows;
+  }
+
   function normalizeGraphCsvHeader(header) {
     const trimmedHeader = String(header ?? "").trim();
     if (!trimmedHeader) return trimmedHeader;
@@ -1761,10 +1836,10 @@
       return "efficiency_centre";
     }
     if (lowerHeader === "upper red curve") {
-      return "efficiency_lower_end";
+      return "efficiency_higher_end";
     }
     if (lowerHeader === "lower red curve") {
-      return "efficiency_higher_end";
+      return "efficiency_lower_end";
     }
     if (lowerHeader === "red high") {
       return "efficiency_higher_end";
@@ -1794,7 +1869,9 @@
   }
 
   function normalizeGraphCsvRows(rows) {
-    return rows.map((row, rowIndex) =>
+    const rowsWithZeroAirflowFallback = carryForwardGraphCsvZeroAirflowValues(rows);
+
+    return rowsWithZeroAirflowFallback.map((row, rowIndex) =>
       row.map((cell, cellIndex) =>
         rowIndex === 0
           ? normalizeGraphCsvHeader(cell)
@@ -1803,11 +1880,31 @@
     );
   }
 
-  function buildGraphCsvPreview(text) {
-    if (!text) return null;
+  function findHighestEfficiencyOverlayKey(points) {
+    const overlayKeys = [
+      "efficiency_centre",
+      "efficiency_higher_end",
+      "efficiency_lower_end",
+    ];
+    let bestKey = null;
+    let bestValue = Number.NEGATIVE_INFINITY;
 
-    const rows = parseCsvRows(text);
-    if (!rows.length) return null;
+    for (const key of overlayKeys) {
+      for (const point of points ?? []) {
+        const rawValue = point?.[key];
+        if (rawValue === "" || rawValue == null) continue;
+        const value = Number(rawValue);
+        if (!Number.isFinite(value) || value <= bestValue) continue;
+        bestValue = value;
+        bestKey = key;
+      }
+    }
+
+    return bestKey;
+  }
+
+  function buildGraphCsvPreview(rows, fileName) {
+    if (!Array.isArray(rows) || !rows.length) return null;
 
     const normalizedRows = normalizeGraphCsvRows(rows);
     const replacedNaNCount = rows
@@ -1828,7 +1925,7 @@
     }));
 
     return {
-      fileName: graphCsvImportSource.fileName || "graph-data.csv",
+      fileName,
       rowCount: Math.max(rows.length - 1, 0),
       replacedNaNCount,
       headerPairs,
@@ -1953,10 +2050,14 @@
     const sampledPoints = [];
 
     for (let axis = minAxis; axis <= maxAxis; axis += safeStep) {
+      const interpolatedValue = interpolateGraphCsvValue(numericPoints, axis);
+      if (!Number.isFinite(interpolatedValue)) {
+        continue;
+      }
       sampledPoints.push({
         ...numericPoints[0].point,
         [axisKey]: Math.round(axis * 1000) / 1000,
-        [valueKey]: Math.round(interpolateGraphCsvValue(numericPoints, axis)),
+        [valueKey]: Math.round(interpolatedValue),
       });
     }
 
@@ -1965,12 +2066,14 @@
       lastSample &&
       Number(lastSample[axisKey]) !== Math.round(maxAxis * 1000) / 1000
     ) {
+      const interpolatedValue = interpolateGraphCsvValue(numericPoints, maxAxis);
+      if (!Number.isFinite(interpolatedValue)) {
+        return sampledPoints;
+      }
       sampledPoints.push({
         ...numericPoints[0].point,
         [axisKey]: Math.round(maxAxis * 1000) / 1000,
-        [valueKey]: Math.round(
-          interpolateGraphCsvValue(numericPoints, maxAxis),
-        ),
+        [valueKey]: Math.round(interpolatedValue),
       });
     }
 
@@ -2030,6 +2133,69 @@
 
     if (!chartPoints.length) return null;
     return interpolateGraphCsvValue(chartPoints, numericAirflow);
+  }
+
+  function solveOverlayScaleFactorForPolyline(terminalPoint, linePoints) {
+    const terminalAirflow = Number(terminalPoint?.airflow);
+    const terminalValue = Number(terminalPoint?.value);
+    if (
+      !Number.isFinite(terminalAirflow) ||
+      !Number.isFinite(terminalValue) ||
+      terminalAirflow <= 0 ||
+      terminalValue <= 0
+    ) {
+      return null;
+    }
+
+    const chartPoints = (linePoints ?? [])
+      .map((point) => ({
+        axis: Number(point?.airflow),
+        value: Number(point?.pressure),
+      }))
+      .filter(
+        ({ axis, value }) => Number.isFinite(axis) && Number.isFinite(value),
+      )
+      .sort((a, b) => a.axis - b.axis);
+
+    if (chartPoints.length < 2) return null;
+
+    const candidates = [];
+    for (let index = 0; index < chartPoints.length - 1; index += 1) {
+      const left = chartPoints[index];
+      const right = chartPoints[index + 1];
+      if (right.axis <= left.axis) continue;
+
+      const slope = (right.value - left.value) / (right.axis - left.axis);
+      const denominator = terminalValue - slope * terminalAirflow;
+      if (Math.abs(denominator) < 1e-12) continue;
+
+      const scaleFactor = (left.value - slope * left.axis) / denominator;
+      if (!Number.isFinite(scaleFactor) || scaleFactor <= 0) continue;
+
+      const scaledAirflow = terminalAirflow * scaleFactor;
+      if (scaledAirflow < left.axis - 1e-9 || scaledAirflow > right.axis + 1e-9) {
+        continue;
+      }
+
+      const targetPressure = pressureAtAirflow(linePoints, scaledAirflow);
+      if (!Number.isFinite(targetPressure)) continue;
+
+      const residual = Math.abs(targetPressure - terminalValue * scaleFactor);
+      candidates.push({
+        residual,
+        distanceFromOne: Math.abs(scaleFactor - 1),
+        scaleFactor,
+      });
+    }
+
+    if (!candidates.length) return null;
+    candidates.sort(
+      (left, right) =>
+        left.residual - right.residual ||
+        left.distanceFromOne - right.distanceFromOne ||
+        left.scaleFactor - right.scaleFactor,
+    );
+    return candidates[0].scaleFactor;
   }
 
   function distanceToPolyline(point, linePoints) {
@@ -2126,9 +2292,7 @@
     const pressureMax = Number.isFinite(Number(yAxis?.[0]?.max))
       ? Number(yAxis[0].max)
       : fallbackPressureMax;
-    const overlayMax = Number.isFinite(Number(yAxis?.[1]?.max))
-      ? Number(yAxis[1].max)
-      : 100;
+    const overlayMax = pressureMax;
 
     return {
       flowMax: flowMax > 0 ? flowMax : fallbackFlowMax,
@@ -2227,6 +2391,7 @@
     axisKey = "airflow",
     valueKey = "pressure",
     targetCount = 5,
+    precision = 0,
   ) {
     const numericPoints = (points ?? [])
       .map((point) => ({
@@ -2254,12 +2419,17 @@
     });
 
     const templatePoint = numericPoints[0].point;
-    const sampledPoints = sampleAxes.map((axis) => ({
-      ...templatePoint,
-      id: createTempPointId(),
-      [axisKey]: axis,
-      [valueKey]: Math.round(interpolateGraphCsvValue(numericPoints, axis)),
-    }));
+    const sampledPoints = [];
+    for (const axis of sampleAxes) {
+      const interpolatedValue = interpolateGraphCsvValue(numericPoints, axis);
+      if (!Number.isFinite(interpolatedValue)) continue;
+      sampledPoints.push({
+        ...templatePoint,
+        id: createTempPointId(),
+        [axisKey]: Math.round(axis * 10 ** precision) / 10 ** precision,
+        [valueKey]: Math.round(interpolatedValue * 10 ** precision) / 10 ** precision,
+      });
+    }
     const seenAxes = new Set();
     return sampledPoints.filter((point) => {
       const axisValue = point?.[axisKey];
@@ -2281,7 +2451,33 @@
         "airflow",
         valueKey,
         targetCount,
+        0,
       );
+      const peakPoint = seriesPoints.reduce((best, current) => {
+        const currentAirflow = Number(current?.airflow);
+        const currentValue = Number(current?.[valueKey]);
+        if (
+          !Number.isFinite(currentAirflow) ||
+          !Number.isFinite(currentValue)
+        ) {
+          return best;
+        }
+        if (!best) return current;
+        const bestValue = Number(best?.[valueKey]);
+        if (!Number.isFinite(bestValue) || currentValue > bestValue) {
+          return current;
+        }
+        return best;
+      }, null);
+      if (
+        peakPoint &&
+        !sampledPoints.some(
+          (sampledPoint) =>
+            Number(sampledPoint?.airflow) === Number(peakPoint?.airflow),
+        )
+      ) {
+        sampledPoints.push({ ...peakPoint });
+      }
       for (const sampledPoint of sampledPoints) {
         const airflow = Number(sampledPoint?.airflow);
         const value = Number(sampledPoint?.[valueKey]);
@@ -2300,7 +2496,7 @@
           });
         }
 
-        mergedPoints.get(mergeKey)[valueKey] = value;
+        mergedPoints.get(mergeKey)[valueKey] = Math.round(value);
       }
     }
 
@@ -2404,8 +2600,6 @@
     });
   }
 
-  const OVERLAY_SCALE_BIAS = 1.01;
-
   function estimateOverlayScaleFactorBounds(terminalPoint, rpmLinePoints) {
     const rpmSeries = normalisedGraphSeries(rpmLinePoints, "airflow", "pressure");
     if (!terminalPoint || !rpmSeries.length) {
@@ -2434,6 +2628,14 @@
     tolerance = 0.5,
   }) {
     if (!terminalPoint || !rpmLinePoints?.length) return null;
+
+    const exactScaleFactor = solveOverlayScaleFactorForPolyline(
+      terminalPoint,
+      rpmLinePoints,
+    );
+    if (Number.isFinite(exactScaleFactor)) {
+      return Math.max(0.01, exactScaleFactor);
+    }
 
     const { minScale, maxScale } = estimateOverlayScaleFactorBounds(
       terminalPoint,
@@ -2478,11 +2680,29 @@
     rpmLinesToCheck,
     rpmPointsToCheck,
   ) {
-    const highResolutionRpmLinePoints = buildHighResolutionHighestRpmLine(
-      rpmLinesToCheck,
-      rpmPointsToCheck,
-      1,
-    );
+    const highestRpmLine = [...(rpmLinesToCheck ?? [])]
+      .map((line) => ({
+        id: Number(line?.id),
+        rpm: Number(line?.rpm),
+      }))
+      .filter(({ id, rpm }) => Number.isFinite(id) && Number.isFinite(rpm))
+      .sort((a, b) => b.rpm - a.rpm)[0];
+
+    const highResolutionRpmLinePoints = highestRpmLine
+      ? (rpmPointsToCheck ?? [])
+          .filter(
+            (point) => Number(point?.rpm_line_id) === Number(highestRpmLine.id),
+          )
+          .map((point) => ({
+            airflow: Number(point?.airflow),
+            pressure: Number(point?.pressure),
+          }))
+          .filter(
+            ({ airflow, pressure }) =>
+              Number.isFinite(airflow) && Number.isFinite(pressure),
+          )
+          .sort((a, b) => a.airflow - b.airflow)
+      : [];
 
     const overlayKeys = [
       "efficiency_centre",
@@ -2497,83 +2717,32 @@
       return nextPoints;
     }
 
-    function isBlankValue(value) {
-      return value === "" || value == null;
-    }
-
-    const axisExtents = getChartSpaceAxisExtents(highResolutionRpmLinePoints);
-    const convergenceThreshold = 0.005;
-
-    function normalizedAxisPosition(value, axisMax) {
-      if (!Number.isFinite(value) || !Number.isFinite(axisMax) || axisMax <= 0) {
-        return Number.POSITIVE_INFINITY;
+  function findBestScaleFactor(terminalPoint) {
+      const terminalAirflow = Number(terminalPoint?.airflow);
+      const terminalValue = Number(terminalPoint?.value);
+      if (
+        !Number.isFinite(terminalAirflow) ||
+        !Number.isFinite(terminalValue) ||
+        terminalAirflow <= 0 ||
+        terminalValue <= 0
+      ) {
+        return null;
       }
-      return value / axisMax;
-    }
 
-    function chartSpaceDifferenceAtScaledTerminalPoint(terminalPoint, scaleFactor) {
-      const scaledPoint = {
-        airflow: terminalPoint.airflow * scaleFactor,
-        pressure: terminalPoint.value * scaleFactor,
-      };
       const targetPressure = pressureAtAirflow(
         highResolutionRpmLinePoints,
-        scaledPoint.airflow,
+        terminalAirflow,
       );
-
       if (!Number.isFinite(targetPressure)) {
-        return Number.POSITIVE_INFINITY;
+        return null;
       }
 
-      const overlayPosition = normalizedAxisPosition(
-        scaledPoint.pressure,
-        axisExtents.overlayMax,
-      );
-      const rpmPosition = normalizedAxisPosition(
-        targetPressure,
-        axisExtents.pressureMax,
-      );
-
-      return Math.abs(overlayPosition - rpmPosition);
-    }
-
-    function findBestScaleFactor(terminalPoint) {
-      let bestScaleFactor = 1;
-      let bestDifference = chartSpaceDifferenceAtScaledTerminalPoint(
-        terminalPoint,
-        bestScaleFactor,
-      );
-
-      let minScale = 0.05;
-      let maxScale = 4;
-
-      for (let pass = 0; pass < 6; pass += 1) {
-        const steps = 60;
-        const stepSize = (maxScale - minScale) / steps;
-
-        for (let step = 0; step <= steps; step += 1) {
-          const scaleFactor = minScale + step * stepSize;
-          const difference = chartSpaceDifferenceAtScaledTerminalPoint(
-            terminalPoint,
-            scaleFactor,
-          );
-
-          if (difference < bestDifference) {
-            bestDifference = difference;
-            bestScaleFactor = scaleFactor;
-          }
-
-          if (bestDifference <= convergenceThreshold) {
-            return Math.max(0.01, bestScaleFactor * OVERLAY_SCALE_BIAS);
-          }
-        }
-
-        const nextWindow = stepSize * 4;
-        minScale = Math.max(0.01, bestScaleFactor - nextWindow);
-        maxScale = bestScaleFactor + nextWindow;
+      const scaleFactor = targetPressure / terminalValue;
+      if (!Number.isFinite(scaleFactor) || scaleFactor <= 0) {
+        return null;
       }
 
-      return Math.max(0.01, bestScaleFactor * OVERLAY_SCALE_BIAS);
+      return Math.max(0.01, scaleFactor);
     }
 
     for (const overlayKey of overlayKeys) {
@@ -2582,8 +2751,8 @@
           const rawAirflow = point?.airflow;
           const rawValue = point?.[overlayKey];
 
-          // Blank stays blank. Do not let Number("") become 0.
-          if (isBlankValue(rawAirflow) || isBlankValue(rawValue)) return null;
+          if (rawAirflow === "" || rawAirflow == null) return null;
+          if (rawValue === "" || rawValue == null) return null;
 
           const airflow = Number(rawAirflow);
           const value = Number(rawValue);
@@ -2597,15 +2766,21 @@
 
       if (!overlayLinePoints.length) continue;
 
-      const terminalPoint = overlayLinePoints[overlayLinePoints.length - 1];
-      const scaleFactor = findBestScaleFactor(terminalPoint);
-
+      const scaleSourcePoint = overlayLinePoints.reduce((best, current) => {
+        if (!best) return current;
+        if (current.value > best.value) return current;
+        if (current.value < best.value) return best;
+        return current.airflow > best.airflow ? current : best;
+      }, null);
+      const scaleFactor = findBestScaleFactor(scaleSourcePoint);
       if (!Number.isFinite(scaleFactor)) continue;
 
-      // Scale both airflow and pressure together for the whole line.
-      for (const item of overlayLinePoints) {
-        item.point.airflow = Math.round(item.airflow * scaleFactor);
-        item.point[overlayKey] = Math.round(item.value * scaleFactor);
+      for (const point of nextPoints) {
+        const rawValue = point?.[overlayKey];
+        if (rawValue === "" || rawValue == null) continue;
+        const value = Number(rawValue);
+        if (!Number.isFinite(value)) continue;
+        point[overlayKey] = Math.round(value * scaleFactor);
       }
     }
 
@@ -3040,6 +3215,29 @@
       }
     }
 
+    const highestEfficiencyOverlayKey = findHighestEfficiencyOverlayKey(
+      nextEfficiencyPoints,
+    );
+    if (highestEfficiencyOverlayKey) {
+      for (const point of nextEfficiencyPoints) {
+        if (
+          point.permissible_use != null &&
+          point.permissible_use !== ""
+        ) {
+          continue;
+        }
+        const sourceValue = point?.[highestEfficiencyOverlayKey];
+        if (sourceValue == null || sourceValue === "") continue;
+        point.permissible_use = sourceValue;
+      }
+    }
+
+    const scaledEfficiencyPoints = applyLineByLineOverlayScaling(
+      nextEfficiencyPoints,
+      nextRpmLines,
+      nextRpmPoints,
+    );
+
     const nextRpmPointsByLineId = new Map();
     for (const point of nextRpmPoints) {
       const lineId = Number(point?.rpm_line_id);
@@ -3062,7 +3260,7 @@
       : nextRpmPoints;
     const adjustedEfficiencyPoints = downsampleImportedCurves
       ? downsampleGraphCsvOverlayPoints(
-          nextEfficiencyPoints,
+          scaledEfficiencyPoints,
           [
             "efficiency_centre",
             "efficiency_lower_end",
@@ -3071,7 +3269,7 @@
           ],
           downsamplePointCount,
         )
-      : nextEfficiencyPoints;
+      : scaledEfficiencyPoints;
     const importedOverlayPoints = adjustedEfficiencyPoints.map((point) => ({
       ...point,
       airflow: parseOptionalInteger(point.airflow),
@@ -3089,9 +3287,9 @@
     };
   }
 
-  function setGraphCsvImportSource(text, fileName) {
+  function setGraphCsvImportSource(rows, fileName) {
     graphCsvImportSource = {
-      text,
+      rows,
       fileName,
       productId: selectedProductId,
     };
@@ -3100,7 +3298,7 @@
 
   function clearGraphCsvImportSource() {
     graphCsvImportSource = {
-      text: "",
+      rows: [],
       fileName: "",
       productId: null,
     };
@@ -3108,7 +3306,7 @@
   }
 
   function applyImportedGraphCsvSource({
-    text,
+    rows,
     fileName = "graph-data.csv",
     showSuccess = true,
     rememberSource = true,
@@ -3119,17 +3317,17 @@
       return;
     }
 
-    const rows = parseCsvRows(text);
-    if (rows.length < 2) {
+    const inputRows = Array.isArray(rows) ? rows : [];
+    if (inputRows.length < 2) {
       graphCsvError =
-        "Choose a graph CSV file with a header row and at least one data row.";
+        "Choose a graph data file with a header row and at least one data row.";
       return;
     }
 
     try {
-      const cleanedRows = normalizeGraphCsvRows(rows);
+      const cleanedRows = normalizeGraphCsvRows(inputRows);
       if (rememberSource) {
-        setGraphCsvImportSource(text, fileName);
+        setGraphCsvImportSource(inputRows, fileName);
       }
       const downsampleImportedCurves = !!graphCsvDownsampleImportedCurves;
       const downsamplePointCount = downsampleImportedCurves
@@ -3161,7 +3359,7 @@
       }
       if (showSuccess) {
         addSuccess(
-          `${`Loaded graph CSV from ${fileName}`}${
+          `${`Loaded graph data from ${fileName}`}${
             downsampleImportedCurves
               ? `, downsampled each imported curve to ${downsamplePointCount} representative point${downsamplePointCount === 1 ? "" : "s"}`
               : ""
@@ -3183,10 +3381,10 @@
     }
 
     try {
-      const text = await file.text();
+      const parsed = await parseGraphDataUpload(file);
       applyImportedGraphCsvSource({
-        text,
-        fileName: file.name,
+        rows: parsed.rows,
+        fileName: parsed.file_name || file.name,
         showSuccess: true,
         rememberSource: true,
       });
@@ -3194,7 +3392,7 @@
         graphCsvInput.value = "";
       }
     } catch (e) {
-      graphCsvError = e.message || "Unable to read the selected CSV file.";
+      graphCsvError = e.message || "Unable to read the selected graph data file.";
     }
   }
 
@@ -3356,10 +3554,15 @@
         product_type_key: seriesDraft.product_type_key,
         printed_template_id: seriesDraft.printed_template_id || null,
         online_template_id: seriesDraft.online_template_id || null,
-        description1_html: seriesDraft.description1_html || null,
-        description2_html: seriesDraft.description2_html || null,
-        description3_html: seriesDraft.description3_html || null,
-        comments_html: seriesDraft.comments_html || null,
+        description_sections: seriesDescriptionSections.map((section) => ({
+          key: section.key,
+          title: section.title,
+          html: section.html,
+        })),
+        ...createDescriptionFieldPayload(
+          seriesDescriptionSections,
+          seriesDescriptionFieldCount,
+        ),
       };
       if (managementMode === "edit-series" && !selectedManageSeriesId) {
         error = "Choose a series first.";
@@ -3598,10 +3801,15 @@
       series_id: productForm.series_id ? Number(productForm.series_id) : null,
       printed_template_id: productForm.printed_template_id || null,
       online_template_id: productForm.online_template_id || null,
-      description1_html: productForm.description1_html.trim() || null,
-      description2_html: productForm.description2_html.trim() || null,
-      description3_html: productForm.description3_html.trim() || null,
-      comments_html: productForm.comments_html.trim() || null,
+      description_sections: productDescriptionSections.map((section) => ({
+        key: section.key,
+        title: section.title,
+        html: section.html,
+      })),
+      ...createDescriptionFieldPayload(
+        productDescriptionSections,
+        productDescriptionFieldCount,
+      ),
       show_rpm_band_shading: !!productForm.show_rpm_band_shading,
       band_graph_background_color:
         normalizeOptionalColor(graphStyleForm.band_graph_background_color) ||
@@ -3680,6 +3888,7 @@
 
   function editProduct(product) {
     editingProductId = product.id;
+    resetProductDescriptionSections(product);
     productForm = {
       model: product.model,
       product_type_key: product.product_type_key || "fan",
@@ -3688,10 +3897,6 @@
         product.printed_template_id || product.template_id || "",
       online_template_id:
         product.online_template_id || product.template_id || "",
-      description1_html: product.description1_html || "",
-      description2_html: product.description2_html || "",
-      description3_html: product.description3_html || "",
-      comments_html: product.comments_html || "",
       show_rpm_band_shading: product.show_rpm_band_shading ?? true,
     };
     fanAcousticTable =
@@ -4417,9 +4622,7 @@
         airflow: parseOptionalInteger(point.airflow),
         efficiency_centre: parseOptionalInteger(point.efficiency_centre),
         efficiency_lower_end: parseOptionalInteger(point.efficiency_lower_end),
-        efficiency_higher_end: parseOptionalInteger(
-          point.efficiency_higher_end,
-        ),
+        efficiency_higher_end: parseOptionalInteger(point.efficiency_higher_end),
         permissible_use: parseOptionalInteger(point.permissible_use),
       });
       await loadProductData();
@@ -4733,28 +4936,6 @@
                   {/each}
                 </select>
               </div>
-              <div class="col-12">
-                <label class="form-label" for="create-description"
-                  >Description1 (HTML)</label
-                >
-                <textarea
-                  class="form-control"
-                  id="create-description"
-                  rows="4"
-                  bind:value={productForm.description1_html}
-                ></textarea>
-              </div>
-              <div class="col-12">
-                <label class="form-label" for="create-features"
-                  >Description2 (HTML)</label
-                >
-                <textarea
-                  class="form-control"
-                  id="create-features"
-                  rows="4"
-                  bind:value={productForm.description2_html}
-                ></textarea>
-              </div>
             </div>
           </AccordionCard>
         </div>
@@ -4784,26 +4965,33 @@
                 </div>
               {/if}
               <div class="col-12">
-                <label class="form-label" for="create-specifications"
-                  >Description3 (HTML)</label
-                >
-                <textarea
-                  class="form-control"
-                  id="create-specifications"
-                  rows="4"
-                  bind:value={productForm.description3_html}
-                ></textarea>
-              </div>
-              <div class="col-12">
-                <label class="form-label" for="create-comments"
-                  >Comments (HTML)</label
-                >
-                <textarea
-                  class="form-control"
-                  id="create-comments"
-                  rows="4"
-                  bind:value={productForm.comments_html}
-                ></textarea>
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                  <div>
+                    <div class="form-label mb-0">Description sections</div>
+                    <div class="form-text">Add or remove as many HTML blocks as this product needs.</div>
+                  </div>
+                  <button class="btn btn-outline-primary btn-sm" type="button" on:click={addProductDescriptionSection}>
+                    Add section
+                  </button>
+                </div>
+                <div class="vstack gap-3">
+                  {#each productDescriptionSections as section, sectionIndex}
+                    <div class="border rounded p-3 bg-body-tertiary">
+                      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                        <label class="form-label mb-0" for={`create-description-${sectionIndex + 1}`}>{section.title}</label>
+                        <button class="btn btn-outline-danger btn-sm" type="button" on:click={() => removeProductDescriptionSection(sectionIndex)} disabled={productDescriptionSections.length === 1}>
+                          Remove
+                        </button>
+                      </div>
+                      <textarea
+                        class="form-control"
+                        id={`create-description-${sectionIndex + 1}`}
+                        rows="4"
+                        bind:value={productDescriptionSections[sectionIndex].html}
+                      ></textarea>
+                    </div>
+                  {/each}
+                </div>
               </div>
             </div>
           </AccordionCard>
@@ -5645,48 +5833,33 @@
                   </select>
                 </div>
                 <div class="col-12">
-                  <label class="form-label" for="edit-description"
-                    >Description1 (HTML)</label
-                  >
-                  <textarea
-                    class="form-control"
-                    id="edit-description"
-                    rows="4"
-                    bind:value={productForm.description1_html}
-                  ></textarea>
-                </div>
-                <div class="col-12">
-                  <label class="form-label" for="edit-features"
-                    >Description2 (HTML)</label
-                  >
-                  <textarea
-                    class="form-control"
-                    id="edit-features"
-                    rows="4"
-                    bind:value={productForm.description2_html}
-                  ></textarea>
-                </div>
-                <div class="col-12">
-                  <label class="form-label" for="edit-specifications"
-                    >Description3 (HTML)</label
-                  >
-                  <textarea
-                    class="form-control"
-                    id="edit-specifications"
-                    rows="4"
-                    bind:value={productForm.description3_html}
-                  ></textarea>
-                </div>
-                <div class="col-12">
-                  <label class="form-label" for="edit-comments"
-                    >Comments (HTML)</label
-                  >
-                  <textarea
-                    class="form-control"
-                    id="edit-comments"
-                    rows="4"
-                    bind:value={productForm.comments_html}
-                  ></textarea>
+                  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                    <div>
+                      <div class="form-label mb-0">Description sections</div>
+                      <div class="form-text">Add or remove as many HTML blocks as this product needs.</div>
+                    </div>
+                    <button class="btn btn-outline-primary btn-sm" type="button" on:click={addProductDescriptionSection}>
+                      Add section
+                    </button>
+                  </div>
+                  <div class="vstack gap-3">
+                    {#each productDescriptionSections as section, sectionIndex}
+                      <div class="border rounded p-3 bg-body-tertiary">
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                          <label class="form-label mb-0" for={`edit-description-${sectionIndex + 1}`}>{section.title}</label>
+                          <button class="btn btn-outline-danger btn-sm" type="button" on:click={() => removeProductDescriptionSection(sectionIndex)} disabled={productDescriptionSections.length === 1}>
+                            Remove
+                          </button>
+                        </div>
+                        <textarea
+                          class="form-control"
+                          id={`edit-description-${sectionIndex + 1}`}
+                          rows="4"
+                          bind:value={productDescriptionSections[sectionIndex].html}
+                        ></textarea>
+                      </div>
+                    {/each}
+                  </div>
                 </div>
                 {#if productSupportsBandGraphStyle()}
                   <div class="col-12">
@@ -6250,11 +6423,11 @@
                 <div class="vstack gap-3">
                   <div class="card shadow-sm">
                     <div class="card-body">
-                      <h3 class="h6 mb-2">Graph CSV</h3>
+                      <h3 class="h6 mb-2">Graph Data</h3>
                       <p class="text-body-secondary mb-2">
-                        Use one wide CSV per graph. Required first column: <code
-                          >airflow_l_s</code
-                        >. Supported dynamic columns:
+                        Use one wide CSV or XLSX workbook per graph. Required
+                        first column: <code>airflow_l_s</code>. Supported
+                        dynamic columns:
                         <code>pressure_650rpm</code>,
                         <code>pressure_813rpm</code>, etc.
                         {#if productSupportsGraphOverlays()}
@@ -6266,7 +6439,7 @@
                         {/if}
                       </p>
                       <label class="form-label" for="graph-csv-file"
-                        >Import Graph CSV file</label
+                        >Import Graph CSV or XLSX file</label
                       >
                       <div class="d-flex flex-wrap align-items-end gap-3 mb-2">
                         <div class="form-check form-switch mb-0">
@@ -6329,7 +6502,7 @@
                         class="form-control"
                         id="graph-csv-file"
                         type="file"
-                        accept=".csv,text/csv"
+                        accept=".csv,.xlsx,.xlsm,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12"
                         on:change={handleGraphCsvFileChange}
                       />
                       {#if graphCsvPreview}

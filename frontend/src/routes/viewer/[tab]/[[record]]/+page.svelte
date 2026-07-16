@@ -19,6 +19,7 @@
   } from '$lib/api.js';
   import ECharts from '$lib/ECharts.svelte';
   import { getChartTheme, theme } from '$lib/config.js';
+  import { getDescriptionSections } from '$lib/descriptionSections.js';
   import { buildFullChartOption } from '$lib/fullChart.js';
   import JobProgressPanel from '$lib/JobProgressPanel.svelte';
   import SeriesNamesBadgeList from '$lib/editor/SeriesNamesBadgeList.svelte';
@@ -46,6 +47,7 @@
   let filteredProducts = [];
   let seriesOptions = [];
   let selectedProduct = null;
+  let productDescriptionSections = [];
   function normalizeViewerTab(value) {
     return value === 'series' || value === 'product-type' ? value : 'product';
   }
@@ -73,6 +75,7 @@
   let seriesTabOptions = [];
   let selectedSeriesRecord = null;
   let selectedSeriesGraphRecord = null;
+  let seriesDescriptionSections = [];
   let seriesChartOption = {};
   let loadingSeriesGraph = false;
   let viewerUrlStateReady = false;
@@ -88,6 +91,9 @@
   let refreshingSeriesGraphId = null;
   let refreshingSeriesPdfJob = null;
   let destroyed = false;
+
+  $: productDescriptionSections = getDescriptionSections(selectedProduct || {});
+  $: seriesDescriptionSections = getDescriptionSections(selectedSeriesRecord || {});
 
   function viewerPath(tab = activeViewerTab) {
     const normalizedTab = normalizeViewerTab(tab);
@@ -1051,38 +1057,16 @@
   </div>
 
       <div class="row g-3">
-        <div class="col-12 col-lg-6">
-          <div class="card shadow-sm h-100">
-            <div class="card-body">
-              <h3 class="h6">Description1</h3>
-              <div class="viewer-html">{@html currentProduct.description1_html || '<p class="text-body-secondary mb-0">Not provided.</p>'}</div>
+        {#each productDescriptionSections as section}
+          <div class="col-12 col-lg-6">
+            <div class="card shadow-sm h-100">
+              <div class="card-body">
+                <h3 class="h6">{section.title}</h3>
+                <div class="viewer-html">{@html section.html || '<p class="text-body-secondary mb-0">Not provided.</p>'}</div>
+              </div>
             </div>
           </div>
-        </div>
-        <div class="col-12 col-lg-6">
-          <div class="card shadow-sm h-100">
-            <div class="card-body">
-              <h3 class="h6">Description2</h3>
-              <div class="viewer-html">{@html currentProduct.description2_html || '<p class="text-body-secondary mb-0">Not provided.</p>'}</div>
-            </div>
-          </div>
-        </div>
-        <div class="col-12 col-lg-6">
-          <div class="card shadow-sm h-100">
-            <div class="card-body">
-              <h3 class="h6">Description3</h3>
-              <div class="viewer-html">{@html currentProduct.description3_html || '<p class="text-body-secondary mb-0">Not provided.</p>'}</div>
-            </div>
-          </div>
-        </div>
-        <div class="col-12 col-lg-6">
-          <div class="card shadow-sm h-100">
-            <div class="card-body">
-              <h3 class="h6">Comments</h3>
-              <div class="viewer-html">{@html currentProduct.comments_html || '<p class="text-body-secondary mb-0">Not provided.</p>'}</div>
-            </div>
-          </div>
-        </div>
+        {/each}
       </div>
 
       <div class="card shadow-sm">
@@ -1497,22 +1481,12 @@
             {/if}
 
             <div class="row g-3">
-              <div class="col-12 col-lg-6">
-                <h4 class="h6">Description1</h4>
-                <div class="viewer-html">{@html selectedSeriesRecord.description1_html || '<p class="text-body-secondary mb-0">Not provided.</p>'}</div>
-              </div>
-              <div class="col-12 col-lg-6">
-                <h4 class="h6">Description2</h4>
-                <div class="viewer-html">{@html selectedSeriesRecord.description2_html || '<p class="text-body-secondary mb-0">Not provided.</p>'}</div>
-              </div>
-              <div class="col-12 col-lg-6">
-                <h4 class="h6">Description3</h4>
-                <div class="viewer-html">{@html selectedSeriesRecord.description3_html || '<p class="text-body-secondary mb-0">Not provided.</p>'}</div>
-              </div>
-              <div class="col-12 col-lg-6">
-                <h4 class="h6">Description4</h4>
-                <div class="viewer-html">{@html selectedSeriesRecord.description4_html || '<p class="text-body-secondary mb-0">Not provided.</p>'}</div>
-              </div>
+              {#each seriesDescriptionSections as section}
+                <div class="col-12 col-lg-6">
+                  <h4 class="h6">{section.title}</h4>
+                  <div class="viewer-html">{@html section.html || '<p class="text-body-secondary mb-0">Not provided.</p>'}</div>
+                </div>
+              {/each}
             </div>
           </div>
         </div>

@@ -1,4 +1,4 @@
-export const RPM_BAND_FALLBACK_COLORS = ['#0066e3', '#009760', '#e69100', '#ff399f', '#6e57b3', '#259eb0'];
+export const RPM_BAND_FALLBACK_COLORS = ['#5E86A7', '#CDA45C', '#6D9998', '#767596', '#40515A'];
 
 export const CHART_STYLE = {
   rpmLineColor: '#0000ff',

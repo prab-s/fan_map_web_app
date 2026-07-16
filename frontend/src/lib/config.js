@@ -32,10 +32,7 @@ export function emptyProductForm() {
     series_name: '',
     printed_template_id: '',
     online_template_id: '',
-    description1_html: '',
-    description2_html: '',
-    description3_html: '',
-    comments_html: '',
+    descriptionSections: [{ key: 'description1_html', title: 'Description 1', html: '' }],
     show_rpm_band_shading: true,
     band_graph_background_color: '#ffffff',
     band_graph_label_text_color: '#000000'

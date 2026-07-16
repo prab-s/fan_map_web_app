@@ -51,22 +51,19 @@ def _build_search_pattern(search: str) -> re.Pattern | None:
 
 def _product_search_haystack(product: dict) -> str:
     parts: list[str] = []
+    description_field_pattern = re.compile(r"^description\d+(_html)?$", re.IGNORECASE)
 
-    for key in (
-        "model",
-        "series_name",
-        "product_type_label",
-        "description1_html",
-        "description2_html",
-        "description1",
-        "description2",
-        "summary",
-        "short_description",
-        "keywords",
-    ):
-        value = product.get(key)
-        if value not in (None, ""):
-            parts.append(_normalize_search_text(value))
+    for key, value in product.items():
+        if key in {
+            "model",
+            "series_name",
+            "product_type_label",
+            "summary",
+            "short_description",
+            "keywords",
+        } or description_field_pattern.match(str(key)):
+            if value not in (None, ""):
+                parts.append(_normalize_search_text(value))
 
     for group in product.get("parameter_groups", []) or []:
         group_name = group.get("group_name")

@@ -46,7 +46,8 @@
       "_api.js",
       "_fullChart.js",
       "_SeriesNamesBadgeList.js",
-      "_config.js"
+      "_config.js",
+      "_descriptionSections.js"
     ],
     "css": [
       "_app/immutable/assets/ProductWorkspace.Cdp6zMrW.css"
@@ -69,7 +70,8 @@
       "_index2.js",
       "_equality.js",
       "_client.js",
-      "_api.js"
+      "_api.js",
+      "_descriptionSections.js"
     ]
   },
   "_api.js": {
@@ -104,6 +106,10 @@
     "imports": [
       "_index.js"
     ]
+  },
+  "_descriptionSections.js": {
+    "file": "chunks/descriptionSections.js",
+    "name": "descriptionSections"
   },
   "_environment.js": {
     "file": "chunks/environment.js",
@@ -571,6 +577,7 @@
       "_index2.js",
       "_fullChart.js",
       "_config.js",
+      "_descriptionSections.js",
       "_equality.js",
       "_html.js"
     ],
@@ -633,6 +640,7 @@
       "_index2.js",
       "_fullChart.js",
       "_config.js",
+      "_descriptionSections.js",
       "_equality.js",
       "_html.js"
     ],
@@ -713,6 +721,7 @@
       "_api.js",
       "_fullChart.js",
       "_config.js",
+      "_descriptionSections.js",
       "_SeriesNamesBadgeList.js",
       "_html.js"
     ],

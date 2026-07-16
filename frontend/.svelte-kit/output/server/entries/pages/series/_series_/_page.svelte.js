@@ -1,6 +1,7 @@
-import { s as store_get, h as head, e as escape_html, b as attr, u as unsubscribe_stores, f as bind_props } from "../../../../chunks/index2.js";
+import { s as store_get, h as head, e as escape_html, b as attr, d as ensure_array_like, u as unsubscribe_stores, f as bind_props } from "../../../../chunks/index2.js";
 import { g as getChartTheme, b as buildFullChartOption, E as ECharts } from "../../../../chunks/fullChart.js";
 import { t as theme } from "../../../../chunks/config.js";
+import { a as getDescriptionSections } from "../../../../chunks/descriptionSections.js";
 import { f as fallback } from "../../../../chunks/equality.js";
 import { h as html } from "../../../../chunks/html.js";
 function _page($$renderer, $$props) {
@@ -14,6 +15,7 @@ function _page($$renderer, $$props) {
     let seriesTitle = "Series";
     let productTypeLabel = "Series";
     let pageTitle = "Series";
+    let seriesDescriptionSections = [];
     series = data?.series ?? null;
     seriesGraphPayload = series?.series_graph_payload ?? null;
     chartTheme = getChartTheme(store_get($$store_subs ??= {}, "$theme", theme));
@@ -29,6 +31,7 @@ function _page($$renderer, $$props) {
       graphStyle: seriesGraphPayload.graphStyle || null,
       adaptGraphBackgroundToTheme: true
     }) : {};
+    seriesDescriptionSections = getDescriptionSections(series || {});
     seriesTitle = series?.name || "Series";
     productTypeLabel = series?.product_type_label || series?.product_type_key || "Series";
     pageTitle = `${seriesTitle} | ${productTypeLabel}`;
@@ -91,7 +94,13 @@ function _page($$renderer, $$props) {
       $$renderer2.push("<!--[-1-->");
       $$renderer2.push(`<div class="performance-table-host performance-table-host--empty svelte-a8na6i"><p class="performance-table__empty text-body-secondary mb-0">No performance table is available for this series yet.</p></div>`);
     }
-    $$renderer2.push(`<!--]--></div></section> <section class="row g-4"><div class="col-12 col-lg-6"><div class="card shadow-sm h-100 border-0"><div class="card-body p-4"><p class="section-label mb-2 svelte-a8na6i">Description 1</p> <div class="public-html svelte-a8na6i">${html(series?.description1_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div> <div class="col-12 col-lg-6"><div class="card shadow-sm h-100 border-0"><div class="card-body p-4"><p class="section-label mb-2 svelte-a8na6i">Description 2</p> <div class="public-html svelte-a8na6i">${html(series?.description2_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div> <div class="col-12 col-lg-6"><div class="card shadow-sm h-100 border-0"><div class="card-body p-4"><p class="section-label mb-2 svelte-a8na6i">Description 3</p> <div class="public-html svelte-a8na6i">${html(series?.description3_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div> <div class="col-12 col-lg-6"><div class="card shadow-sm h-100 border-0"><div class="card-body p-4"><p class="section-label mb-2 svelte-a8na6i">Comments</p> <div class="public-html svelte-a8na6i">${html(series?.comments_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div></section></div>`);
+    $$renderer2.push(`<!--]--></div></section> <section class="row g-4"><!--[-->`);
+    const each_array = ensure_array_like(seriesDescriptionSections);
+    for (let $$index = 0, $$length = each_array.length; $$index < $$length; $$index++) {
+      let section = each_array[$$index];
+      $$renderer2.push(`<div class="col-12 col-lg-6"><div class="card shadow-sm h-100 border-0"><div class="card-body p-4"><p class="section-label mb-2 svelte-a8na6i">${escape_html(section.title)}</p> <div class="public-html svelte-a8na6i">${html(section.html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div>`);
+    }
+    $$renderer2.push(`<!--]--></section></div>`);
     if ($$store_subs) unsubscribe_stores($$store_subs);
     bind_props($$props, { data });
   });

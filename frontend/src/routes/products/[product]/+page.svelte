@@ -1,6 +1,7 @@
 <script>
   import ECharts from '$lib/ECharts.svelte';
   import { getChartTheme, theme } from '$lib/config.js';
+  import { getDescriptionSections } from '$lib/descriptionSections.js';
   import { buildFullChartOption } from '$lib/fullChart.js';
 
   export let data = {};
@@ -10,6 +11,7 @@
   let chartTheme = getChartTheme($theme);
   let chartOption = {};
   let pageTitle = 'Product';
+  let productDescriptionSections = [];
 
   $: product = data?.product ?? null;
   $: productTypes = data?.productTypes ?? [];
@@ -41,6 +43,7 @@
         adaptGraphBackgroundToTheme: true
       })
     : {};
+  $: productDescriptionSections = getDescriptionSections(product || {});
   $: pageTitle = product ? `${product.model} | ${product.product_type_label || product.product_type_key || 'Product'}` : 'Product';
 </script>
 
@@ -105,41 +108,17 @@
   </section>
 
   <section class="row g-4">
-    <div class="col-12 col-xl-6">
-      <div class="card shadow-sm h-100 border-0">
-        <div class="card-body p-4">
-          <p class="section-label mb-2">Description 1</p>
-          <div class="public-html">{@html product?.description1_html || '<p class="text-body-secondary mb-0">Not provided.</p>'}</div>
+    {#each productDescriptionSections as section}
+      <div class="col-12 col-xl-6">
+        <div class="card shadow-sm h-100 border-0">
+          <div class="card-body p-4">
+            <p class="section-label mb-2">{section.title}</p>
+            <div class="public-html">{@html section.html || '<p class="text-body-secondary mb-0">Not provided.</p>'}</div>
+          </div>
         </div>
       </div>
-    </div>
+    {/each}
 
-    <div class="col-12 col-xl-6">
-      <div class="card shadow-sm h-100 border-0">
-        <div class="card-body p-4">
-          <p class="section-label mb-2">Description 2</p>
-          <div class="public-html">{@html product?.description2_html || '<p class="text-body-secondary mb-0">Not provided.</p>'}</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="col-12 col-xl-6">
-      <div class="card shadow-sm h-100 border-0">
-        <div class="card-body p-4">
-          <p class="section-label mb-2">Description 3</p>
-          <div class="public-html">{@html product?.description3_html || '<p class="text-body-secondary mb-0">Not provided.</p>'}</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="col-12 col-xl-6">
-      <div class="card shadow-sm h-100 border-0">
-        <div class="card-body p-4">
-          <p class="section-label mb-2">Comments</p>
-          <div class="public-html">{@html product?.comments_html || '<p class="text-body-secondary mb-0">Not provided.</p>'}</div>
-        </div>
-      </div>
-    </div>
   </section>
 
   {#if product?.primary_product_image_url}

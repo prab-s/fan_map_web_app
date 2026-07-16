@@ -10,6 +10,7 @@ import "../../../../../chunks/state.svelte.js";
 import { z as getProductChartData, w as getSeries, A as getSeriesById, g as getProducts, c as getProduct } from "../../../../../chunks/api.js";
 import { E as ECharts, g as getChartTheme, b as buildFullChartOption } from "../../../../../chunks/fullChart.js";
 import { t as theme } from "../../../../../chunks/config.js";
+import { a as getDescriptionSections } from "../../../../../chunks/descriptionSections.js";
 import { J as JobProgressPanel, S as SeriesNamesBadgeList } from "../../../../../chunks/SeriesNamesBadgeList.js";
 import { h as html } from "../../../../../chunks/html.js";
 function _page($$renderer, $$props) {
@@ -38,6 +39,7 @@ function _page($$renderer, $$props) {
     let filteredProducts = [];
     let seriesOptions = [];
     let selectedProduct = null;
+    let productDescriptionSections = [];
     function normalizeViewerTab(value) {
       return value === "series" || value === "product-type" ? value : "product";
     }
@@ -62,6 +64,7 @@ function _page($$renderer, $$props) {
     let seriesTabOptions = [];
     let selectedSeriesRecord = null;
     let selectedSeriesGraphRecord = null;
+    let seriesDescriptionSections = [];
     let seriesChartOption = {};
     let loadingSeriesGraph = false;
     let seriesGraphRequestToken = 0;
@@ -373,14 +376,17 @@ function _page($$renderer, $$props) {
     let previousSeriesTabProductTypeFilter = "";
     onDestroy(() => {
     });
-    if (store_get($$store_subs ??= {}, "$theme", theme), productTypes) {
-      buildChartOptions();
-    }
+    productDescriptionSections = getDescriptionSections(selectedProduct || {});
     if (seriesTabProductTypeFilter !== previousSeriesTabProductTypeFilter) {
       previousSeriesTabProductTypeFilter = seriesTabProductTypeFilter;
       if (seriesTabProductTypeFilter) {
         loadSeriesTabOptions();
       }
+    }
+    selectedSeriesRecord = seriesTabOptions.find((series) => Number(series.id) === Number(seriesTabSeriesId)) || null;
+    seriesDescriptionSections = getDescriptionSections(selectedSeriesRecord || {});
+    if (store_get($$store_subs ??= {}, "$theme", theme), productTypes) {
+      buildChartOptions();
     }
     {
       const filterKey = JSON.stringify({ search, productTypeFilter, seriesFilter });
@@ -394,7 +400,6 @@ function _page($$renderer, $$props) {
       loadSelectedProduct();
       loadChartData();
     }
-    selectedSeriesRecord = seriesTabOptions.find((series) => Number(series.id) === Number(seriesTabSeriesId)) || null;
     if (selectedSeriesRecord?.id !== previousSelectedSeriesGraphId) {
       loadSelectedSeriesGraph();
     }
@@ -551,17 +556,23 @@ function _page($$renderer, $$props) {
         } else {
           $$renderer2.push("<!--[-1-->");
         }
-        $$renderer2.push(`<!--]--></div></div> <div class="row g-3"><div class="col-12 col-lg-6"><div class="card shadow-sm h-100"><div class="card-body"><h3 class="h6">Description1</h3> <div class="viewer-html svelte-36khdd">${html(currentProduct.description1_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div> <div class="col-12 col-lg-6"><div class="card shadow-sm h-100"><div class="card-body"><h3 class="h6">Description2</h3> <div class="viewer-html svelte-36khdd">${html(currentProduct.description2_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div> <div class="col-12 col-lg-6"><div class="card shadow-sm h-100"><div class="card-body"><h3 class="h6">Description3</h3> <div class="viewer-html svelte-36khdd">${html(currentProduct.description3_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div> <div class="col-12 col-lg-6"><div class="card shadow-sm h-100"><div class="card-body"><h3 class="h6">Comments</h3> <div class="viewer-html svelte-36khdd">${html(currentProduct.comments_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div></div> <div class="card shadow-sm"><div class="card-body"><h3 class="h5">Grouped Specifications</h3> `);
+        $$renderer2.push(`<!--]--></div></div> <div class="row g-3"><!--[-->`);
+        const each_array_3 = ensure_array_like(productDescriptionSections);
+        for (let $$index_3 = 0, $$length = each_array_3.length; $$index_3 < $$length; $$index_3++) {
+          let section = each_array_3[$$index_3];
+          $$renderer2.push(`<div class="col-12 col-lg-6"><div class="card shadow-sm h-100"><div class="card-body"><h3 class="h6">${escape_html(section.title)}</h3> <div class="viewer-html svelte-36khdd">${html(section.html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div>`);
+        }
+        $$renderer2.push(`<!--]--></div> <div class="card shadow-sm"><div class="card-body"><h3 class="h5">Grouped Specifications</h3> `);
         if ((currentProduct.parameter_groups?.length ?? 0) > 0) {
           $$renderer2.push("<!--[0-->");
           $$renderer2.push(`<div class="vstack gap-3 mt-3"><!--[-->`);
-          const each_array_3 = ensure_array_like(currentProduct.parameter_groups);
-          for (let $$index_4 = 0, $$length = each_array_3.length; $$index_4 < $$length; $$index_4++) {
-            let group = each_array_3[$$index_4];
+          const each_array_4 = ensure_array_like(currentProduct.parameter_groups);
+          for (let $$index_5 = 0, $$length = each_array_4.length; $$index_5 < $$length; $$index_5++) {
+            let group = each_array_4[$$index_5];
             $$renderer2.push(`<div class="border rounded p-3"><div class="fw-semibold mb-2">${escape_html(group.group_name)}</div> <div class="table-responsive"><table class="table table-sm mb-0 spec-group-table svelte-36khdd"><tbody class="svelte-36khdd"><!--[-->`);
-            const each_array_4 = ensure_array_like(group.parameters);
-            for (let $$index_3 = 0, $$length2 = each_array_4.length; $$index_3 < $$length2; $$index_3++) {
-              let parameter = each_array_4[$$index_3];
+            const each_array_5 = ensure_array_like(group.parameters);
+            for (let $$index_4 = 0, $$length2 = each_array_5.length; $$index_4 < $$length2; $$index_4++) {
+              let parameter = each_array_5[$$index_4];
               $$renderer2.push(`<tr class="svelte-36khdd"><th style="width: 40%" class="svelte-36khdd">${escape_html(parameter.parameter_name)}</th><td class="svelte-36khdd">${escape_html(formatParameterValue(parameter))}</td></tr>`);
             }
             $$renderer2.push(`<!--]--></tbody></table></div></div>`);
@@ -575,28 +586,28 @@ function _page($$renderer, $$props) {
         if (productHasFanAcousticTable(currentProduct)) {
           $$renderer2.push("<!--[0-->");
           $$renderer2.push(`<div class="card shadow-sm"><div class="card-body"><h3 class="h5">Fan Acoustic Table</h3> <p class="text-body-secondary mb-3">Rows track the current RPM graph rows. Octave-band columns appear in the configured order.</p> <div class="table-responsive fan-acoustic-viewer-table-wrap"><table class="table table-sm align-middle fan-acoustic-viewer-table mb-0 svelte-36khdd"><colgroup><col style="width: 7.5rem"/><col style="width: 8.5rem"/><col style="width: 7.5rem"/><col style="width: 7.5rem"/><col style="width: 10.5rem"/><!--[-->`);
-          const each_array_5 = ensure_array_like(currentProduct.fan_acoustic_table.sound_power_columns);
-          for (let $$index_5 = 0, $$length = each_array_5.length; $$index_5 < $$length; $$index_5++) {
-            each_array_5[$$index_5];
+          const each_array_6 = ensure_array_like(currentProduct.fan_acoustic_table.sound_power_columns);
+          for (let $$index_6 = 0, $$length = each_array_6.length; $$index_6 < $$length; $$index_6++) {
+            each_array_6[$$index_6];
             $$renderer2.push(`<col style="width: 4.75rem"/>`);
           }
           $$renderer2.push(`<!--]--></colgroup><thead><tr><th rowspan="2" class="svelte-36khdd">Speed (rpm)</th><th rowspan="2" class="svelte-36khdd">Peak Pressure (Pa)</th><th rowspan="2" class="svelte-36khdd">Peak Power (kW)</th><th rowspan="2" class="svelte-36khdd">Running Frequency</th><th rowspan="2" class="svelte-36khdd">Sound Pressure Level dB @ 3 meters</th><th${attr("colspan", currentProduct.fan_acoustic_table.sound_power_columns?.length ?? 0)} class="text-center svelte-36khdd">Sound Power Level SWL dB re 1pw</th></tr><tr><!--[-->`);
-          const each_array_6 = ensure_array_like(currentProduct.fan_acoustic_table.sound_power_columns);
-          for (let $$index_6 = 0, $$length = each_array_6.length; $$index_6 < $$length; $$index_6++) {
-            let column = each_array_6[$$index_6];
+          const each_array_7 = ensure_array_like(currentProduct.fan_acoustic_table.sound_power_columns);
+          for (let $$index_7 = 0, $$length = each_array_7.length; $$index_7 < $$length; $$index_7++) {
+            let column = each_array_7[$$index_7];
             $$renderer2.push(`<th class="svelte-36khdd">${escape_html(column)}</th>`);
           }
           $$renderer2.push(`<!--]--></tr></thead><tbody>`);
           if ((currentProduct.fan_acoustic_table.rows?.length ?? 0) > 0) {
             $$renderer2.push("<!--[0-->");
             $$renderer2.push(`<!--[-->`);
-            const each_array_7 = ensure_array_like(currentProduct.fan_acoustic_table.rows);
-            for (let $$index_8 = 0, $$length = each_array_7.length; $$index_8 < $$length; $$index_8++) {
-              let row = each_array_7[$$index_8];
+            const each_array_8 = ensure_array_like(currentProduct.fan_acoustic_table.rows);
+            for (let $$index_9 = 0, $$length = each_array_8.length; $$index_9 < $$length; $$index_9++) {
+              let row = each_array_8[$$index_9];
               $$renderer2.push(`<tr><td class="svelte-36khdd">${escape_html(formatNumericValue(row.speed_rpm))}</td><td class="svelte-36khdd">${escape_html(formatNumericValue(row.peak_pressure_pa))}</td><td class="svelte-36khdd">${escape_html(formatNumericValue(row.peak_power_kw))}</td><td class="svelte-36khdd">${escape_html(formatNumericValue(row.running_frequency_hz))}</td><td class="svelte-36khdd">${escape_html(formatNumericValue(row.sound_pressure_db_3m))}</td><!--[-->`);
-              const each_array_8 = ensure_array_like(currentProduct.fan_acoustic_table.sound_power_columns);
-              for (let $$index_7 = 0, $$length2 = each_array_8.length; $$index_7 < $$length2; $$index_7++) {
-                let column = each_array_8[$$index_7];
+              const each_array_9 = ensure_array_like(currentProduct.fan_acoustic_table.sound_power_columns);
+              for (let $$index_8 = 0, $$length2 = each_array_9.length; $$index_8 < $$length2; $$index_8++) {
+                let column = each_array_9[$$index_8];
                 $$renderer2.push(`<td class="svelte-36khdd">${escape_html(formatNumericValue(row.sound_power_levels?.[column]))}</td>`);
               }
               $$renderer2.push(`<!--]--></tr>`);
@@ -614,9 +625,9 @@ function _page($$renderer, $$props) {
         if ((currentProduct.product_images?.length ?? 0) > 0) {
           $$renderer2.push("<!--[0-->");
           $$renderer2.push(`<div class="image-grid mt-3 svelte-36khdd"><!--[-->`);
-          const each_array_9 = ensure_array_like(currentProduct.product_images);
-          for (let $$index_9 = 0, $$length = each_array_9.length; $$index_9 < $$length; $$index_9++) {
-            let image = each_array_9[$$index_9];
+          const each_array_10 = ensure_array_like(currentProduct.product_images);
+          for (let $$index_10 = 0, $$length = each_array_10.length; $$index_10 < $$length; $$index_10++) {
+            let image = each_array_10[$$index_10];
             $$renderer2.push(`<figure class="image-card svelte-36khdd"><img${attr("src", image.url)}${attr("alt", currentProduct.model)} class="svelte-36khdd"/></figure>`);
           }
           $$renderer2.push(`<!--]--></div>`);
@@ -682,9 +693,9 @@ function _page($$renderer, $$props) {
             $$renderer4.push(`-- Choose option --`);
           });
           $$renderer3.push(`<!--[-->`);
-          const each_array_10 = ensure_array_like(productTypes);
-          for (let $$index_10 = 0, $$length = each_array_10.length; $$index_10 < $$length; $$index_10++) {
-            let productType = each_array_10[$$index_10];
+          const each_array_11 = ensure_array_like(productTypes);
+          for (let $$index_11 = 0, $$length = each_array_11.length; $$index_11 < $$length; $$index_11++) {
+            let productType = each_array_11[$$index_11];
             $$renderer3.option({ value: String(productType.id) }, ($$renderer4) => {
               $$renderer4.push(`${escape_html(productType.label)}`);
             });
@@ -760,9 +771,9 @@ function _page($$renderer, $$props) {
             $$renderer2.push("<!--[-1-->");
           }
           $$renderer2.push(`<!--]--> <div class="small text-body-secondary mb-3">Intro pages: ${escape_html(selectedProductTypeContext.intro_page_count)} · Total pages: ${escape_html(selectedProductTypeContext.page_count)}</div> <div class="vstack gap-3"><!--[-->`);
-          const each_array_11 = ensure_array_like(selectedProductTypeContext.series);
-          for (let $$index_11 = 0, $$length = each_array_11.length; $$index_11 < $$length; $$index_11++) {
-            let series = each_array_11[$$index_11];
+          const each_array_12 = ensure_array_like(selectedProductTypeContext.series);
+          for (let $$index_12 = 0, $$length = each_array_12.length; $$index_12 < $$length; $$index_12++) {
+            let series = each_array_12[$$index_12];
             $$renderer2.push(`<div class="border rounded p-3"><div class="d-flex justify-content-between gap-2 flex-wrap"><div class="fw-semibold">${escape_html(series.name)}</div> <div class="small text-body-secondary">Pages ${escape_html(series.page_start)} to ${escape_html(series.page_end)}</div></div> `);
             if (Number(series.page_count || 0) === 0) {
               $$renderer2.push("<!--[0-->");
@@ -803,9 +814,9 @@ function _page($$renderer, $$props) {
             $$renderer4.push(`-- Choose option --`);
           });
           $$renderer3.push(`<!--[-->`);
-          const each_array_12 = ensure_array_like(productTypes);
-          for (let $$index_12 = 0, $$length = each_array_12.length; $$index_12 < $$length; $$index_12++) {
-            let productType = each_array_12[$$index_12];
+          const each_array_13 = ensure_array_like(productTypes);
+          for (let $$index_13 = 0, $$length = each_array_13.length; $$index_13 < $$length; $$index_13++) {
+            let productType = each_array_13[$$index_13];
             $$renderer3.option({ value: productType.key }, ($$renderer4) => {
               $$renderer4.push(`${escape_html(productType.label)}`);
             });
@@ -826,9 +837,9 @@ function _page($$renderer, $$props) {
             $$renderer4.push(`-- Choose option --`);
           });
           $$renderer3.push(`<!--[-->`);
-          const each_array_13 = ensure_array_like(seriesTabOptions);
-          for (let $$index_13 = 0, $$length = each_array_13.length; $$index_13 < $$length; $$index_13++) {
-            let series = each_array_13[$$index_13];
+          const each_array_14 = ensure_array_like(seriesTabOptions);
+          for (let $$index_14 = 0, $$length = each_array_14.length; $$index_14 < $$length; $$index_14++) {
+            let series = each_array_14[$$index_14];
             $$renderer3.option({ value: series.id }, ($$renderer4) => {
               $$renderer4.push(`${escape_html(series.name)}`);
             });
@@ -883,13 +894,19 @@ function _page($$renderer, $$props) {
         } else {
           $$renderer2.push("<!--[-1-->");
         }
-        $$renderer2.push(`<!--]--> <div class="row g-3"><div class="col-12 col-lg-6"><h4 class="h6">Description1</h4> <div class="viewer-html svelte-36khdd">${html(selectedSeriesRecord.description1_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div> <div class="col-12 col-lg-6"><h4 class="h6">Description2</h4> <div class="viewer-html svelte-36khdd">${html(selectedSeriesRecord.description2_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div> <div class="col-12 col-lg-6"><h4 class="h6">Description3</h4> <div class="viewer-html svelte-36khdd">${html(selectedSeriesRecord.description3_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div> <div class="col-12 col-lg-6"><h4 class="h6">Description4</h4> <div class="viewer-html svelte-36khdd">${html(selectedSeriesRecord.description4_html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div></div> <div class="card shadow-sm"><div class="card-body"><h3 class="h5">Series Images</h3> `);
+        $$renderer2.push(`<!--]--> <div class="row g-3"><!--[-->`);
+        const each_array_15 = ensure_array_like(seriesDescriptionSections);
+        for (let $$index_15 = 0, $$length = each_array_15.length; $$index_15 < $$length; $$index_15++) {
+          let section = each_array_15[$$index_15];
+          $$renderer2.push(`<div class="col-12 col-lg-6"><h4 class="h6">${escape_html(section.title)}</h4> <div class="viewer-html svelte-36khdd">${html(section.html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div>`);
+        }
+        $$renderer2.push(`<!--]--></div></div></div> <div class="card shadow-sm"><div class="card-body"><h3 class="h5">Series Images</h3> `);
         if ((selectedSeriesRecord.series_images?.length ?? 0) > 0) {
           $$renderer2.push("<!--[0-->");
           $$renderer2.push(`<div class="image-grid mt-3 svelte-36khdd"><!--[-->`);
-          const each_array_14 = ensure_array_like(selectedSeriesRecord.series_images);
-          for (let $$index_14 = 0, $$length = each_array_14.length; $$index_14 < $$length; $$index_14++) {
-            let image = each_array_14[$$index_14];
+          const each_array_16 = ensure_array_like(selectedSeriesRecord.series_images);
+          for (let $$index_16 = 0, $$length = each_array_16.length; $$index_16 < $$length; $$index_16++) {
+            let image = each_array_16[$$index_16];
             $$renderer2.push(`<figure class="image-card svelte-36khdd"><img${attr("src", image.url)}${attr("alt", selectedSeriesRecord.name)} class="svelte-36khdd"/></figure>`);
           }
           $$renderer2.push(`<!--]--></div>`);

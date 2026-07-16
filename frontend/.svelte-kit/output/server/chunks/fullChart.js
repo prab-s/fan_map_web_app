@@ -37,7 +37,7 @@ function ECharts($$renderer, $$props) {
     bind_props($$props, { option, height, on, onChartReady });
   });
 }
-const RPM_BAND_FALLBACK_COLORS = ["#0066e3", "#009760", "#e69100", "#ff399f", "#6e57b3", "#259eb0"];
+const RPM_BAND_FALLBACK_COLORS = ["#5E86A7", "#CDA45C", "#6D9998", "#767596", "#40515A"];
 const CHART_STYLE = {
   rpmLineColor: "#0000ff",
   rpmBandFadedOpacity: 0.18,
@@ -457,13 +457,27 @@ function buildSmoothedCurveSamples(lineData, samplesPerSegment = 14) {
   }
   return smoothed;
 }
-function buildFullChartTooltipFormatter(graphConfig, lineDefinitions) {
-  new Set((lineDefinitions ?? []).map((definition) => definition.label));
+function buildCursorTooltipFormatter(graphConfig) {
   const airflowUnit = String(graphConfig?.graph_x_axis_unit ?? DEFAULT_GRAPH_CONFIG.graph_x_axis_unit).trim();
   const pressureUnit = String(graphConfig?.graph_y_axis_unit ?? DEFAULT_GRAPH_CONFIG.graph_y_axis_unit).trim();
   function formatReading(value, unit) {
     const numeric = Number(value);
-    const formatted = Number.isFinite(numeric) ? String(Math.round(numeric)) : "";
+    const formatted = Number.isFinite(numeric) ? formatNumericValue(numeric) : "";
+    return unit ? `${formatted} ${unit}` : formatted;
+  }
+  return () => {
+    const cursorCoords = typeof window !== "undefined" ? window.__ECHARTS_HOVER_COORDS__ : null;
+    const cursorX = cursorCoords?.x ?? null;
+    const cursorY = cursorCoords?.y ?? null;
+    return `<div style="font-family:inherit;"><div style="font-weight:600;">Cursor</div><div>Airflow: ${formatReading(cursorX, airflowUnit)}</div><div>Pressure: ${formatReading(cursorY, pressureUnit)}</div></div>`;
+  };
+}
+function buildFullChartTooltipFormatter(graphConfig, lineDefinitions) {
+  const airflowUnit = String(graphConfig?.graph_x_axis_unit ?? DEFAULT_GRAPH_CONFIG.graph_x_axis_unit).trim();
+  const pressureUnit = String(graphConfig?.graph_y_axis_unit ?? DEFAULT_GRAPH_CONFIG.graph_y_axis_unit).trim();
+  function formatReading(value, unit) {
+    const numeric = Number(value);
+    const formatted = Number.isFinite(numeric) ? formatNumericValue(numeric) : "";
     return unit ? `${formatted} ${unit}` : formatted;
   }
   return (params) => {
@@ -473,9 +487,10 @@ function buildFullChartTooltipFormatter(graphConfig, lineDefinitions) {
       return !name.endsWith(" band") && !name.endsWith(" band faded") && !name.endsWith(" area");
     });
     if (!visibleItems.length) return "";
-    const cursorX = typeof window !== "undefined" && window.__ECHARTS_HOVER_COORDS__ ? window.__ECHARTS_HOVER_COORDS__.x : Array.isArray(visibleItems[0]?.value) ? visibleItems[0].value[0] : visibleItems[0]?.axisValue;
-    const cursorY = typeof window !== "undefined" && window.__ECHARTS_HOVER_COORDS__ ? window.__ECHARTS_HOVER_COORDS__.y : Array.isArray(visibleItems[0]?.value) ? visibleItems[0].value[1] : null;
-    const lines = [`<div style="margin-bottom:6px;font-weight:600;">Cursor : ${formatReading(cursorX, airflowUnit)} - ${formatReading(cursorY, pressureUnit)}</div>`];
+    const cursorCoords = typeof window !== "undefined" ? window.__ECHARTS_HOVER_COORDS__ : null;
+    const cursorX = cursorCoords?.x ?? (Array.isArray(visibleItems[0]?.value) ? visibleItems[0].value[0] : visibleItems[0]?.axisValue);
+    const cursorY = cursorCoords?.y ?? (Array.isArray(visibleItems[0]?.value) ? visibleItems[0].value[1] : null);
+    const lines = [`<div style="margin-bottom:6px;font-weight:600;">Cursor</div><div>Airflow: ${formatReading(cursorX, airflowUnit)}</div><div>Pressure: ${formatReading(cursorY, pressureUnit)}</div>`];
     for (const item of visibleItems) {
       const name = String(item.seriesName ?? "");
       const markerColor = item.color ?? "#2563eb";
@@ -1519,11 +1534,26 @@ function buildFullChartOption({
         lineHeight: chartTitleFontSize
       }
     },
-    tooltip: tooltip ?? {
+    tooltip: tooltip ?? (graphMode === "product" ? {
+      trigger: "axis",
+      axisPointer: {
+        type: "cross",
+        snap: false,
+        lineStyle: {
+          type: "dashed",
+          color: chartTheme.grid,
+          width: 1
+        },
+        label: {
+          show: false
+        }
+      },
+      formatter: buildCursorTooltipFormatter(resolvedGraphConfig)
+    } : {
       trigger: "axis",
       axisPointer: { type: "line", snap: true },
-      formatter: buildFullChartTooltipFormatter(resolvedGraphConfig, lineDefinitions)
-    },
+      formatter: buildFullChartTooltipFormatter(resolvedGraphConfig)
+    }),
     grid: { left: "7%", right: "5%", top: "6%", bottom: "8%", z: -1 },
     xAxis: {
       type: "value",

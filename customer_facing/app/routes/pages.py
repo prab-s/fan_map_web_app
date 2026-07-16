@@ -1,570 +1,64 @@
-import asyncio
-import logging
-import time
-import hashlib
-import colorsys
-import html
 import re
 
-import httpx
 from fastapi import APIRouter, Request, HTTPException
-from fastapi.responses import RedirectResponse
 
-from app.api_client import api, ApiClientError
+from app.api_client import api
 from app.catalogue_cache import catalogue_cache
-from app.config import settings
 from app.seo import seo_meta
-from app.slug import product_type_url, product_url, products_url, series_url
 from app.view_templates import templates
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
 
 
 async def common_context():
-    await catalogue_cache.refresh_if_stale()
-    product_types = catalogue_cache.product_types()
-    return {"product_types": product_types, "quote_request_context": {}}
-
-
-def parse_slug_id(value: str) -> int:
-    try:
-        return int(str(value).split("-", 1)[0])
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=404) from None
-
-
-def optional_sections(*pairs):
-    return [{"title": title, "html": html} for title, html in pairs if html]
-
-
-def download_group(title: str, description: str, items: list[dict]) -> dict:
-    return {"title": title, "description": description, "links": [item for item in items if item.get("url")]}
-
-
-def _html_excerpt(value: str | None, limit: int = 180) -> str:
-    if not value:
-        return ""
-
-    text = re.sub(r"<[^>]+>", " ", str(value))
-    text = html.unescape(re.sub(r"\s+", " ", text)).strip()
-    if len(text) <= limit:
-        return text
-    return text[: max(0, limit - 3)].rstrip() + "..."
-
-
-def _extract_client_ip(request: Request) -> str:
-    forwarded_for = request.headers.get("x-forwarded-for", "").split(",")
-    for candidate in forwarded_for:
-        candidate = candidate.strip()
-        if candidate:
-            return candidate
-    x_real_ip = request.headers.get("x-real-ip", "").strip()
-    if x_real_ip:
-        return x_real_ip
-    return request.client.host if request.client else ""
-
-
-def _suggested_quote_attributes(page_type: str, product_type_key: str | None = None) -> list[str]:
-    page_type = str(page_type or "").strip().casefold()
-    product_type_key = str(product_type_key or "").strip().casefold()
-
-    if page_type == "product":
-        if product_type_key == "fan":
-            return ["airflow", "pressure", "noise", "power", "efficiency", "size"]
-        if product_type_key == "silencer":
-            return ["noise", "pressure", "size"]
-        if product_type_key == "speed_controller":
-            return ["power", "mounting", "size"]
-        return ["size", "mounting", "power"]
-
-    if page_type == "series":
-        if product_type_key == "fan":
-            return ["airflow", "pressure", "noise", "power", "efficiency"]
-        return ["size", "power", "mounting"]
-
-    if page_type == "product-type":
-        if product_type_key == "fan":
-            return ["airflow", "pressure", "noise", "power"]
-        if product_type_key == "silencer":
-            return ["noise", "size", "pressure"]
-        return ["size", "mounting", "power"]
-
-    if page_type == "engineering-services":
-        return ["size", "mounting", "temperature"]
-
-    return []
-
-
-def request_quote_url() -> str:
-    return "#quoteRequestModal"
-
-
-QUOTE_REQUEST_ATTRIBUTE_LABELS = {
-    "airflow": "Airflow",
-    "pressure": "Pressure",
-    "power": "Power",
-    "efficiency": "Efficiency",
-    "noise": "Noise",
-    "size": "Size",
-    "temperature": "Temperature",
-    "mounting": "Mounting",
-}
-
-
-QUOTE_REQUEST_REQUEST_TYPE_LABELS = {
-    "standard": "Quote this item",
-    "tailored": "Tailored enquiry",
-    "unsure": "Help me choose",
-}
-
-
-def _clean_single_line(value: object, limit: int = 200) -> str:
-    cleaned = re.sub(r"\s+", " ", html.unescape(str(value or ""))).strip()
-    return cleaned[:limit]
-
-
-def _clean_multiline(value: object, limit: int = 2000) -> str:
-    cleaned = html.unescape(str(value or ""))
-    cleaned = cleaned.replace("\r\n", "\n").replace("\r", "\n")
-    cleaned = re.sub(r"[ \t]+\n", "\n", cleaned).strip()
-    return cleaned[:limit]
-
-
-def _quote_request_subject(payload: dict) -> str:
-    page_title = _clean_single_line(payload.get("page_card_title") or payload.get("page_title") or "Vent-Tech enquiry", limit=120)
-    request_type = _clean_single_line(payload.get("request_type") or "", limit=40)
-    type_label = QUOTE_REQUEST_REQUEST_TYPE_LABELS.get(request_type, "Enquiry")
-    return f"Vent-Tech enquiry - {page_title} - {type_label}"
-
-
-def _quote_request_body(payload: dict) -> str:
-    attributes = payload.get("attributes") or []
-    if not isinstance(attributes, list):
-        attributes = []
-    attribute_labels = [QUOTE_REQUEST_ATTRIBUTE_LABELS.get(str(attribute), str(attribute)) for attribute in attributes if str(attribute).strip()]
-    lines = [
-        "Vent-Tech enquiry",
-        "",
-        f"Request type: {QUOTE_REQUEST_REQUEST_TYPE_LABELS.get(str(payload.get('request_type') or ''), 'Enquiry')}",
-        f"Name: {_clean_single_line(payload.get('name'), 120) or 'Not provided'}",
-        f"Company: {_clean_single_line(payload.get('company'), 160) or 'Not provided'}",
-        f"Email: {_clean_single_line(payload.get('email'), 160) or 'Not provided'}",
-        f"Phone: {_clean_single_line(payload.get('phone'), 80) or 'Not provided'}",
-        f"Desired attributes: {', '.join(attribute_labels) if attribute_labels else 'Not specified'}",
-        f"Airflow range: {_clean_single_line(payload.get('airflow_min'), 40) or 'Not specified'} - {_clean_single_line(payload.get('airflow_max'), 40) or 'Not specified'}",
-        f"Pressure range: {_clean_single_line(payload.get('pressure_min'), 40) or 'Not specified'} - {_clean_single_line(payload.get('pressure_max'), 40) or 'Not specified'}",
-        f"Power limit: {_clean_single_line(payload.get('power_limit'), 60) or 'Not specified'}",
-        f"Helper: {_clean_single_line(payload.get('helper_thing'), 120) or 'Not specified'}",
-        f"Room size: {_clean_single_line(payload.get('helper_room_size'), 120) or 'Not specified'}",
-        f"Three phase power: {_clean_single_line(payload.get('helper_three_phase'), 40) or 'Not specified'}",
-        f"Helper notes: {_clean_single_line(payload.get('helper_constraints'), 160) or 'Not specified'}",
-        f"Current page: {_clean_single_line(payload.get('page_url') or payload.get('page_url_fallback') or '', 500) or 'Not provided'}",
-    ]
-
-    if payload.get("page_card_title") or payload.get("page_card_summary"):
-        lines.append(
-            f"Page card: {_clean_single_line(payload.get('page_card_title'), 120) or 'Not provided'}"
-            f" - {_clean_single_line(payload.get('page_card_summary'), 500) or 'Not provided'}"
-        )
-
-    page_bits: list[str] = []
-    for label, key in (
-        ("Product type", "product_type"),
-        ("Series", "series"),
-        ("Product", "product"),
-    ):
-        value = payload.get(key)
-        if isinstance(value, dict):
-            summary = value.get("label") or value.get("name") or value.get("model") or value.get("id")
-            if summary:
-                page_bits.append(f"{label}: {_clean_single_line(summary, 120)}")
-    if page_bits:
-        lines.append(f"Context: {' | '.join(page_bits)}")
-
-    short_notes = _clean_multiline(payload.get("short_notes"), 300)
-    if short_notes:
-        lines.extend(["", f"Additional notes: {short_notes}"])
-
-    details = _clean_multiline(payload.get("details"), 2000)
-    if details:
-        lines.extend(["", "Details:", details])
-
-    lines.extend([
-        "",
-        f"Page type: {_clean_single_line(payload.get('page_type'), 80) or 'Not provided'}",
-        "",
-        "Please reply to the customer by email and treat this as an enquiry.",
-    ])
-    return "\n".join(lines)
-
-
-def _normalize_quote_request_payload(payload: dict) -> dict:
-    if not isinstance(payload, dict):
-        raise HTTPException(status_code=400, detail="Invalid enquiry payload.")
-
-    normalized = {
-        "name": _clean_single_line(payload.get("name"), 120),
-        "company": _clean_single_line(payload.get("company"), 160),
-        "email": _clean_single_line(payload.get("email"), 160),
-        "phone": _clean_single_line(payload.get("phone"), 80),
-        "request_type": _clean_single_line(payload.get("request_type"), 32).casefold(),
-        "attributes": [str(item).strip().casefold() for item in (payload.get("attributes") or []) if str(item).strip()],
-        "airflow_min": _clean_single_line(payload.get("airflow_min"), 40),
-        "airflow_max": _clean_single_line(payload.get("airflow_max"), 40),
-        "pressure_min": _clean_single_line(payload.get("pressure_min"), 40),
-        "pressure_max": _clean_single_line(payload.get("pressure_max"), 40),
-        "power_limit": _clean_single_line(payload.get("power_limit"), 60),
-        "helper_thing": _clean_single_line(payload.get("helper_thing"), 120),
-        "helper_room_size": _clean_single_line(payload.get("helper_room_size"), 120),
-        "helper_three_phase": _clean_single_line(payload.get("helper_three_phase"), 40),
-        "helper_constraints": _clean_single_line(payload.get("helper_constraints"), 160),
-        "short_notes": _clean_multiline(payload.get("short_notes"), 300),
-        "details": _clean_multiline(payload.get("details"), 2000),
-        "page_type": _clean_single_line(payload.get("page_type"), 80),
-        "page_title": _clean_single_line(payload.get("page_title"), 200),
-        "page_summary": _clean_single_line(payload.get("page_summary"), 500),
-        "page_card_title": _clean_single_line(payload.get("page_card_title"), 200),
-        "page_card_summary": _clean_single_line(payload.get("page_card_summary"), 500),
-        "page_url": _clean_single_line(payload.get("page_url"), 500),
-        "website": _clean_single_line(payload.get("website"), 200),
-        "product_type": payload.get("product_type") if isinstance(payload.get("product_type"), dict) else {},
-        "series": payload.get("series") if isinstance(payload.get("series"), dict) else {},
-        "product": payload.get("product") if isinstance(payload.get("product"), dict) else {},
-    }
-
-    if normalized["website"]:
-        raise HTTPException(status_code=400, detail="Enquiry rejected.")
-
-    if not normalized["name"] or not normalized["email"]:
-        raise HTTPException(status_code=400, detail="Name and email are required.")
-
-    if normalized["request_type"] not in QUOTE_REQUEST_REQUEST_TYPE_LABELS:
-        normalized["request_type"] = "unsure"
-
-    return normalized
-
-
-def build_quote_request_context(
-    request: Request,
-    *,
-    page_type: str,
-    page_title: str,
-    page_summary: str,
-    page_card_title: str | None = None,
-    page_card_summary: str | None = None,
-    product_type: dict | None = None,
-    series: dict | None = None,
-    product: dict | None = None,
-) -> dict:
-    context: dict[str, object] = {
-        "pageType": page_type,
-        "pageTitle": page_title,
-        "pageSummary": page_summary,
-        "pageCardTitle": page_card_title or page_title,
-        "pageCardSummary": page_card_summary or page_summary,
-        "pageUrl": str(request.url),
-        "primaryLabel": page_title,
-        "requestType": "standard" if page_type in {"product", "series", "product-type"} else "tailored" if page_type == "engineering-services" else "unsure",
-        "suggestedAttributes": [],
-    }
-
-    if product_type:
-        context["productType"] = {
-            "key": product_type.get("key"),
-            "label": product_type.get("label"),
-            "url": product_type_url(product_type),
-        }
-
-    if series:
-        context["series"] = {
-            "id": series.get("id"),
-            "name": series.get("name"),
-            "url": series_url(series),
-        }
-
-    if product:
-        context["product"] = {
-            "id": product.get("id"),
-            "model": product.get("model"),
-            "url": product_url(product),
-        }
-
-    context["suggestedAttributes"] = _suggested_quote_attributes(page_type, (product_type or {}).get("key"))
-
-    return context
-
-
-def product_type_downloads(selected_type: dict) -> list[dict]:
-    items = [
-        {"label": "Main catalogue", "url": selected_type.get("product_type_pdf_url"), "note": "Product type overview"},
-        {"label": "Printed brochure", "url": selected_type.get("product_type_printed_pdf_url"), "note": "Layout-ready brochure"},
-    ]
-    return [item for item in items if item["url"]]
-
-
-def series_downloads(series: dict) -> list[dict]:
-    items = [
-        {"label": "Series brochure", "url": series.get("series_pdf_url"), "note": "Series overview"},
-        {"label": "Printed PDF", "url": series.get("series_printed_pdf_url"), "note": "Press-friendly version"},
-        {"label": "Online PDF", "url": series.get("series_online_pdf_url"), "note": "Web-ready version"},
-    ]
-    return [item for item in items if item["url"]]
-
-
-SERIES_PERFORMANCE_COLUMN_LIMIT = 3
-SERIES_PERFORMANCE_EXCLUDED_GROUP_NAMES = {"__graph__"}
-
-
-def format_parameter_value(parameter: dict, default_unit: str | None = None) -> str:
-    if parameter.get("value_string") not in (None, ""):
-        return str(parameter.get("value_string")).strip()
-
-    value_number = parameter.get("value_number")
-    if value_number in (None, ""):
-        return ""
-
-    try:
-        numeric_value = float(value_number)
-    except (TypeError, ValueError):
-        return str(value_number)
-
-    unit = str(parameter.get("unit") or default_unit or "").strip()
-    return f"{numeric_value:g}{f' {unit}' if unit else ''}"
-
-
-def _template_token_slug(value: str) -> str:
-    return "".join(ch if ch.isalnum() else "-" for ch in str(value or "").strip().casefold()).strip("-")
-
-
-def _series_performance_candidate_columns(series_products: list[dict]) -> list[tuple[str, str, str]]:
-    candidate_columns: list[tuple[str, str, str]] = []
-    seen_columns: set[tuple[str, str]] = set()
-
-    for product in series_products or []:
-        for group in sorted(product.get("parameter_groups", []) or [], key=lambda item: (item.get("sort_order", 0), item.get("id", 0))):
-            group_name = str(group.get("group_name") or "").strip()
-            if not group_name or group_name.casefold() in SERIES_PERFORMANCE_EXCLUDED_GROUP_NAMES:
-                continue
-            for parameter in sorted(group.get("parameters", []) or [], key=lambda item: (item.get("sort_order", 0), item.get("id", 0))):
-                parameter_name = str(parameter.get("parameter_name") or "").strip()
-                if not parameter_name:
-                    continue
-
-                key = (group_name, parameter_name)
-                if key in seen_columns:
-                    continue
-
-                seen_columns.add(key)
-                candidate_columns.append((group_name, parameter_name, f"{group_name}: {parameter_name}"))
-                if len(candidate_columns) >= SERIES_PERFORMANCE_COLUMN_LIMIT:
-                    return candidate_columns
-
-    return candidate_columns
-
-
-def _series_type_2_performance_columns(series_products: list[dict]) -> list[tuple[str, str, str]]:
-    selected_columns: list[tuple[str, str, str]] = []
-    seen_columns: set[tuple[str, str]] = set()
-    main_parameter_count = 0
-    impeller_size_selected = False
-
-    for product in series_products or []:
-        for group in sorted(product.get("parameter_groups", []) or [], key=lambda item: (item.get("sort_order", 0), item.get("id", 0))):
-            group_name = str(group.get("group_name") or "").strip()
-            if not group_name or group_name.casefold() in SERIES_PERFORMANCE_EXCLUDED_GROUP_NAMES:
-                continue
-
-            group_slug = _template_token_slug(group_name)
-            for parameter in sorted(group.get("parameters", []) or [], key=lambda item: (item.get("sort_order", 0), item.get("id", 0))):
-                parameter_name = str(parameter.get("parameter_name") or "").strip()
-                if not parameter_name:
-                    continue
-
-                key = (group_name, parameter_name)
-                if key in seen_columns:
-                    continue
-
-                if group_slug == "main" and main_parameter_count < 2:
-                    selected_columns.append((group_name, parameter_name, parameter_name))
-                    seen_columns.add(key)
-                    main_parameter_count += 1
-                    if len(selected_columns) >= SERIES_PERFORMANCE_COLUMN_LIMIT:
-                        return selected_columns
-                    continue
-
-                if group_slug == "impeller" and parameter_name.casefold() == "size" and not impeller_size_selected:
-                    selected_columns.append((group_name, parameter_name, "Impeller size"))
-                    seen_columns.add(key)
-                    impeller_size_selected = True
-                    if len(selected_columns) >= SERIES_PERFORMANCE_COLUMN_LIMIT:
-                        return selected_columns
-
-        if len(selected_columns) >= SERIES_PERFORMANCE_COLUMN_LIMIT:
-            return selected_columns
-
-    if len(selected_columns) < SERIES_PERFORMANCE_COLUMN_LIMIT:
-        for column in _series_performance_candidate_columns(series_products):
-            key = (column[0], column[1])
-            if key in seen_columns:
-                continue
-            selected_columns.append((column[0], column[1], column[2]))
-            seen_columns.add(key)
-            if len(selected_columns) >= SERIES_PERFORMANCE_COLUMN_LIMIT:
-                break
-
-    return selected_columns[:SERIES_PERFORMANCE_COLUMN_LIMIT]
-
-
-def _series_performance_value_map(product: dict) -> dict[tuple[str, str], str]:
-    values: dict[tuple[str, str], str] = {}
-    for group in product.get("parameter_groups", []) or []:
-        group_name = str(group.get("group_name") or "").strip()
-        if not group_name or group_name.casefold() in SERIES_PERFORMANCE_EXCLUDED_GROUP_NAMES:
+    product_types = await api.product_types()
+    return {"product_types": product_types}
+
+
+def build_description_sections(record: dict) -> list[dict]:
+    sections: list[dict] = []
+    explicit_sections = record.get("description_sections")
+    if isinstance(explicit_sections, list) and explicit_sections:
+        for index, section in enumerate(explicit_sections, start=1):
+            html_value = section.get("html") if isinstance(section, dict) else None
+            if html_value in (None, "") and isinstance(section, dict):
+                html_value = section.get("content") or section.get("body")
+            sections.append({
+                "key": (section.get("key") if isinstance(section, dict) else None) or f"description{index}_html",
+                "title": (section.get("title") if isinstance(section, dict) else None)
+                or (section.get("label") if isinstance(section, dict) else None)
+                or f"Description {index}",
+                "html": html_value or "",
+            })
+        return sections
+
+    pattern = re.compile(r"^description(\d+)_html$", re.IGNORECASE)
+    for key, value in record.items():
+        match = pattern.match(str(key))
+        if not match:
             continue
-        for parameter in group.get("parameters", []) or []:
-            parameter_name = str(parameter.get("parameter_name") or "").strip()
-            if not parameter_name:
-                continue
-            default_unit = "mm" if _template_token_slug(group_name) == "impeller" and parameter_name.casefold() == "size" else None
-            values[(group_name, parameter_name)] = format_parameter_value(parameter, default_unit=default_unit) or "—"
-    return values
+        sections.append({
+            "key": key,
+            "order": int(match.group(1)),
+            "title": f"Description {int(match.group(1))}",
+            "html": value or "",
+        })
 
+    sections.sort(key=lambda item: item.get("order", 0))
+    for section in sections:
+        section.pop("order", None)
 
-def _format_range(values: list[float], unit: str = "", precision: int = 0) -> str:
-    if not values:
-        return "—"
-    minimum = min(values)
-    maximum = max(values)
-    if precision > 0:
-        minimum_text = f"{minimum:.{precision}f}".rstrip("0").rstrip(".")
-        maximum_text = f"{maximum:.{precision}f}".rstrip("0").rstrip(".")
-    else:
-        minimum_text = f"{minimum:g}"
-        maximum_text = f"{maximum:g}"
-    unit_text = f" {unit}" if unit else ""
-    if minimum_text == maximum_text:
-        return f"{minimum_text}{unit_text}"
-    return f"{minimum_text} - {maximum_text}{unit_text}"
+    has_explicit_comments = bool(str(record.get("comments_html") or "").strip())
+    max_description_index = 0
+    for section in sections:
+        match = re.search(r"(\d+)", str(section.get("key") or ""))
+        if match:
+            max_description_index = max(max_description_index, int(match.group(1)))
 
+    if not has_explicit_comments and max_description_index <= 4:
+        sections = [section for section in sections if section.get("key") != "description4_html"]
 
-def _product_performance_ranges(product: dict) -> dict[str, str]:
-    airflow_values: list[float] = []
-    pressure_values: list[float] = []
-    power_values: list[float] = []
-    swl_values: list[float] = []
-
-    for line in sorted(product.get("rpm_lines", []) or [], key=lambda item: item.get("rpm", 0)):
-        for point in line.get("points", []) or []:
-            if point.get("airflow") is not None:
-                airflow_values.append(float(point.get("airflow")))
-            if point.get("pressure") is not None:
-                pressure_values.append(float(point.get("pressure")))
-
-    fan_table = product.get("fan_acoustic_table") or {}
-    for row in fan_table.get("rows") or []:
-        if not isinstance(row, dict):
-            continue
-        if row.get("peak_power_kw") not in {None, ""}:
-            try:
-                power_values.append(float(row.get("peak_power_kw")))
-            except (TypeError, ValueError):
-                pass
-        sound_power_levels = row.get("sound_power_levels") or {}
-        if isinstance(sound_power_levels, dict):
-            for value in sound_power_levels.values():
-                if value in {None, ""}:
-                    continue
-                try:
-                    swl_values.append(float(value))
-                except (TypeError, ValueError):
-                    continue
-
-    return {
-        "pressure_range": _format_range(pressure_values, "Pa"),
-        "airflow_range": _format_range(airflow_values, "L/s"),
-        "swl_range": _format_range(swl_values, "dB"),
-        "power_range": _format_range(power_values, "kW", precision=2),
-    }
-
-
-def render_series_performance_table_html(series: dict, series_products: list[dict]) -> str:
-    ordered_products = sorted(series_products or [], key=lambda item: str(item.get("model") or "").casefold())
-    if not ordered_products:
-        return '<p class="performance-table__empty text-muted mb-0">No products are linked to this series yet.</p>'
-
-    template_id = series.get("printed_template_id") or series.get("online_template_id") or series.get("template_id")
-    if template_id == "series-series_type_2":
-        performance_columns = _series_type_2_performance_columns(ordered_products)
-    else:
-        performance_columns = _series_performance_candidate_columns(ordered_products)
-
-    performance_columns = list(performance_columns[:SERIES_PERFORMANCE_COLUMN_LIMIT])
-    while len(performance_columns) < SERIES_PERFORMANCE_COLUMN_LIMIT:
-        performance_columns.append(("", "", "—"))
-
-    performance_column_labels = [column[2] for column in performance_columns]
-
-    rows: list[str] = []
-    for product in ordered_products:
-        values = _series_performance_value_map(product)
-        ranges = _product_performance_ranges(product)
-        cells = [
-            f"<td>{html.escape(str(product.get('model') or '—'))}</td>",
-            *[
-                f"<td>{html.escape(values.get((group_name, parameter_name), '—'))}</td>"
-                for group_name, parameter_name, _ in performance_columns
-            ],
-            f"<td>{html.escape(ranges['pressure_range'])}</td>",
-            f"<td>{html.escape(ranges['airflow_range'])}</td>",
-            f"<td>{html.escape(ranges['swl_range'])}</td>",
-            f"<td>{html.escape(ranges['power_range'])}</td>",
-        ]
-        rows.append("<tr>" + "".join(cells) + "</tr>")
-
-    return (
-        '<div class="performance-table">'
-        '<div class="table-responsive performance-table__wrap">'
-        '<table class="table table-sm align-middle mb-0 performance-table__table">'
-        '<colgroup>'
-        '<col class="performance-table__col performance-table__col--model" />'
-        + "".join('<col class="performance-table__col performance-table__col--spec" />' for _ in performance_column_labels)
-        + '<col class="performance-table__col performance-table__col--range" />'
-        + '<col class="performance-table__col performance-table__col--range" />'
-        + '<col class="performance-table__col performance-table__col--range" />'
-        + '<col class="performance-table__col performance-table__col--range" />'
-        + '</colgroup>'
-        '<thead><tr>'
-        '<th scope="col">Model</th>'
-        + "".join(f"<th scope=\"col\">{html.escape(label)}</th>" for label in performance_column_labels)
-        + '<th scope="col">Pressure Range</th>'
-        + '<th scope="col">Airflow Range</th>'
-        + '<th scope="col">SWL Range</th>'
-        + '<th scope="col">Power Range</th>'
-        + '</tr></thead><tbody>'
-        + "".join(rows)
-        + '</tbody></table></div></div>'
-    )
-
-
-def product_downloads(product: dict) -> list[dict]:
-    items = [
-        {"label": "Model datasheet", "url": product.get("product_pdf_url"), "note": "Exact model PDF"},
-        {"label": "Printed PDF", "url": product.get("product_printed_pdf_url"), "note": "Press-friendly version"},
-        {"label": "Online PDF", "url": product.get("product_online_pdf_url"), "note": "Web-ready version"},
-    ]
-    return [item for item in items if item["url"]]
-
-
-def product_color_for_identity(identity: int | str | None) -> str:
-    if identity in (None, ""):
-        return "#64748b"
-    digest = hashlib.sha1(str(identity).encode("utf-8")).digest()
-    hue = int.from_bytes(digest[:2], "big") / 65535.0
-    saturation = 0.62 + (digest[2] / 255.0) * 0.18
-    lightness = 0.44 + (digest[3] / 255.0) * 0.08
-    red, green, blue = colorsys.hls_to_rgb(hue, lightness, saturation)
-    return "#{:02x}{:02x}{:02x}".format(int(red * 255 * 0.72), int(green * 255 * 0.72), int(blue * 255 * 0.72))
+    return sections
 
 
 def build_product_graph_payload(product: dict, product_type: dict | None) -> dict:
@@ -606,16 +100,8 @@ def build_product_graph_payload(product: dict, product_type: dict | None) -> dic
             "permissible_use": point.get("permissible_use"),
         })
 
-    product_type_name = str(product.get("product_type_label") or product_type.get("label") or product_type.get("key") or "").strip()
-    series_name = str(product.get("series_name") or "").strip()
-    product_name = str(product.get("model") or "").strip()
-    title_prefix = f"{product_type_name} | " if product_type_name else ""
-    title_middle = f"{series_name} - " if series_name else ""
-    graph_title = f"{title_prefix}{title_middle}{product_name} performance graph".strip()
-
     return {
         "productModel": product.get("model"),
-        "graphTitle": graph_title,
         "graphMode": "product",
         "hasGraphData": bool(rpm_lines or efficiency_points),
         "graphConfig": {
@@ -652,7 +138,6 @@ def build_series_graph_payload(series: dict, product_type: dict | None, series_p
     if not product_type or not product_type.get("supports_graph", False):
         return {
             "productModel": series.get("name"),
-            "graphTitle": f"{str(series.get('name') or '').strip()} performance graph".strip(),
             "graphMode": "series",
             "hasGraphData": False,
             "graphConfig": {
@@ -674,6 +159,16 @@ def build_series_graph_payload(series: dict, product_type: dict | None, series_p
 
     synthetic_lines: list[dict] = []
     next_line_id = 1
+
+    def product_color_for_identity(identity):
+        if identity in (None, ""):
+            return "#64748b"
+        digest = hashlib.sha1(str(identity).encode("utf-8")).digest()
+        hue = int.from_bytes(digest[:2], "big") / 65535.0
+        saturation = 0.62 + (digest[2] / 255.0) * 0.18
+        lightness = 0.44 + (digest[3] / 255.0) * 0.08
+        red, green, blue = colorsys.hls_to_rgb(hue, lightness, saturation)
+        return "#{:02x}{:02x}{:02x}".format(int(red * 255 * 0.72), int(green * 255 * 0.72), int(blue * 255 * 0.72))
 
     ordered_products = sorted(series_products or [], key=lambda item: str(item.get("model") or "").casefold())
     for product in ordered_products:
@@ -716,7 +211,6 @@ def build_series_graph_payload(series: dict, product_type: dict | None, series_p
 
     return {
         "productModel": series.get("name"),
-        "graphTitle": f"{str(series.get('name') or '').strip()} performance graph".strip(),
         "graphMode": "series",
         "hasGraphData": bool(synthetic_lines),
         "graphConfig": {
@@ -741,289 +235,117 @@ def build_series_graph_payload(series: dict, product_type: dict | None, series_p
     }
 
 
+def build_product_graph_payload(product: dict, product_type: dict | None) -> dict:
+    graph_config_source = product_type or {}
+
+    def resolve_field(name: str, fallback=None):
+        value = graph_config_source.get(name)
+        if value not in (None, ""):
+            return value
+        value = product.get(name)
+        if value not in (None, ""):
+            return value
+        return fallback
+
+    rpm_lines = []
+    for index, line in enumerate(sorted(product.get("rpm_lines", []) or [], key=lambda item: (item.get("rpm", 0), item.get("id", 0)))):
+        rpm_lines.append({
+            "rpm": line.get("rpm"),
+            "band_color": line.get("band_color"),
+            "sort_order": line.get("sort_order", index),
+            "points": [
+                {
+                    "airflow": point.get("airflow"),
+                    "pressure": point.get("pressure"),
+                    "sort_order": point.get("sort_order", point_index),
+                }
+                for point_index, point in enumerate(sorted(line.get("points", []) or [], key=lambda item: item.get("sort_order", item.get("id", 0))))
+            ],
+        })
+
+    efficiency_points = []
+    for index, point in enumerate(sorted(product.get("efficiency_points", []) or [], key=lambda item: (item.get("airflow", 0), item.get("id", 0)))):
+        efficiency_points.append({
+            "airflow": point.get("airflow"),
+            "sort_order": point.get("sort_order", index),
+            "efficiency_centre": point.get("efficiency_centre"),
+            "efficiency_lower_end": point.get("efficiency_lower_end"),
+            "efficiency_higher_end": point.get("efficiency_higher_end"),
+            "permissible_use": point.get("permissible_use"),
+        })
+
+    return {
+        "productModel": product.get("model"),
+        "hasGraphData": bool(rpm_lines or efficiency_points),
+        "graphConfig": {
+            "graph_kind": resolve_field("graph_kind"),
+            "supports_graph": bool(resolve_field("supports_graph", False)),
+            "supports_graph_overlays": bool(resolve_field("supports_graph_overlays", True)),
+            "supports_band_graph_style": bool(resolve_field("supports_band_graph_style", True)),
+            "graph_line_value_label": resolve_field("graph_line_value_label"),
+            "graph_line_value_unit": resolve_field("graph_line_value_unit"),
+            "graph_x_axis_label": resolve_field("graph_x_axis_label"),
+            "graph_x_axis_unit": resolve_field("graph_x_axis_unit"),
+            "graph_y_axis_label": resolve_field("graph_y_axis_label"),
+            "graph_y_axis_unit": resolve_field("graph_y_axis_unit"),
+            "band_graph_background_color": resolve_field("band_graph_background_color"),
+            "band_graph_label_text_color": resolve_field("band_graph_label_text_color"),
+            "band_graph_faded_opacity": resolve_field("band_graph_faded_opacity"),
+            "band_graph_permissible_label_color": resolve_field("band_graph_permissible_label_color"),
+        },
+        "showRpmBandShading": bool(product.get("show_rpm_band_shading", True)),
+        "rpmLines": rpm_lines,
+        "efficiencyPoints": efficiency_points,
+    }
+
+
 @router.get("/")
 async def homepage(request: Request):
-    start = time.perf_counter()
-    context = await common_context()
-    product_types = context["product_types"]
-    featured_product_type = product_types[0] if product_types else None
-    home_product_types = []
-    for product_type in product_types:
-        preview_images = []
-        type_products = catalogue_cache.products(product_type_key=product_type.get("key", ""))
-        series_list = catalogue_cache.series_list(product_type_key=product_type.get("key", ""))
-        first_product_by_series: dict[str, dict] = {}
-        for product in type_products:
-            series_id = product.get("series_id")
-            if series_id is None:
-                continue
-            series_key = str(series_id)
-            if series_key not in first_product_by_series:
-                first_product_by_series[series_key] = product
+    products = await api.products()
+    series = catalogue_cache.series_list()
 
-        for series in series_list:
-            series_product = first_product_by_series.get(str(series.get("id")))
-            if not series_product:
-                continue
-            preview_image_url = series_product.get("primary_product_image_url") or series_product.get("graph_image_url")
-            if preview_image_url:
-                preview_images.append(preview_image_url)
-
-        if len(preview_images) < 4:
-            seen_images = set(preview_images)
-            for product in type_products:
-                for preview_image_url in (
-                    product.get("primary_product_image_url"),
-                    product.get("graph_image_url"),
-                ):
-                    if not preview_image_url or preview_image_url in seen_images:
-                        continue
-                    preview_images.append(preview_image_url)
-                    seen_images.add(preview_image_url)
-                    if len(preview_images) >= 4:
-                        break
-                if len(preview_images) >= 4:
-                    break
-
-        if not preview_images:
-            fallback_image = product_type.get("contents_icon_url")
-            if fallback_image:
-                preview_images = [fallback_image]
-
-        home_product_types.append({
-            **product_type,
-            "preview_images": preview_images,
-            "series_count": len(series_list),
-            "product_count": len(type_products),
-        })
-    context.update({
-        "request": request,
-        "seo": seo_meta(
-            "Vent-tech catalogue",
-            "Overview of the Vent-tech catalogue and product types.",
-            "/",
-        ),
-        "featured_product_type": featured_product_type,
-        "home_product_types": home_product_types,
-        "quote_request_context": build_quote_request_context(
-            request,
-            page_type="home",
-            page_title="Vent-tech catalogue",
-            page_summary="Browse product types, product series, and model pages.",
-            page_card_title="Vent-tech catalogue",
-            page_card_summary="Browse product types, product series, and model pages.",
-        ),
-    })
-    logger.info("Rendered homepage in %.1fms (%d product types)", (time.perf_counter() - start) * 1000.0, len(product_types))
-    return templates.TemplateResponse(request, "index.html", context)
-
-
-@router.get("/products")
-async def products_page(request: Request):
-    start = time.perf_counter()
-    products = catalogue_cache.products()
     context = await common_context()
     context.update({
         "request": request,
         "seo": seo_meta(
             "Product Finder",
             "Find suitable industrial products by product type, mounting style, discharge type, and specification range.",
-            products_url(),
+            "/",
         ),
         "products": products,
-        "quote_request_context": build_quote_request_context(
-            request,
-            page_type="products",
-            page_title="Product Finder",
-            page_summary="Find suitable industrial products by product type and specification range.",
-            page_card_title="Product Finder",
-            page_card_summary="Find suitable industrial products by product type and specification range.",
-        ),
+        "series": series,
     })
-    logger.info(
-        "Rendered products page in %.1fms (%d products, %d product types)",
-        (time.perf_counter() - start) * 1000.0,
-        len(products),
-        len(context["product_types"]),
-    )
+
+    return templates.TemplateResponse(request, "index.html", context)
+
+
+@router.get("/products")
+async def products_page(request: Request):
+    context = await common_context()
+    context.update({
+        "request": request,
+        "seo": seo_meta(
+            "Product Finder",
+            "Find suitable industrial products by product type, mounting style, discharge type, and specification range.",
+            "/products",
+        ),
+        "series": catalogue_cache.series_list(),
+        "products": await api.products(),
+    })
+
     return templates.TemplateResponse(request, "products.html", context)
-
-
-@router.get("/contact")
-async def contact_page(request: Request):
-    context = await common_context()
-    context.update({
-        "request": request,
-        "seo": seo_meta(
-            "Contact Vent-Tech",
-            "Get in touch with Vent-Tech for selection support, quotations, and project enquiries.",
-            "/contact",
-        ),
-        "request_quote_url": request_quote_url(),
-        "quote_request_context": build_quote_request_context(
-            request,
-            page_type="contact",
-            page_title="Contact Vent-Tech",
-            page_summary="Get in touch for selection support, quotations, and project enquiries.",
-            page_card_title="Contact Vent-Tech",
-            page_card_summary="Get in touch for selection support, quotations, and project enquiries.",
-        ),
-    })
-    return templates.TemplateResponse(request, "contact.html", context)
-
-
-@router.get("/past-projects")
-async def past_projects_page(request: Request):
-    context = await common_context()
-    context.update({
-        "request": request,
-        "seo": seo_meta(
-            "Past Projects",
-            "Browse a placeholder showcase of past customer projects, completed work, and example outcomes.",
-            "/past-projects",
-        ),
-    })
-    return templates.TemplateResponse(request, "past_projects.html", context)
-
-
-@router.get("/engineering-services")
-async def engineering_services_page(request: Request):
-    context = await common_context()
-    context.update({
-        "request": request,
-        "seo": seo_meta(
-            "Engineering services",
-            "Laser cutting, brake pressing, rolling, and flanging services for custom fabrication and project support.",
-            "/engineering-services",
-        ),
-        "request_quote_url": request_quote_url(),
-        "quote_request_context": build_quote_request_context(
-            request,
-            page_type="engineering-services",
-            page_title="Engineering services",
-            page_summary="Discuss fabrication support, custom parts, or tailored build work.",
-            page_card_title="Engineering services",
-            page_card_summary="Discuss fabrication support, custom parts, or tailored build work.",
-        ),
-        "services": [
-            {
-                "title": "Laser cutter",
-                "summary": "Fast, precise cutting for sheet metal parts, cut-outs, brackets, panels, and repeatable fabrication work.",
-                "image": "/static/media/laser-cutter.svg",
-                "points": [
-                    "Clean profiles with consistent edges",
-                    "Ideal for one-offs, short runs, and repeat jobs",
-                    "Supports detailed openings and custom shapes",
-                ],
-                "badge": "Precision cutting",
-                "tone": "laser",
-            },
-            {
-                "title": "Brake press",
-                "summary": "Accurate folding for enclosures, returns, brackets, and formed components that need repeatable angles.",
-                "image": "/static/media/brake-press.svg",
-                "points": [
-                    "Reliable bends and formed sections",
-                    "Good for enclosures and structural parts",
-                    "Helps move from flat sheet to finished parts",
-                ],
-                "badge": "Clean folds",
-                "tone": "press",
-            },
-            {
-                "title": "Roller",
-                "summary": "Rolling for curved sections, arcs, cylindrical forms, and other components that need a controlled radius.",
-                "image": "/static/media/roller.svg",
-                "points": [
-                    "Curved profiles and rolled sections",
-                    "Useful for ducting and shaped assemblies",
-                    "Supports gentle forming without harsh edges",
-                ],
-                "badge": "Controlled curves",
-                "tone": "roller",
-            },
-            {
-                "title": "Flanger",
-                "summary": "Edge forming and stiffening for components that need a flange, a stronger rim, or a cleaner join.",
-                "image": "/static/media/flanger.svg",
-                "points": [
-                    "Strengthens edges and improves rigidity",
-                    "Helps prepare parts for assembly",
-                    "Useful on round and custom fabricated components",
-                ],
-                "badge": "Stiffened edges",
-                "tone": "flange",
-            },
-        ],
-    })
-    return templates.TemplateResponse(request, "engineering_services.html", context)
-
-
-@router.post("/api/quote-requests")
-async def submit_quote_request(request: Request):
-    try:
-        payload = await request.json()
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail="Invalid enquiry payload.") from exc
-
-    normalized = _normalize_quote_request_payload(payload)
-    normalized["client_ip"] = _extract_client_ip(request)
-    normalized["user_agent"] = request.headers.get("user-agent", "")
-    normalized["referrer"] = request.headers.get("referer", "")
-    normalized["origin"] = request.headers.get("origin", "")
-    normalized["page_context"] = {
-        "product_type": normalized.get("product_type") or {},
-        "series": normalized.get("series") or {},
-        "product": normalized.get("product") or {},
-    }
-
-    try:
-        async with httpx.AsyncClient(timeout=20) as client:
-            response = await client.post(
-                f"{settings.backend_api_base_url}/api/quote-requests",
-                json=normalized,
-                headers={
-                    "Content-Type": "application/json",
-                    "Accept": "application/json",
-                },
-            )
-            if not response.is_success:
-                detail = "We could not send your enquiry right now."
-                try:
-                    payload = response.json()
-                    if isinstance(payload, dict):
-                        detail = str(payload.get("detail") or payload.get("message") or detail)
-                except Exception:
-                    detail = response.text or detail
-                raise HTTPException(status_code=response.status_code, detail=detail)
-            result = response.json()
-    except httpx.HTTPError as exc:
-        logger.exception("Quote request proxy failed")
-        raise HTTPException(status_code=502, detail="We could not send your enquiry right now.") from exc
-
-    logger.info(
-        "Submitted enquiry for %s (%s)",
-        normalized["page_card_title"] or normalized["page_title"] or normalized["page_type"],
-        normalized["email"],
-    )
-    return result
-
-
-@router.get("/finder")
-async def finder_page_redirect():
-    return RedirectResponse(products_url(), status_code=307)
 
 
 @router.get("/products/type/{product_type_key}")
 async def product_type_page(request: Request, product_type_key: str):
-    start = time.perf_counter()
-    selected_type = catalogue_cache.product_type(product_type_key)
+    product_types = await api.product_types()
+    selected_type = next((x for x in product_types if x["key"] == product_type_key), None)
 
     if not selected_type:
         raise HTTPException(status_code=404)
 
     series = catalogue_cache.series_list(product_type_key=product_type_key)
-    products = catalogue_cache.products(product_type_key=product_type_key)
+    products = await api.products(product_type_key=product_type_key)
 
     context = await common_context()
     context.update({
@@ -1036,142 +358,53 @@ async def product_type_page(request: Request, product_type_key: str):
         "selected_type": selected_type,
         "series": series,
         "products": products,
-        "product_type_downloads": product_type_downloads(selected_type),
-        "request_quote_url": request_quote_url(),
-        "quote_request_context": build_quote_request_context(
-            request,
-            page_type="product-type",
-            page_title=selected_type["label"],
-            page_summary=f"Browse {selected_type['label']} series and products.",
-            page_card_title=selected_type["label"],
-            page_card_summary=f"Browse {selected_type['label']} series and products.",
-            product_type=selected_type,
-        ),
     })
-    logger.info(
-        "Rendered product type page %s in %.1fms (%d series, %d products)",
-        product_type_key,
-        (time.perf_counter() - start) * 1000.0,
-        len(series),
-        len(products),
-    )
+
     return templates.TemplateResponse(request, "product_type.html", context)
 
 
 @router.get("/series/{series_slug}")
 async def series_page(request: Request, series_slug: str):
-    start = time.perf_counter()
-    series_id = parse_slug_id(series_slug)
-    try:
-        series = await api.series(series_id)
-    except ApiClientError as exc:
-        if exc.status_code == 404:
-            raise HTTPException(status_code=404) from exc
-        raise
-
-    canonical_path = series_url(series)
-    if request.url.path != canonical_path:
-        return RedirectResponse(canonical_path, status_code=307)
-
-    cached_products = catalogue_cache.products(series_id=series_id)
+    series_id = int(series_slug.split("-")[0])
+    series = await api.series(series_id)
 
     context = await common_context()
-    product_type = catalogue_cache.product_type(series.get("product_type_key"))
+    product_type = next((x for x in context["product_types"] if x["key"] == series.get("product_type_key")), None)
+    series_products = await api.products(series_id=series_id)
     context.update({
         "request": request,
         "seo": seo_meta(
             series["name"],
             f"View product information, specifications, graphs, PDFs, and models for {series['name']}.",
-            canonical_path,
+            f"/series/{series_slug}",
         ),
         "series": series,
         "product_type": product_type,
-        "series_products": cached_products,
-        "series_downloads": series_downloads(series),
-        "product_type_downloads": product_type_downloads(product_type) if product_type else [],
-        "request_quote_url": request_quote_url(),
-        "quote_request_context": build_quote_request_context(
-            request,
-            page_type="series",
-            page_title=series["name"],
-            page_summary=f"View product information, specifications, graphs, PDFs, and models for {series['name']}.",
-            page_card_title=series["name"],
-            page_card_summary=_html_excerpt(series.get("description1_html")) or _html_excerpt(series.get("description2_html")) or f"{product_type['label'] if product_type else 'Series'} range",
-            product_type=product_type,
-            series=series,
-        ),
-        "series_graph": build_series_graph_payload(series, product_type, cached_products),
-        "series_performance_table_html": render_series_performance_table_html(series, cached_products),
-        "series_sections": optional_sections(
-            ("Overview", series.get("description1_html")),
-            ("Features", series.get("description2_html")),
-            ("Specifications", series.get("description3_html")),
-            ("Notes", series.get("comments_html")),
-        ),
+        "series_products": series_products,
+        "series_sections": build_description_sections(series),
+        "series_graph": build_series_graph_payload(series, product_type, series_products),
     })
-
-    logger.info(
-        "Rendered series page %s in %.1fms (%d cached products)",
-        series_id,
-        (time.perf_counter() - start) * 1000.0,
-        len(cached_products),
-    )
 
     return templates.TemplateResponse(request, "series.html", context)
 
 
 @router.get("/products/{product_slug}")
 async def product_page(request: Request, product_slug: str):
-    start = time.perf_counter()
-    product_id = parse_slug_id(product_slug)
-    try:
-        product = await api.product(product_id)
-    except ApiClientError as exc:
-        if exc.status_code == 404:
-            raise HTTPException(status_code=404) from exc
-        raise
-
-    canonical_path = product_url(product)
-    if request.url.path != canonical_path:
-        return RedirectResponse(canonical_path, status_code=307)
+    product_id = int(product_slug.split("-")[0])
+    product = await api.product(product_id)
 
     context = await common_context()
-    product_type = catalogue_cache.product_type(product.get("product_type_key"))
-    series = await api.series(product["series_id"]) if product.get("series_id") else None
+    product_type = next((x for x in context["product_types"] if x["key"] == product.get("product_type_key")), None)
     context.update({
         "request": request,
         "seo": seo_meta(
             product["model"],
             f"View specifications, graphs, images, and PDFs for {product['model']}.",
-            canonical_path,
+            f"/products/{product_slug}",
         ),
         "product": product,
-        "product_type": product_type,
-        "series": series,
-        "product_downloads": product_downloads(product),
-        "series_downloads": series_downloads(series) if series else [],
-        "product_type_downloads": product_type_downloads(product_type) if product_type else [],
-        "request_quote_url": request_quote_url(),
-        "quote_request_context": build_quote_request_context(
-            request,
-            page_type="product",
-            page_title=product["model"],
-            page_summary=f"View specifications, graphs, images, and PDFs for {product['model']}.",
-            page_card_title=product["model"],
-            page_card_summary=_html_excerpt(product.get("description1_html")) or _html_excerpt(product.get("description2_html")) or (series["name"] if series else product.get("product_type_label", "Product")),
-            product_type=product_type,
-            series=series,
-            product=product,
-        ),
+        "product_sections": build_description_sections(product),
         "product_graph": build_product_graph_payload(product, product_type),
-        "product_sections": optional_sections(
-            ("Overview", product.get("description1_html")),
-            ("Features", product.get("description2_html")),
-            ("Specifications", product.get("description3_html")),
-            ("Notes", product.get("comments_html")),
-        ),
     })
-
-    logger.info("Rendered product page %s in %.1fms", product_id, (time.perf_counter() - start) * 1000.0)
 
     return templates.TemplateResponse(request, "product.html", context)
