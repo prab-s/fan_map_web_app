@@ -111,12 +111,6 @@ body.series-template--type-2 {
   color: var(--white);
   font-size: 7.3mm;
   line-height: 1;
-  -webkit-text-stroke: 0.18mm var(--black);
-  text-shadow:
-    0.15mm 0 var(--black),
-    -0.15mm 0 var(--black),
-    0 0.15mm var(--black),
-    0 -0.15mm var(--black);
 }
 
 .intro-grid {

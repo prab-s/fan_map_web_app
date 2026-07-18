@@ -79,10 +79,6 @@ body {
   width: 250px;
   max-width: 40vw;
   height: auto;
-  filter:
-    drop-shadow(0 0 6px rgba(255, 255, 255, 0.88))
-    drop-shadow(0 0 18px rgba(255, 255, 255, 0.34))
-    drop-shadow(0 0 28px rgba(255, 255, 255, 0.16));
 }
 
 .navbar {
