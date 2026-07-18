@@ -14,42 +14,62 @@
   let zrHoverHandler = null;
   let zrLeaveHandler = null;
   let resizeFrame = null;
-  let hasDataCoordGraphic = false;
+  let cursorGraphicFrame = null;
+  let pendingCursorGraphicCoords = null;
+  let pendingCursorGraphicVisible = false;
   let destroyed = false;
 
-  function normalizeGraphicElements(graphic) {
-    if (!chart || !Array.isArray(graphic)) return graphic;
-
-    return graphic.map((element) => {
-      if (!element || !Array.isArray(element.dataCoord)) return element;
-
-      const [x, y] = chart.convertToPixel({ xAxisIndex: 0, yAxisIndex: 0 }, element.dataCoord);
-      const nextElement = { ...element };
-      delete nextElement.dataCoord;
-      nextElement.x = x + (element.offsetX ?? 0);
-      nextElement.y = y + (element.offsetY ?? 0);
-      delete nextElement.offsetX;
-      delete nextElement.offsetY;
-      return nextElement;
-    });
-  }
+  const CURSOR_GRAPHIC_ID = 'cursor-point-marker';
 
   function normalizeOption(nextOption) {
-    if (!nextOption || typeof nextOption !== 'object') return nextOption;
-    if (!Array.isArray(nextOption.graphic)) return nextOption;
-    return {
-      ...nextOption,
-      graphic: normalizeGraphicElements(nextOption.graphic)
-    };
+    return nextOption;
   }
 
-  function optionHasDataCoordGraphic(nextOption) {
+  function optionHasCursorGraphic(nextOption) {
     return Boolean(
       nextOption &&
         typeof nextOption === 'object' &&
         Array.isArray(nextOption.graphic) &&
-        nextOption.graphic.some((element) => Array.isArray(element?.dataCoord))
+        nextOption.graphic.some((element) => String(element?.id ?? '') === CURSOR_GRAPHIC_ID)
     );
+  }
+
+  function buildCursorGraphicUpdate(coords, visible) {
+    if (!option || !Array.isArray(option.graphic)) return null;
+    if (!Array.isArray(coords)) return null;
+
+    const [x, y] = chart.convertToPixel({ xAxisIndex: 0, yAxisIndex: 0 }, coords);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+
+    let changed = false;
+    const nextGraphic = option.graphic.map((element) => {
+      if (String(element?.id ?? '') !== CURSOR_GRAPHIC_ID) return element;
+      changed = true;
+      return {
+        ...element,
+        x,
+        y,
+        invisible: !visible
+      };
+    });
+
+    return changed ? { graphic: nextGraphic } : null;
+  }
+
+  function scheduleCursorGraphicUpdate(coords, visible) {
+    if (!chart || !optionHasCursorGraphic(option)) return;
+    pendingCursorGraphicCoords = coords;
+    pendingCursorGraphicVisible = visible;
+    if (cursorGraphicFrame !== null) return;
+
+    cursorGraphicFrame = window.requestAnimationFrame(() => {
+      cursorGraphicFrame = null;
+      if (!chart) return;
+      const update = buildCursorGraphicUpdate(pendingCursorGraphicCoords, pendingCursorGraphicVisible);
+      if (update) {
+        chart.setOption(normalizeOption(update), { notMerge: false, lazyUpdate: true });
+      }
+    });
   }
 
   function attachHandlers() {
@@ -72,7 +92,6 @@
 
   $: if (chart && option && Object.keys(option).length) {
     try {
-      hasDataCoordGraphic = optionHasDataCoordGraphic(option);
       chart.setOption(normalizeOption(option), { notMerge: true });
       attachHandlers();
       attachHoverTracking();
@@ -96,13 +115,17 @@
       const coords = chart.convertFromPixel({ xAxisIndex: 0, yAxisIndex: 0 }, [x, y]);
       if (Array.isArray(coords)) {
         window.__ECHARTS_HOVER_COORDS__ = { x: coords[0], y: coords[1] };
+        scheduleCursorGraphicUpdate([coords[0], coords[1]], true);
       } else if (coords && typeof coords === 'object') {
-        window.__ECHARTS_HOVER_COORDS__ = { x: coords.x ?? coords[0], y: coords.y ?? coords[1] };
+        const hoverCoords = { x: coords.x ?? coords[0], y: coords.y ?? coords[1] };
+        window.__ECHARTS_HOVER_COORDS__ = hoverCoords;
+        scheduleCursorGraphicUpdate([hoverCoords.x, hoverCoords.y], true);
       }
     };
 
     zrLeaveHandler = () => {
       window.__ECHARTS_HOVER_COORDS__ = null;
+      scheduleCursorGraphicUpdate(null, false);
     };
 
     zr.on('mousemove', zrHoverHandler);
@@ -140,7 +163,6 @@
 
     chart = echartsModule.init(container);
     if (option && Object.keys(option).length) {
-      hasDataCoordGraphic = optionHasDataCoordGraphic(option);
       chart.setOption(normalizeOption(option), { notMerge: true });
     }
 
@@ -161,8 +183,11 @@
   function resize() {
     if (!chart) return;
     chart.resize();
-    if (hasDataCoordGraphic && option && Object.keys(option).length) {
-      chart.setOption(normalizeOption(option), { notMerge: true, lazyUpdate: true });
+    if (pendingCursorGraphicVisible && pendingCursorGraphicCoords && optionHasCursorGraphic(option)) {
+      const update = buildCursorGraphicUpdate(pendingCursorGraphicCoords, true);
+      if (update) {
+        chart.setOption(update, { notMerge: false, lazyUpdate: true });
+      }
     }
   }
 </script>

@@ -1786,6 +1786,9 @@ cat > "$ROOT_DIR/app/static/js/product-graph.js" <<'EOF'
     },
     tooltip: {
       trigger: 'axis',
+      renderMode: 'richText',
+      zlevel: 9999999,
+      z: 9999999,
       axisPointer: {
         type: 'cross',
         snap: false,
@@ -1796,8 +1799,21 @@ cat > "$ROOT_DIR/app/static/js/product-graph.js" <<'EOF'
         },
         label: { show: false }
       },
+      backgroundColor: chartTheme.background,
+      borderColor: chartTheme.grid,
+      borderWidth: 1,
+      textStyle: {
+        color: chartTheme.text,
+        fontFamily: chartFontFamily,
+        rich: {
+          cursor: {
+            fontWeight: 'bold'
+          }
+        }
+      },
+      padding: [8, 10],
       confine: true,
-      formatter: () => `<div style="font-family:${chartFontFamily};"><div style="margin-bottom:6px;font-weight:600;">Cursor</div><div>Airflow: ${formatReading(hoverState.cursorX, airflowUnit)}</div><div>Pressure: ${formatReading(hoverState.cursorY, pressureUnit)}</div></div>`
+      formatter: () => `{cursor|Cursor}\nAirflow: ${formatNumericValue(hoverState.cursorX)}${airflowUnit ? ` ${airflowUnit}` : ''}\nPressure: ${formatNumericValue(hoverState.cursorY)}${pressureUnit ? ` ${pressureUnit}` : ''}`
     },
     grid: {
       left: '7%',

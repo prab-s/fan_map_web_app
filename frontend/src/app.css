@@ -1,5 +1,6 @@
 :root,
-:root[data-theme='dark'] {
+:root[data-theme='dark'],
+:root[data-bs-theme='dark'] {
   /* App palette */
   --app-bg: #0f3b3e;
   --app-surface: #162033;
@@ -34,7 +35,8 @@
   --bs-secondary-rgb: 157, 177, 207;
 }
 
-:root[data-theme='light'] {
+:root[data-theme='light'],
+:root[data-bs-theme='light'] {
   /* App palette */
   --app-bg: #fffbfb;
   --app-surface: #ffffff;
@@ -72,6 +74,11 @@ body {
   min-height: 100%;
   background: var(--app-bg);
   color: var(--app-text);
+}
+
+:root[data-theme='dark'],
+:root[data-bs-theme='dark'] {
+  color-scheme: dark;
 }
 
 body {

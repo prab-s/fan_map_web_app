@@ -414,6 +414,61 @@ def build_series_summary_from_products(products: list[dict]) -> list[dict]:
     return sorted(series_map.values(), key=lambda item: str(item.get("name") or "").casefold())
 
 
+def build_home_product_types(
+    product_types: list[dict],
+    products: list[dict],
+    series: list[dict] | None = None,
+) -> list[dict]:
+    def add_unique(target: list[str], candidate):
+        if candidate in (None, ""):
+            return
+        value = str(candidate).strip()
+        if not value or value in target:
+            return
+        target.append(value)
+
+    image_map: dict[str, list[str]] = {}
+    for series_entry in series or []:
+        product_type_key = str(series_entry.get("product_type_key") or "").strip()
+        if not product_type_key:
+            continue
+        image = series_entry.get("primary_series_image_url") or series_entry.get("first_product_image_url")
+        if image in (None, ""):
+            continue
+        image_map.setdefault(product_type_key, [])
+        add_unique(image_map[product_type_key], image)
+
+    for product in products or []:
+        product_type_key = str(product.get("product_type_key") or "").strip()
+        if not product_type_key:
+            continue
+        image_candidates = [
+            product.get("primary_product_image_url"),
+            product.get("graph_image_url"),
+        ]
+        for image in product.get("product_images", []) or []:
+            if isinstance(image, dict):
+                image_candidates.append(image.get("url"))
+
+        image_map.setdefault(product_type_key, [])
+        for candidate in image_candidates:
+            add_unique(image_map[product_type_key], candidate)
+            if len(image_map[product_type_key]) >= 4:
+                break
+
+    home_product_types: list[dict] = []
+    for product_type in product_types or []:
+        item = dict(product_type)
+        key = str(item.get("key") or "").strip()
+        if key:
+            item["preview_images"] = image_map.get(key, [])[:4]
+        else:
+            item["preview_images"] = []
+        home_product_types.append(item)
+
+    return home_product_types
+
+
 def build_finder_metadata(selected_type: dict, products: list[dict], product_type_key: str) -> dict:
     values_by_key: dict[tuple[str, str], dict] = {}
     series_values: dict[str, dict] = {}

@@ -1367,11 +1367,13 @@ function ProductWorkspace($$renderer, $$props) {
           formatter: (params) => {
             const rawValue = Array.isArray(params.value) ? params.value : params.value?.value;
             const [airflow, second] = rawValue || [];
+            const formattedAirflow = Number.isFinite(Number(airflow)) ? String(Math.round(Number(airflow))) : "";
+            const formattedSecond = Number.isFinite(Number(second)) ? String(Math.round(Number(second))) : "";
             const matchingDefinition = overlayDefinitions.find((definition) => definition.label === params.seriesName);
             if (matchingDefinition) {
-              return `${matchingDefinition.tooltipLabel}: ${second}<br/>${graphXAxisLabel().toLowerCase()}: ${airflow}`;
+              return `${matchingDefinition.tooltipLabel}: ${formattedSecond}<br/>${graphXAxisLabel().toLowerCase()}: ${formattedAirflow}`;
             }
-            return `${params.seriesName}<br/>${graphXAxisLabel().toLowerCase()}: ${airflow}<br/>${graphYAxisLabel().toLowerCase()}: ${second}`;
+            return `${params.seriesName}<br/>${graphXAxisLabel().toLowerCase()}: ${formattedAirflow}<br/>${graphYAxisLabel().toLowerCase()}: ${formattedSecond}`;
           }
         }
       });

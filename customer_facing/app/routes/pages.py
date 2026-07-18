@@ -1,3 +1,5 @@
+import colorsys
+import hashlib
 import re
 
 from fastapi import APIRouter, Request, HTTPException
@@ -10,8 +12,27 @@ from app.view_templates import templates
 router = APIRouter()
 
 
+def _cached_series_by_id(series_id: int) -> dict | None:
+    for series in catalogue_cache.series_list():
+        if str(series.get("id")) == str(series_id):
+            return series
+    return None
+
+
+def _cached_product_by_id(product_id: int) -> dict | None:
+    for product in catalogue_cache.products():
+        if str(product.get("id")) == str(product_id):
+            return product
+    return None
+
+
 async def common_context():
-    product_types = await api.product_types()
+    product_types = catalogue_cache.product_types()
+    if not product_types:
+        try:
+            product_types = await api.product_types()
+        except Exception:
+            product_types = []
     return {"product_types": product_types}
 
 
@@ -301,10 +322,20 @@ def build_product_graph_payload(product: dict, product_type: dict | None) -> dic
 
 @router.get("/")
 async def homepage(request: Request):
-    products = await api.products()
+    products = catalogue_cache.products()
+    if not products:
+        try:
+            products = await api.products()
+        except Exception:
+            products = []
     series = catalogue_cache.series_list()
+    product_types_context = await common_context()
+    home_product_types = catalogue_cache.home_product_types()
+    if not home_product_types:
+        home_product_types = product_types_context["product_types"]
+    featured_product_type = home_product_types[0] if home_product_types else None
 
-    context = await common_context()
+    context = dict(product_types_context)
     context.update({
         "request": request,
         "seo": seo_meta(
@@ -314,6 +345,8 @@ async def homepage(request: Request):
         ),
         "products": products,
         "series": series,
+        "home_product_types": home_product_types,
+        "featured_product_type": featured_product_type,
     })
 
     return templates.TemplateResponse(request, "index.html", context)
@@ -321,6 +354,13 @@ async def homepage(request: Request):
 
 @router.get("/products")
 async def products_page(request: Request):
+    products = catalogue_cache.products()
+    if not products:
+        try:
+            products = await api.products()
+        except Exception:
+            products = []
+
     context = await common_context()
     context.update({
         "request": request,
@@ -330,7 +370,7 @@ async def products_page(request: Request):
             "/products",
         ),
         "series": catalogue_cache.series_list(),
-        "products": await api.products(),
+        "products": products,
     })
 
     return templates.TemplateResponse(request, "products.html", context)
@@ -338,14 +378,24 @@ async def products_page(request: Request):
 
 @router.get("/products/type/{product_type_key}")
 async def product_type_page(request: Request, product_type_key: str):
-    product_types = await api.product_types()
-    selected_type = next((x for x in product_types if x["key"] == product_type_key), None)
+    selected_type = catalogue_cache.product_type(product_type_key)
+    if not selected_type:
+        try:
+            product_types = await api.product_types()
+        except Exception:
+            product_types = []
+        selected_type = next((x for x in product_types if x["key"] == product_type_key), None)
 
     if not selected_type:
         raise HTTPException(status_code=404)
 
     series = catalogue_cache.series_list(product_type_key=product_type_key)
-    products = await api.products(product_type_key=product_type_key)
+    products = catalogue_cache.products(product_type_key=product_type_key)
+    if not products:
+        try:
+            products = await api.products(product_type_key=product_type_key)
+        except Exception:
+            products = []
 
     context = await common_context()
     context.update({
@@ -365,12 +415,26 @@ async def product_type_page(request: Request, product_type_key: str):
 
 @router.get("/series/{series_slug}")
 async def series_page(request: Request, series_slug: str):
-    series_id = int(series_slug.split("-")[0])
-    series = await api.series(series_id)
+    series_id_str = series_slug.split("-", 1)[0]
+    if not series_id_str.isdigit():
+        raise HTTPException(status_code=404)
+
+    series_id = int(series_id_str)
+    series = None
+    try:
+        series = await api.series(series_id)
+    except Exception:
+        series = _cached_series_by_id(series_id)
+    if series is None:
+        raise HTTPException(status_code=404)
 
     context = await common_context()
     product_type = next((x for x in context["product_types"] if x["key"] == series.get("product_type_key")), None)
-    series_products = await api.products(series_id=series_id)
+    series_products = []
+    try:
+        series_products = await api.products(series_id=series_id)
+    except Exception:
+        series_products = catalogue_cache.products(series_id=series_id)
     context.update({
         "request": request,
         "seo": seo_meta(
@@ -390,8 +454,18 @@ async def series_page(request: Request, series_slug: str):
 
 @router.get("/products/{product_slug}")
 async def product_page(request: Request, product_slug: str):
-    product_id = int(product_slug.split("-")[0])
-    product = await api.product(product_id)
+    product_id_str = product_slug.split("-", 1)[0]
+    if not product_id_str.isdigit():
+        raise HTTPException(status_code=404)
+
+    product_id = int(product_id_str)
+    product = None
+    try:
+        product = await api.product(product_id)
+    except Exception:
+        product = _cached_product_by_id(product_id)
+    if product is None:
+        raise HTTPException(status_code=404)
 
     context = await common_context()
     product_type = next((x for x in context["product_types"] if x["key"] == product.get("product_type_key")), None)

@@ -108,6 +108,12 @@ function formatNumericValue(value) {
   return Number.isInteger(numeric) ? String(numeric) : numeric.toFixed(2).replace(/\.?0+$/, '');
 }
 
+function formatTooltipCoordinateValue(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return '';
+  return String(Math.round(numeric));
+}
+
 const AXIS_TICK_COMPARISON_DECIMALS = 3;
 const AXIS_TICK_COMPARISON_TOLERANCE = 10 ** -AXIS_TICK_COMPARISON_DECIMALS;
 
@@ -782,8 +788,7 @@ function buildCursorTooltipFormatter(graphConfig) {
   const pressureUnit = String(graphConfig?.graph_y_axis_unit ?? DEFAULT_GRAPH_CONFIG.graph_y_axis_unit).trim();
 
   function formatReading(value, unit) {
-    const numeric = Number(value);
-    const formatted = Number.isFinite(numeric) ? formatNumericValue(numeric) : '';
+    const formatted = formatTooltipCoordinateValue(value);
     return unit ? `${formatted} ${unit}` : formatted;
   }
 
@@ -791,7 +796,7 @@ function buildCursorTooltipFormatter(graphConfig) {
     const cursorCoords = typeof window !== 'undefined' ? window.__ECHARTS_HOVER_COORDS__ : null;
     const cursorX = cursorCoords?.x ?? null;
     const cursorY = cursorCoords?.y ?? null;
-    return `<div style="font-family:inherit;"><div style="font-weight:600;">Cursor</div><div>Airflow: ${formatReading(cursorX, airflowUnit)}</div><div>Pressure: ${formatReading(cursorY, pressureUnit)}</div></div>`;
+    return `{cursor|Cursor}\nAirflow: ${formatReading(cursorX, airflowUnit)}\nPressure: ${formatReading(cursorY, pressureUnit)}`;
   };
 }
 
@@ -800,8 +805,7 @@ function buildFullChartTooltipFormatter(graphConfig, lineDefinitions) {
   const pressureUnit = String(graphConfig?.graph_y_axis_unit ?? DEFAULT_GRAPH_CONFIG.graph_y_axis_unit).trim();
 
   function formatReading(value, unit) {
-    const numeric = Number(value);
-    const formatted = Number.isFinite(numeric) ? formatNumericValue(numeric) : '';
+    const formatted = formatTooltipCoordinateValue(value);
     return unit ? `${formatted} ${unit}` : formatted;
   }
 
@@ -829,6 +833,33 @@ function buildFullChartTooltipFormatter(graphConfig, lineDefinitions) {
     }
 
     return `<div>${lines.join('')}</div>`;
+  };
+}
+
+function buildCursorPointGraphic(chartTheme, chartFontFamily, labelTextScale = 1) {
+  const resolvedScale = Number.isFinite(Number(labelTextScale)) && Number(labelTextScale) > 0
+    ? Number(labelTextScale)
+    : 1;
+  const markerFontSize = Math.max(10, Math.round(14 * resolvedScale));
+
+  return {
+    id: 'cursor-point-marker',
+    type: 'text',
+    silent: true,
+    invisible: true,
+    zlevel: 9999999,
+    z: 9999999,
+    x: 0,
+    y: 0,
+    style: {
+      text: '+',
+      fill: chartTheme.text,
+      font: `bold ${markerFontSize}px ${chartFontFamily}`,
+      textAlign: 'center',
+      textVerticalAlign: 'middle',
+      textBorderColor: chartTheme.background,
+      textBorderWidth: 3
+    }
   };
 }
 
@@ -1750,8 +1781,7 @@ function buildRpmSeries(
               silent: true
             };
           },
-          z: 20000,
-          zlevel: 20
+          z: 20000
         });
       } else if (normalizedGraphMode === 'series') {
         const labelUsesBandStyling = showRpmBandShading;
@@ -1819,8 +1849,7 @@ function buildRpmSeries(
               ]
             };
           },
-          z: 20000,
-          zlevel: 20
+          z: 20000
         });
       } else {
         const reversedLineData = displayLineData.slice().reverse();
@@ -1857,8 +1886,7 @@ function buildRpmSeries(
               silent: true
             };
           },
-          z: 20000,
-          zlevel: 20
+          z: 20000
         });
       }
     }
@@ -2105,12 +2133,10 @@ function buildEfficiencyAndPermissibleSeries(
               textVerticalAlign: 'middle'
             },
             silent: true,
-            z: 5000,
-            zlevel: 10
+            z: 5000
           };
         },
-        z: 5000,
-        zlevel: 10
+        z: 5000
       });
     }
 
@@ -2278,6 +2304,9 @@ export function buildFullChartOption({
     tooltip: tooltip ?? (graphMode === 'product'
       ? {
           trigger: 'axis',
+          renderMode: 'richText',
+          zlevel: 9999999,
+          z: 9999999,
           axisPointer: {
             type: 'cross',
             snap: false,
@@ -2290,6 +2319,20 @@ export function buildFullChartOption({
               show: false
             }
           },
+          backgroundColor: chartTheme.background,
+          borderColor: chartTheme.grid,
+          borderWidth: 1,
+          textStyle: {
+            color: chartTheme.text,
+            fontFamily: chartFontFamily,
+            rich: {
+              cursor: {
+                fontWeight: 'bold'
+              }
+            }
+          },
+          padding: [8, 10],
+          confine: true,
           formatter: buildCursorTooltipFormatter(resolvedGraphConfig)
         }
       : {
@@ -2297,6 +2340,7 @@ export function buildFullChartOption({
           axisPointer: { type: 'line', snap: true },
           formatter: buildFullChartTooltipFormatter(resolvedGraphConfig, lineDefinitions)
         }),
+    graphic: [buildCursorPointGraphic(chartTheme, chartFontFamily, resolvedLabelTextScale)],
     grid: { left: '7%', right: '5%', top: '6%', bottom: '8%', z: -1 },
     xAxis: {
       type: 'value',

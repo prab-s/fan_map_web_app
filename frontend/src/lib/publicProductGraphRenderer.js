@@ -12,6 +12,49 @@ const PUBLIC_BROWSER_GRAPH_RENDER_OPTIONS = {
   }
 };
 
+const CURSOR_GRAPHIC_ID = 'cursor-point-marker';
+
+function formatIntegerCoordinate(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return '';
+  return String(Math.round(numeric));
+}
+
+function normalizeOption(_chart, nextOption) {
+  return nextOption;
+}
+
+function optionHasCursorGraphic(nextOption) {
+  return Boolean(
+    nextOption &&
+      typeof nextOption === 'object' &&
+      Array.isArray(nextOption.graphic) &&
+      nextOption.graphic.some((element) => String(element?.id ?? '') === CURSOR_GRAPHIC_ID)
+  );
+}
+
+function buildPublicTooltipFormatter(graphConfig) {
+  const airflowUnit = String(graphConfig?.graph_x_axis_unit || 'L/s').trim();
+  const pressureUnit = String(graphConfig?.graph_y_axis_unit || 'Pa').trim();
+
+  return (params) => {
+    const cursorCoords = typeof window !== 'undefined' ? window.__ECHARTS_HOVER_COORDS__ : null;
+    const items = Array.isArray(params) ? params : [params];
+    const firstItem = items.find((item) => item) ?? null;
+    const fallbackX = Array.isArray(firstItem?.value)
+      ? firstItem.value[0]
+      : firstItem?.axisValue;
+    const fallbackY = Array.isArray(firstItem?.value) ? firstItem.value[1] : null;
+    const cursorX = cursorCoords?.x ?? fallbackX;
+    const cursorY = cursorCoords?.y ?? fallbackY;
+    const xText = formatIntegerCoordinate(cursorX);
+    const yText = formatIntegerCoordinate(cursorY);
+
+    if (!xText && !yText) return '';
+    return `{cursor|Cursor}\nAirflow: ${xText}${airflowUnit ? ` ${airflowUnit}` : ''}\nPressure: ${yText}${pressureUnit ? ` ${pressureUnit}` : ''}`;
+  };
+}
+
 function flattenRpmPoints(rpmLines) {
   return (rpmLines || []).flatMap((line) =>
     (line.points || []).map((point) => ({
@@ -51,8 +94,117 @@ export function buildPublicProductGraphOption(payload, themeName) {
     clipRpmAreaToPermissibleUse: true,
     graphStyle: payload?.graphStyle ?? payload?.graphConfig ?? null,
     adaptGraphBackgroundToTheme: true,
+    tooltip: {
+      trigger: 'axis',
+      renderMode: 'richText',
+      zlevel: 9999999,
+      z: 9999999,
+      axisPointer: {
+        type: 'cross',
+        snap: false,
+        lineStyle: {
+          type: 'dashed',
+          color: chartTheme.grid,
+          width: 1
+        },
+        label: {
+          show: false
+        }
+      },
+      backgroundColor: chartTheme.background,
+      borderColor: chartTheme.grid,
+      borderWidth: 1,
+      textStyle: {
+        color: chartTheme.text,
+        fontFamily: chartTheme.fontFamily,
+        rich: {
+          cursor: {
+            fontWeight: 'bold'
+          }
+        }
+      },
+      padding: [8, 10],
+      confine: true,
+      formatter: buildPublicTooltipFormatter(payload?.graphConfig || null)
+    },
     ...PUBLIC_BROWSER_GRAPH_RENDER_OPTIONS
   });
+}
+
+function attachPublicHoverTracking(chart, baseOption) {
+  const zr = chart?.getZr?.();
+  if (!zr) return;
+  let cursorGraphicFrame = null;
+  let pendingCursorGraphicCoords = null;
+  let pendingCursorGraphicVisible = false;
+
+  const buildCursorGraphicUpdate = (coords, visible) => {
+    const graphic = Array.isArray(baseOption?.graphic) ? baseOption.graphic : null;
+    if (!graphic) return null;
+    if (!Array.isArray(coords)) return null;
+
+    const [x, y] = chart.convertToPixel({ xAxisIndex: 0, yAxisIndex: 0 }, coords);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+
+    let changed = false;
+    const nextGraphic = graphic.map((element) => {
+      if (String(element?.id ?? '') !== CURSOR_GRAPHIC_ID) return element;
+      changed = true;
+      return {
+        ...element,
+        x,
+        y,
+        invisible: !visible
+      };
+    });
+
+    return changed ? { graphic: nextGraphic } : null;
+  };
+
+  const scheduleCursorGraphicUpdate = (coords, visible) => {
+    if (!optionHasCursorGraphic(baseOption)) return;
+    pendingCursorGraphicCoords = coords;
+    pendingCursorGraphicVisible = visible;
+    if (cursorGraphicFrame !== null) return;
+
+    cursorGraphicFrame = window.requestAnimationFrame(() => {
+      cursorGraphicFrame = null;
+      const update = buildCursorGraphicUpdate(pendingCursorGraphicCoords, pendingCursorGraphicVisible);
+      if (update) {
+        chart.setOption(normalizeOption(chart, update), { notMerge: false, lazyUpdate: true });
+      }
+    });
+  };
+
+  const updateHoverCoords = (event) => {
+    const x = Number(event?.offsetX);
+    const y = Number(event?.offsetY);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+
+    const coords = chart.convertFromPixel({ xAxisIndex: 0, yAxisIndex: 0 }, [x, y]);
+    if (Array.isArray(coords)) {
+      window.__ECHARTS_HOVER_COORDS__ = { x: coords[0], y: coords[1] };
+      scheduleCursorGraphicUpdate([coords[0], coords[1]], true);
+      return;
+    }
+
+    if (coords && typeof coords === 'object') {
+      const hoverCoords = {
+        x: coords.x ?? coords[0],
+        y: coords.y ?? coords[1]
+      };
+      window.__ECHARTS_HOVER_COORDS__ = hoverCoords;
+      scheduleCursorGraphicUpdate([hoverCoords.x, hoverCoords.y], true);
+    }
+  };
+
+  const clearHoverCoords = () => {
+    window.__ECHARTS_HOVER_COORDS__ = null;
+    scheduleCursorGraphicUpdate(null, false);
+  };
+
+  zr.on('mousemove', updateHoverCoords);
+  zr.on('globalout', clearHoverCoords);
 }
 
 function raiseSolidLinesAboveDashedLines(option) {
@@ -81,7 +233,8 @@ export function renderPublicProductGraph({ host, payload, echarts, themeName }) 
   };
 
   const chart = echarts.init(host, null, { renderer: 'canvas' });
-  chart.setOption(option, { notMerge: true, lazyUpdate: false });
+  chart.setOption(normalizeOption(chart, option), { notMerge: true, lazyUpdate: false });
+  attachPublicHoverTracking(chart, option);
   return chart;
 }
 

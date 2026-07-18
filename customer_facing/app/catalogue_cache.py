@@ -9,6 +9,7 @@ from pathlib import Path
 from app.api_client import ApiClientError, api
 from app.catalogue_data import (
     ParameterFilterError,
+    build_home_product_types,
     build_finder_metadata,
     build_series_summary_from_products,
     filter_products,
@@ -29,7 +30,7 @@ class CatalogueSnapshot:
 
 class CatalogueCache:
     def __init__(self):
-        self.cache_path = settings.catalogue_cache_path
+        self.cache_path = Path(settings.catalogue_cache_path) if settings.catalogue_cache_path else None
         self.refresh_interval_seconds = settings.catalogue_refresh_interval_seconds
         self._snapshot = CatalogueSnapshot()
         self._product_types_by_key: dict[str, dict] = {}
@@ -162,8 +163,10 @@ class CatalogueCache:
         start = time.perf_counter()
         logger.debug("catalogue cache refresh starting against backend %s", settings.backend_api_base_url)
         try:
-            product_types = await api.product_types()
-            products = await api.products()
+            product_types, products = await asyncio.gather(
+                api.product_types(),
+                api.products(),
+            )
         except (ApiClientError, Exception) as exc:
             logger.warning("Catalogue cache refresh failed: %s", exc)
             raise
@@ -175,9 +178,35 @@ class CatalogueCache:
 
         product_type_list = list(product_types)
         product_list = list(products)
+        series_summary_list = build_series_summary_from_products(product_list)
+
+        series_records: list[dict] = []
+        if series_summary_list:
+            try:
+                series_details = await asyncio.gather(
+                    *(api.series(item.get("id")) for item in series_summary_list if item.get("id") is not None),
+                    return_exceptions=True,
+                )
+            except Exception:
+                series_details = []
+
+            for summary, detail in zip(series_summary_list, series_details or []):
+                if isinstance(detail, dict):
+                    merged = dict(summary)
+                    merged.update(detail)
+                    merged["product_count"] = summary.get("product_count", merged.get("product_count"))
+                    merged["first_product_image_url"] = summary.get("first_product_image_url", merged.get("first_product_image_url"))
+                    series_records.append(merged)
+                else:
+                    series_records.append(dict(summary))
+
+            if len(series_records) < len(series_summary_list):
+                for summary in series_summary_list[len(series_records):]:
+                    series_records.append(dict(summary))
+
         snapshot = CatalogueSnapshot(
             product_types=product_type_list,
-            series=build_series_summary_from_products(product_list),
+            series=series_records or series_summary_list,
             products=product_list,
             fetched_at=datetime.now(timezone.utc).isoformat(),
         )
@@ -194,6 +223,9 @@ class CatalogueCache:
             len(snapshot.series),
             len(snapshot.products),
         )
+
+    def home_product_types(self) -> list[dict]:
+        return build_home_product_types(self.product_types(), self.products(), self.series_list())
 
     async def refresh_best_effort(self):
         try:

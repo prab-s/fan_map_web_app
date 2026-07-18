@@ -45,6 +45,7 @@ export function applyTheme(nextTheme) {
   theme.set(nextTheme);
   if (browser) {
     document.documentElement.dataset.theme = nextTheme;
+    document.documentElement.dataset.bsTheme = nextTheme;
     localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
   }
 }
