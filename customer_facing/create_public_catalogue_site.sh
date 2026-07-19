@@ -916,7 +916,7 @@ cat > "$ROOT_DIR/app/templates/base.html" <<'EOF'
   </footer>
 
   <script src="/static/vendor/bootstrap.bundle.min.js"></script>
-  <script src="{{ url_for('static', path='js/finder.js') }}?v=20260427"></script>
+  <script src="{{ url_for('static', path='js/finder.js') }}?v=20260719"></script>
 </body>
 </html>
 EOF
@@ -1533,29 +1533,8 @@ body {
 }
 EOF
 
-cat > "$ROOT_DIR/app/static/js/finder.js" <<'EOF'
-const form = document.querySelector("#finder-form");
-const results = document.querySelector("#finder-results");
-
-async function updateResults() {
-  if (!form || !results) return;
-
-  const params = new URLSearchParams(new FormData(form));
-
-  const response = await fetch(`/finder/results?${params.toString()}`);
-  const html = await response.text();
-
-  results.innerHTML = html;
-}
-
-if (form) {
-  form.addEventListener("change", updateResults);
-  form.addEventListener("input", () => {
-    clearTimeout(window.finderTimer);
-    window.finderTimer = setTimeout(updateResults, 250);
-  });
-}
-EOF
+# finder.js is maintained as a repository asset. Keep the generated site from
+# overwriting it with an older results-only implementation.
 
 cat > "$ROOT_DIR/app/static/js/product-graph.js" <<'EOF'
 (function () {
