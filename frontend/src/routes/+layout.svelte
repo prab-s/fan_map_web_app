@@ -2,11 +2,13 @@
   import 'bootstrap/dist/css/bootstrap.min.css';
   import '../app.css';
   import { afterNavigate } from '$app/navigation';
+  import { goto } from '$app/navigation';
   import { browser } from '$app/environment';
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { page } from '$app/stores';
   import { auth } from '$lib/auth.js';
   import { initTheme, theme, toggleTheme } from '$lib/config.js';
+  import { getPublicProducts } from '$lib/api.js';
 
   let username = '';
   let password = '';
@@ -19,6 +21,12 @@
   let bulkImportActive = false;
   let setupActive = false;
   let enquiriesActive = false;
+  let searchOpen = false;
+  let searchQuery = '';
+  let searchResults = [];
+  let searchBusy = false;
+  let searchError = '';
+  let searchInput;
   let telemetrySentForPath = '';
   const PUBLIC_ROUTE_PREFIXES = ['/series', '/products'];
   const TELEMETRY_ENDPOINT = '/api/client-telemetry';
@@ -42,6 +50,43 @@
   afterNavigate(() => {
     sendBrowserTelemetry();
   });
+
+  async function openPublicSearch() {
+    searchOpen = true;
+    searchError = '';
+    await tick();
+    searchInput?.focus();
+  }
+
+  function closePublicSearch() {
+    searchOpen = false;
+    searchBusy = false;
+  }
+
+  async function submitPublicSearch() {
+    const query = searchQuery.trim();
+    if (!query) {
+      searchResults = [];
+      return;
+    }
+    searchBusy = true;
+    searchError = '';
+    try {
+      searchResults = await getPublicProducts({ search: query });
+    } catch (err) {
+      searchError = err?.message || 'Search is unavailable right now.';
+    } finally {
+      searchBusy = false;
+    }
+  }
+
+  function handlePublicSearchKeydown(event) {
+    if (event.key === 'Escape' && searchOpen) closePublicSearch();
+  }
+
+  function handleSearchBackdropClick(event) {
+    if (event.target === event.currentTarget) closePublicSearch();
+  }
 
   function getDeviceType() {
     if (!browser) return 'desktop';
@@ -106,11 +151,58 @@
   }
 </script>
 
+<svelte:window on:keydown={handlePublicSearchKeydown} />
+
 <div class="app-shell">
   {#if isPublicRoute}
+    <header class="public-topbar">
+      <div class="public-nav app-frame">
+        <a class="public-brand" href="/products" aria-label="Products home">Fan Graphs</a>
+        <nav class="public-links" aria-label="Customer-facing navigation">
+          <a href="/products">Products</a>
+        </nav>
+        <button class="public-search-trigger" type="button" on:click={openPublicSearch} aria-label="Search products">
+          <span aria-hidden="true">⌕</span> Search
+        </button>
+      </div>
+    </header>
     <main class="app-frame py-0">
       <slot />
     </main>
+    {#if searchOpen}
+      <div class="public-search-backdrop" role="presentation" on:click={handleSearchBackdropClick}>
+        <div class="public-search-dialog" role="dialog" aria-modal="true" aria-labelledby="public-search-title">
+          <div class="d-flex align-items-center justify-content-between gap-3 mb-3">
+            <div>
+              <p class="eyebrow mb-1">Customer Facing</p>
+              <h2 id="public-search-title" class="h3 mb-0">Search the catalogue</h2>
+            </div>
+            <button class="btn-close" type="button" on:click={closePublicSearch} aria-label="Close search"></button>
+          </div>
+          <form class="public-search-form" on:submit|preventDefault={submitPublicSearch}>
+            <input bind:this={searchInput} bind:value={searchQuery} class="form-control form-control-lg" type="search" placeholder="Search models, series, or product types" aria-label="Search models, series, or product types" />
+            <button class="btn btn-primary btn-lg" type="submit" disabled={searchBusy || !searchQuery.trim()}>{searchBusy ? 'Searching…' : 'Search'}</button>
+          </form>
+          {#if searchError}<p class="text-danger small mt-3 mb-0">{searchError}</p>{/if}
+          {#if searchResults.length}
+            <div class="public-search-results mt-4">
+              <p class="small text-body-secondary mb-2">{searchResults.length} result{searchResults.length === 1 ? '' : 's'}</p>
+              {#each searchResults.slice(0, 8) as result}
+                <a class="public-search-result" href={`/products/${encodeURIComponent(result.id)}`} on:click={closePublicSearch}>
+                  <span><strong>{result.model}</strong><small>{result.product_type_label || result.product_type_key}{#if result.series_name} · {result.series_name}{/if}</small></span>
+                  <span aria-hidden="true">→</span>
+                </a>
+              {/each}
+              {#if searchResults.length > 8}
+                <button class="btn btn-link px-0 mt-2" type="button" on:click={() => goto(`/products?search=${encodeURIComponent(searchQuery.trim())}`)}>View all results</button>
+              {/if}
+            </div>
+          {:else if searchQuery.trim() && !searchBusy && !searchError}
+            <p class="text-body-secondary mt-4 mb-0">No products matched that search.</p>
+          {/if}
+        </div>
+      </div>
+    {/if}
   {:else if !$auth.ready}
     <main class="app-frame py-5">
       <div class="d-flex justify-content-center">

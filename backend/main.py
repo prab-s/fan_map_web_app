@@ -40,7 +40,7 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, selectinload, joinedload
 from pypdf import PdfReader, PdfWriter
 from reportlab.lib.colors import Color, HexColor
@@ -8484,11 +8484,23 @@ def _load_public_products(
         selectinload(Product.rpm_lines).selectinload(RpmLine.points),
         selectinload(Product.efficiency_points),
     )
-    if search:
-        s = f"%{search}%"
-        q = q.filter(Product.model.ilike(s))
+    search_joined = False
+    if search and search.strip():
+        s = f"%{search.strip()}%"
+        q = q.join(ProductType, isouter=True).join(Series, isouter=True).filter(
+            or_(
+                Product.model.ilike(s),
+                Product.series_name.ilike(s),
+                Series.name.ilike(s),
+                ProductType.key.ilike(s),
+                ProductType.label.ilike(s),
+            )
+        )
+        search_joined = True
     if product_type_key:
-        q = q.join(ProductType).filter(ProductType.key == product_type_key)
+        if not search_joined:
+            q = q.join(ProductType)
+        q = q.filter(ProductType.key == product_type_key)
     if series_id is not None:
         q = q.filter(Product.series_id == series_id)
         if series_name:

@@ -2,6 +2,8 @@
   export let data = {};
 
   $: productTypes = data?.productTypes ?? [];
+  $: products = data?.products ?? [];
+  $: search = data?.search ?? '';
 </script>
 
 <svelte:head>
@@ -18,6 +20,30 @@
       </p>
     </div>
   </section>
+
+  {#if search}
+    <section class="search-results-panel card shadow-sm border-0 mb-4">
+      <div class="card-body p-4">
+        <p class="eyebrow mb-2">Search results</p>
+        <h2 class="h3 mb-1">Results for “{search}”</h2>
+        <p class="text-body-secondary mb-4">{products.length} matching product{products.length === 1 ? '' : 's'} across the catalogue.</p>
+        {#if products.length}
+          <div class="row g-3">
+            {#each products as product}
+              <div class="col-12 col-md-6 col-xl-4">
+                <a class="search-result-card" href={`/products/${encodeURIComponent(product.id)}`}>
+                  <strong>{product.model}</strong>
+                  <span>{product.product_type_label || product.product_type_key}{#if product.series_name} · {product.series_name}{/if}</span>
+                </a>
+              </div>
+            {/each}
+          </div>
+        {:else}
+          <p class="text-body-secondary mb-0">No products matched this search.</p>
+        {/if}
+      </div>
+    </section>
+  {/if}
 
   <section class="row g-4">
     {#each productTypes as productType}
@@ -73,5 +99,32 @@
 
   .type-card {
     background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.96));
+  }
+
+  .search-results-panel {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.96));
+  }
+
+  .search-result-card {
+    min-height: 5rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.35rem;
+    padding: 1rem 1.1rem;
+    border: 1px solid rgba(100, 116, 139, 0.25);
+    border-radius: 0.75rem;
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .search-result-card:hover {
+    border-color: rgba(37, 99, 235, 0.6);
+    background: rgba(37, 99, 235, 0.06);
+  }
+
+  .search-result-card span {
+    color: #64748b;
+    font-size: 0.9rem;
   }
 </style>

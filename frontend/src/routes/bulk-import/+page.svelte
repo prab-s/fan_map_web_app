@@ -14,6 +14,7 @@
   const DEFAULT_PRODUCT_TYPE_KEY = 'fan';
   const DEFAULT_SERIES_SELECTION = 'default';
   const NO_SERIES_SELECTION = 'none';
+  const NEW_SERIES_SELECTION = 'new';
 
   let workbookFiles = [];
   let workbookKeySet = new Set();
@@ -27,6 +28,7 @@
   let productTypes = [];
   let selectedProductTypeKey = DEFAULT_PRODUCT_TYPE_KEY;
   let selectedWorkbookSeriesId = '';
+  let selectedWorkbookSeriesName = '';
 
   let imageFiles = [];
   let imageKeySet = new Set();
@@ -94,23 +96,29 @@
 
   function getWorkbookSeriesSelectionLabel(selection) {
     if (selection === NO_SERIES_SELECTION) return 'No series';
+    if (selection === NEW_SERIES_SELECTION) return 'Create a new series';
     if (selection === DEFAULT_SERIES_SELECTION) return 'Use workbook default';
     return describeSeries(findSeriesById(selection));
   }
 
   function getWorkbookEffectiveSeriesLabel(selection) {
     if (selection === NO_SERIES_SELECTION) return 'No series';
+    if (selection === NEW_SERIES_SELECTION) return 'New: enter a series name';
     if (selection === DEFAULT_SERIES_SELECTION) {
       const defaultSeries = getWorkbookDefaultSeries();
-      return defaultSeries ? `Default: ${describeSeries(defaultSeries)}` : 'Default: none';
+      if (defaultSeries) return `Default: ${describeSeries(defaultSeries)}`;
+      return selectedWorkbookSeriesName.trim() ? `New: ${selectedWorkbookSeriesName.trim()}` : 'Default: none';
     }
     const selectedSeries = findSeriesById(selection);
     return selectedSeries ? describeSeries(selectedSeries) : 'Series unavailable';
   }
 
-  function resolveWorkbookSeriesSelection(selection) {
+  function resolveWorkbookSeriesSelection(selection, seriesName = '') {
     if (selection === NO_SERIES_SELECTION) {
       return { series_id: null, series_name: null };
+    }
+    if (selection === NEW_SERIES_SELECTION) {
+      return { series_id: null, series_name: seriesName.trim() || null };
     }
     if (selection && selection !== DEFAULT_SERIES_SELECTION) {
       const seriesRecord = findSeriesById(selection);
@@ -207,6 +215,7 @@
   }
 
   function resolveSelectedWorkbookSeriesId() {
+    if (selectedWorkbookSeriesId === NEW_SERIES_SELECTION) return NEW_SERIES_SELECTION;
     if (!selectedWorkbookSeriesId) return '';
     if (!series.length) return selectedWorkbookSeriesId;
     return filteredSeries.some((item) => String(item.id) === String(selectedWorkbookSeriesId)) ? String(selectedWorkbookSeriesId) : '';
@@ -295,7 +304,7 @@
         product_type_key: DEFAULT_PRODUCT_TYPE_KEY,
         skip_import: !row.include_in_import
       };
-      Object.assign(sheetConfig, resolveWorkbookSeriesSelection(row.series_selection));
+      Object.assign(sheetConfig, resolveWorkbookSeriesSelection(row.series_selection, row.series_name || ''));
       sheets[sheetName] = sheetConfig;
     }
 
@@ -308,6 +317,9 @@
     if (defaultSeries) {
       defaults.series_id = Number(defaultSeries.id);
       defaults.series_name = defaultSeries.name;
+    } else if (selectedWorkbookSeriesName.trim()) {
+      defaults.series_id = null;
+      defaults.series_name = selectedWorkbookSeriesName.trim();
     }
 
     return JSON.stringify({
@@ -329,6 +341,7 @@
         product_model: existing?.product_model || table.name,
         include_in_import: existing?.include_in_import ?? true,
         series_selection: existing?.series_selection || DEFAULT_SERIES_SELECTION,
+        series_name: existing?.series_name || '',
         normalization: normalizationBySheet.get(table.name) || existing?.normalization || null
       });
     }
@@ -345,6 +358,19 @@
     workbookReport = report;
     mergeWorkbookMappings(report);
     showSuccess('Workbook analysis complete. Review the sheet mappings below.');
+  }
+
+  function validateWorkbookSeriesNames() {
+    if (selectedWorkbookSeriesId === NEW_SERIES_SELECTION && !selectedWorkbookSeriesName.trim()) {
+      return 'Enter a name for the new default series before importing.';
+    }
+    const unnamedSheet = workbookMappings.find(
+      (item) => item.include_in_import && item.series_selection === NEW_SERIES_SELECTION && !(item.series_name || '').trim()
+    );
+    if (unnamedSheet) {
+      return `Enter a name for the new series assigned to sheet “${unnamedSheet.sheet_name}”.`;
+    }
+    return '';
   }
 
   function formatWorkbookMappingLabel(item) {
@@ -424,6 +450,10 @@
     resetWorkbookMessages();
     workbookReport = null;
     try {
+      if (!dryRun) {
+        const seriesValidationError = validateWorkbookSeriesNames();
+        if (seriesValidationError) throw new Error(seriesValidationError);
+      }
       if (!workbookMappings.length) {
         await analyseWorkbookData();
         if (!workbookMappings.length) {
@@ -659,10 +689,20 @@
                   <label class="form-label form-label-sm" for="bulk-series-default">Default series for new products</label>
                   <select id="bulk-series-default" class="form-select" bind:value={selectedWorkbookSeriesId} on:change={handleWorkbookSeriesChange}>
                     <option value="">No default series</option>
+                    <option value={NEW_SERIES_SELECTION}>Create a new series</option>
                     {#each filteredSeries as item}
                       <option value={String(item.id)}>{describeSeries(item)}</option>
                     {/each}
                   </select>
+                  {#if selectedWorkbookSeriesId === NEW_SERIES_SELECTION}
+                    <input
+                      class="form-control mt-2"
+                      type="text"
+                      bind:value={selectedWorkbookSeriesName}
+                      placeholder="New series name"
+                      aria-label="New default series name"
+                    />
+                  {/if}
                   <div class="form-text">Sheets can inherit this series or override it individually in the dry run.</div>
                 </div>
               </div>
@@ -790,13 +830,25 @@
                             >
                               <option value={DEFAULT_SERIES_SELECTION}>Use workbook default</option>
                               <option value={NO_SERIES_SELECTION}>No series</option>
+                              <option value={NEW_SERIES_SELECTION}>Create a new series</option>
                               {#each filteredSeries as seriesItem}
                                 <option value={String(seriesItem.id)}>{describeSeries(seriesItem)}</option>
                               {/each}
                             </select>
+                            {#if item.series_selection === NEW_SERIES_SELECTION}
+                              <input
+                                class="form-control mt-2"
+                                type="text"
+                                bind:value={item.series_name}
+                                placeholder="New series name"
+                                aria-label={`New series name for ${item.sheet_name}`}
+                              />
+                            {/if}
                             <div class="d-flex align-items-center gap-2 flex-wrap mt-2">
                               <span class="badge text-bg-light border text-body-secondary">
-                                Effective series: {getWorkbookEffectiveSeriesLabel(item.series_selection)}
+                                Effective series: {item.series_selection === NEW_SERIES_SELECTION && item.series_name?.trim()
+                                  ? `New: ${item.series_name.trim()}`
+                                  : getWorkbookEffectiveSeriesLabel(item.series_selection)}
                               </span>
                               <span class="small text-body-secondary">
                                 {getWorkbookSeriesSelectionLabel(item.series_selection)}
