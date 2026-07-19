@@ -126,6 +126,6 @@
 <script>
   window.__PRODUCT_GRAPH_DATA__ = {{ product_graph | tojson }};
 </script>
-<script src="/static/js/echarts.min.js" defer></script>
-<script src="/static/js/product-graph.js" defer></script>
+<script src="/static/js/echarts.min.js?v={{ app_build_marker }}" defer></script>
+<script src="/static/js/product-graph.js?v={{ app_build_marker }}" defer></script>
 {% endblock %}

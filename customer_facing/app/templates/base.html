@@ -81,10 +81,10 @@
       } catch (_error) {}
     })();
   </script>
-  <link rel="icon" type="image/png" href="/static/favicon.png">
+  <link rel="icon" type="image/png" href="/static/favicon.png?v={{ app_build_marker }}">
 
   <link
-    href="/static/vendor/bootstrap.min.css"
+    href="/static/vendor/bootstrap.min.css?v={{ app_build_marker }}"
     rel="stylesheet"
   >
   <link
@@ -92,7 +92,24 @@
     href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css"
   >
 
-  <link rel="stylesheet" href="/static/css/site.css">
+  <link rel="stylesheet" href="/static/css/site.css?v={{ app_build_marker }}">
+
+  <script>
+    (function () {
+      const currentVersion = {{ app_build_marker | tojson }};
+      const checkVersion = () => {
+        fetch("/api/site-version", { cache: "no-store", credentials: "same-origin" })
+          .then((response) => response.ok ? response.json() : null)
+          .then((payload) => {
+            if (payload && payload.version && payload.version !== currentVersion) {
+              window.location.reload();
+            }
+          })
+          .catch(() => {});
+      };
+      window.setInterval(checkVersion, 30000);
+    })();
+  </script>
 </head>
 
 <body class="site-page">
@@ -179,9 +196,9 @@
   </footer>
 
   <script
-    src="/static/vendor/bootstrap.bundle.min.js"
+    src="/static/vendor/bootstrap.bundle.min.js?v={{ app_build_marker }}"
   ></script>
-  <script src="/static/js/quote-request.js" defer></script>
+  <script src="/static/js/quote-request.js?v={{ app_build_marker }}" defer></script>
   {% block page_scripts %}{% endblock %}
   <!-- build: {{ app_build_marker }} -->
 </body>
