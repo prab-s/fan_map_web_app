@@ -8,16 +8,10 @@
       <img class="site-logo" src="/static/vent-tech-customer_site_logo.png?v={{ app_build_marker }}" alt="{{ site_name }}">
     </a>
 
-    <button
-      class="btn btn-outline-light nav-search-button order-2 order-lg-3 ms-lg-auto"
-      type="button"
-      data-site-search-open
-      aria-controls="siteSearchDialog"
-      aria-expanded="false"
-    >
-      <i class="fa fa-search" aria-hidden="true"></i>
-      <span>Search</span>
-    </button>
+    <form class="nav-search-form order-2 order-lg-3 ms-lg-auto" action="{{ products_url() }}" method="get" role="search">
+      <label class="visually-hidden" for="navSearchInput">Search products</label>
+      <input class="form-control nav-search-input" id="navSearchInput" name="search" type="search" placeholder="🔍 Search" aria-label="Search products">
+    </form>
 
     <div id="mainNav" class="collapse navbar-collapse order-4 order-lg-2">
       <div class="nav-menu d-grid gap-2 w-100 ms-lg-5">

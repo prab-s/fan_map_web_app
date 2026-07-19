@@ -12,6 +12,54 @@ from app.view_templates import templates
 router = APIRouter()
 
 
+ENGINEERING_SERVICES = [
+    {
+        "title": "Laser cutting",
+        "badge": "01",
+        "image": "/static/media/laser-cutter.svg",
+        "summary": "Clean, accurate part profiles for prototypes, production runs, and custom fabrication.",
+        "points": [
+            "Repeatable cut profiles",
+            "Efficient sheet utilisation",
+            "Suitable for one-off and repeat work",
+        ],
+    },
+    {
+        "title": "Brake pressing",
+        "badge": "02",
+        "image": "/static/media/brake-press.svg",
+        "summary": "Controlled folds, returns, and formed sections to help parts fit and assemble cleanly.",
+        "points": [
+            "Accurate bends and returns",
+            "Formed panels and brackets",
+            "Consistent results across a run",
+        ],
+    },
+    {
+        "title": "Rolling",
+        "badge": "03",
+        "image": "/static/media/roller.svg",
+        "summary": "Curved sections and controlled radii for practical metalwork and airflow applications.",
+        "points": [
+            "Controlled curved sections",
+            "Repeatable radii",
+            "Support for custom shapes",
+        ],
+    },
+    {
+        "title": "Flanging",
+        "badge": "04",
+        "image": "/static/media/flanger.svg",
+        "summary": "Stiffened edges and tidy finishing details that support robust, practical assembly.",
+        "points": [
+            "Stiffened component edges",
+            "Neat assembly details",
+            "Useful for custom ducting and parts",
+        ],
+    },
+]
+
+
 def _cached_series_by_id(series_id: int) -> dict | None:
     for series in catalogue_cache.series_list():
         if str(series.get("id")) == str(series_id):
@@ -390,8 +438,54 @@ async def homepage(request: Request):
     return templates.TemplateResponse(request, "index.html", context)
 
 
+@router.get("/contact")
+async def contact_page(request: Request):
+    context = await common_context()
+    context.update({
+        "request": request,
+        "request_quote_url": "#quoteRequestModal",
+        "seo": seo_meta(
+            "Contact",
+            "Contact Vent-Tech for product selection, pricing, engineering support, and project enquiries.",
+            "/contact",
+        ),
+    })
+    return templates.TemplateResponse(request, "contact.html", context)
+
+
+@router.get("/engineering-services")
+async def engineering_services_page(request: Request):
+    context = await common_context()
+    context.update({
+        "request": request,
+        "request_quote_url": "#quoteRequestModal",
+        "services": ENGINEERING_SERVICES,
+        "seo": seo_meta(
+            "Engineering Services",
+            "Explore Vent-Tech engineering services including laser cutting, brake pressing, rolling, and flanging.",
+            "/engineering-services",
+        ),
+    })
+    return templates.TemplateResponse(request, "engineering_services.html", context)
+
+
+@router.get("/past-projects")
+async def past_projects_page(request: Request):
+    context = await common_context()
+    context.update({
+        "request": request,
+        "seo": seo_meta(
+            "Past Projects",
+            "Explore Vent-Tech fabrication and engineering project highlights.",
+            "/past-projects",
+        ),
+    })
+    return templates.TemplateResponse(request, "past_projects.html", context)
+
+
 @router.get("/products")
 async def products_page(request: Request):
+    search = request.query_params.get("search", "").strip()
     products = catalogue_cache.products()
     if not products:
         try:
@@ -409,6 +503,7 @@ async def products_page(request: Request):
         ),
         "series": catalogue_cache.series_list(),
         "products": products,
+        "search": search,
     })
 
     return templates.TemplateResponse(request, "products.html", context)

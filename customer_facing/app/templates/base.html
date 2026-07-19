@@ -115,40 +115,6 @@
 <body class="site-page">
   {% include "partials/nav.html" %}
 
-  <div
-    class="site-search-backdrop d-none"
-    id="siteSearchDialog"
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="siteSearchTitle"
-    data-site-search-dialog
-  >
-    <div class="site-search-panel">
-      <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
-        <div>
-          <p class="section-kicker text-uppercase fw-semibold mb-1">Catalogue search</p>
-          <h2 class="h4 mb-0" id="siteSearchTitle">Find a product</h2>
-        </div>
-        <button class="btn-close" type="button" data-site-search-close aria-label="Close search"></button>
-      </div>
-      <form class="site-search-form" data-site-search-form>
-        <label class="visually-hidden" for="siteSearchInput">Search products, series, or product types</label>
-        <input
-          class="form-control form-control-lg"
-          id="siteSearchInput"
-          name="search"
-          type="search"
-          placeholder="Search products, series, or product types"
-          autocomplete="off"
-          data-site-search-input
-        >
-        <button class="btn btn-primary btn-lg" type="submit">Search</button>
-      </form>
-      <div class="site-search-status text-muted small mt-3" data-site-search-status>Search across the full product catalogue.</div>
-      <div class="site-search-results mt-3" data-site-search-results></div>
-    </div>
-  </div>
-
   {% block full_bleed_content %}{% endblock %}
 
   <main class="container site-shell py-4">
@@ -196,6 +162,7 @@
             <li><a href="/">Home</a></li>
             <li><a href="{{ products_url() }}">Products</a></li>
             <li><a href="/engineering-services">Engineering Services</a></li>
+            <li><a href="/past-projects">Past Projects</a></li>
             <li><a href="/contact">Contact</a></li>
           </ul>
         </div>
@@ -233,7 +200,6 @@
     src="/static/vendor/bootstrap.bundle.min.js?v={{ app_build_marker }}"
   ></script>
   <script src="/static/js/quote-request.js?v={{ app_build_marker }}" defer></script>
-  <script src="/static/js/site-search.js?v={{ app_build_marker }}" defer></script>
   {% block page_scripts %}{% endblock %}
   <!-- build: {{ app_build_marker }} -->
 </body>

@@ -50,7 +50,7 @@
         </select>
 
         <label class="form-label">Search</label>
-        <input class="form-control" name="search" placeholder="Model, description, or keyword">
+        <input class="form-control" name="search" value="{{ search | default('') }}" placeholder="Model, description, or keyword">
 
         <div class="d-flex align-items-center justify-content-between mt-4 mb-2">
           <p class="text-muted small mb-0">Choose a product type to reveal the available engineering filters.</p>

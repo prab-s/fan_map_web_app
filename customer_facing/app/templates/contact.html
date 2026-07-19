@@ -24,7 +24,7 @@
           <p class="text-muted mb-3">Send the project details through and the team can point you to the right product type, series, or model datasheet.</p>
           <a
             class="btn btn-primary w-100"
-            href="{{ request_quote_url }}"
+            href="{{ site_contact.request_quote_url }}"
             data-quote-request-trigger
             data-bs-toggle="modal"
             data-bs-target="#quoteRequestModal"
@@ -45,7 +45,6 @@
       </div>
     </div>
   </div>
-  <!-- Tokens route to 'customer_facing/app/view_templates.py' -->
   <div class="col-lg-7">
     <div class="card shadow-sm h-100">
       <div class="card-body">
@@ -53,23 +52,34 @@
         <div class="row g-3">
           <div class="col-md-4">
             <div class="contact-block">
-              <div class="fw-semibold mb-1">Gerald</div>
+              <div class="fw-semibold mb-1">Gerald Keown</div>
+              <div class="small text-muted mb-1">Managing Director</div>
               <a href="mailto:{{ site_contact.gerald_email }}">{{ site_contact.gerald_email }}</a><br>
-              <span class="text-muted">{{ site_contact.gerald_phone }}</span>
+              <a href="tel:+64220697270" class="text-muted">{{ site_contact.gerald_phone }}</a>
             </div>
           </div>
           <div class="col-md-4">
             <div class="contact-block">
-              <div class="fw-semibold mb-1">Mahendra</div>
-              <a href="mailto:{{ site_contact.mahendra_email }}">{{ site_contact.mahendra_email }}</a><br>
-              <span class="text-muted">{{ site_contact.mahendra_phone }}</span>
-            </div>
-          </div>
-          <div class="col-md-4">
-            <div class="contact-block">
-              <div class="fw-semibold mb-1">Admin</div>
+              <div class="fw-semibold mb-1">Nilesh Patel</div>
+              <div class="small text-muted mb-1">Design / Technical / Sales</div>
               <a href="mailto:{{ site_contact.admin_email }}">{{ site_contact.admin_email }}</a><br>
-              <span class="text-muted">{{ site_contact.admin_phone }}</span>
+              <a href="tel:+6445951403" class="text-muted">{{ site_contact.admin_phone }}</a>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="contact-block">
+              <div class="fw-semibold mb-1">Alex Keown</div>
+              <div class="small text-muted mb-1">Operations Manager</div>
+              <a href="mailto:{{ site_contact.admin_email }}">{{ site_contact.admin_email }}</a><br>
+              <a href="tel:+6445951403" class="text-muted">{{ site_contact.admin_phone }}</a>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="contact-block">
+              <div class="fw-semibold mb-1">Mahendra Dahya</div>
+              <div class="small text-muted mb-1">Technical / Sales</div>
+              <a href="mailto:{{ site_contact.mahendra_email }}">{{ site_contact.mahendra_email }}</a><br>
+              <a href="tel:+64275560197" class="text-muted">{{ site_contact.mahendra_phone }}</a>
             </div>
           </div>
         </div>
