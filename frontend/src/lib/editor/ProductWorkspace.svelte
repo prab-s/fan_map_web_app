@@ -37,6 +37,7 @@
   import ECharts from "$lib/ECharts.svelte";
   import AccordionCard from "$lib/editor/AccordionCard.svelte";
   import ProductMediaPanel from "$lib/editor/ProductMediaPanel.svelte";
+  import RichTextEditor from "$lib/editor/RichTextEditor.svelte";
   import SeriesNamesBadgeList from "$lib/editor/SeriesNamesBadgeList.svelte";
   import { runMaintenanceJob } from "$lib/maintenanceJobs.js";
   import {
@@ -3533,11 +3534,13 @@
         await updateProductType(productTypeDraft.id, body);
         addSuccess("Product type updated.");
       } else {
-        await createProductType(body);
+        const created = await createProductType(body);
+        resetProductTypeDraft(created);
+        selectedManageProductTypeId = created?.id ?? "";
+        managementMode = "edit-product-type";
         addSuccess("Product type created.");
       }
       await loadProductTypes();
-      cancelManagement();
     } catch (e) {
       error = e.message;
     } finally {
@@ -3576,11 +3579,13 @@
         await updateSeries(seriesDraft.id, body);
         addSuccess("Series updated.");
       } else {
-        await createSeries(body);
+        const created = await createSeries(body);
+        resetSeriesDraft(created);
+        selectedManageSeriesId = created?.id ?? "";
+        managementMode = "edit-series";
         addSuccess("Series created.");
       }
       await loadSeries();
-      cancelManagement();
     } catch (e) {
       error = e.message;
     } finally {
@@ -4921,27 +4926,6 @@
                   {/each}
                 </select>
               </div>
-              <div class="col-12 col-md-6">
-                <label class="form-label" for="create-online-template"
-                  >Online PDF template</label
-                >
-                <select
-                  class="form-select"
-                  id="create-online-template"
-                  bind:value={productForm.online_template_id}
-                  on:change={() => {
-                    createTemplateSelectionSource = {
-                      ...createTemplateSelectionSource,
-                      online: "manual",
-                    };
-                  }}
-                >
-                  <option value="">-- Choose option --</option>
-                  {#each productTemplateOptions as template}
-                    <option value={template.id}>{template.label}</option>
-                  {/each}
-                </select>
-              </div>
             </div>
           </AccordionCard>
         </div>
@@ -4989,12 +4973,11 @@
                           Remove
                         </button>
                       </div>
-                      <textarea
-                        class="form-control"
+                      <RichTextEditor
                         id={`create-description-${sectionIndex + 1}`}
-                        rows="4"
+                        rows={4}
                         bind:value={productDescriptionSections[sectionIndex].html}
-                      ></textarea>
+                      />
                     </div>
                   {/each}
                 </div>
@@ -5823,21 +5806,6 @@
                     {/each}
                   </select>
                 </div>
-                <div class="col-12 col-md-6">
-                  <label class="form-label" for="edit-online-template"
-                    >Online PDF template</label
-                  >
-                  <select
-                    class="form-select"
-                    id="edit-online-template"
-                    bind:value={productForm.online_template_id}
-                  >
-                    <option value="">-- Choose option --</option>
-                    {#each productTemplateOptions as template}
-                      <option value={template.id}>{template.label}</option>
-                    {/each}
-                  </select>
-                </div>
                 <div class="col-12">
                   <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
                     <div>
@@ -5857,12 +5825,11 @@
                             Remove
                           </button>
                         </div>
-                        <textarea
-                          class="form-control"
+                        <RichTextEditor
                           id={`edit-description-${sectionIndex + 1}`}
-                          rows="4"
+                          rows={4}
                           bind:value={productDescriptionSections[sectionIndex].html}
-                        ></textarea>
+                        />
                       </div>
                     {/each}
                   </div>

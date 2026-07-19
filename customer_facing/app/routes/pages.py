@@ -36,6 +36,44 @@ async def common_context():
     return {"product_types": product_types}
 
 
+def build_downloads(record: dict | None, pdf_keys: tuple[str, ...], pdf_label: str) -> list[dict]:
+    if not record:
+        return []
+    downloads = []
+    for key in pdf_keys:
+        url = record.get(key)
+        if url:
+            downloads.append({
+                "label": f"📑 {pdf_label}",
+                "url": url,
+                "note": "Generated printed PDF",
+                "size": format_file_size(record.get(key.replace("_url", "_size_bytes"))),
+            })
+            break
+    for document in record.get("associated_documents") or []:
+        url = document.get("download_url")
+        if url:
+            downloads.append({
+                "label": f"📄 {document.get('original_file_name') or 'Download document'}",
+                "url": url,
+                "note": "Associated document",
+                "size": format_file_size(document.get("file_size_bytes")),
+            })
+    return downloads
+
+
+def format_file_size(size_bytes) -> str:
+    try:
+        size = float(size_bytes)
+    except (TypeError, ValueError):
+        return ""
+    if size < 1024:
+        return f"{int(size)} B"
+    if size < 1024 * 1024:
+        return f"{size / 1024:.0f} KB"
+    return f"{size / (1024 * 1024):.1f} MB"
+
+
 def build_description_sections(record: dict) -> list[dict]:
     sections: list[dict] = []
     explicit_sections = record.get("description_sections")
@@ -408,6 +446,11 @@ async def product_type_page(request: Request, product_type_key: str):
         "selected_type": selected_type,
         "series": series,
         "products": products,
+        "product_type_downloads": build_downloads(
+            selected_type,
+            ("product_type_printed_pdf_url", "product_type_pdf_url"),
+            f"{selected_type['label']} catalogue",
+        ),
     })
 
     return templates.TemplateResponse(request, "product_type.html", context)
@@ -447,6 +490,14 @@ async def series_page(request: Request, series_slug: str):
         "series_products": series_products,
         "series_sections": build_description_sections(series),
         "series_graph": build_series_graph_payload(series, product_type, series_products),
+        "product_type_downloads": build_downloads(
+            product_type,
+            ("product_type_printed_pdf_url", "product_type_pdf_url"),
+            f"{product_type['label']} catalogue" if product_type else "Product catalogue",
+        ),
+        "series_downloads": build_downloads(
+            series, ("series_printed_pdf_url", "series_pdf_url"), "PDF spec sheet"
+        ),
     })
 
     return templates.TemplateResponse(request, "series.html", context)
@@ -469,6 +520,12 @@ async def product_page(request: Request, product_slug: str):
 
     context = await common_context()
     product_type = next((x for x in context["product_types"] if x["key"] == product.get("product_type_key")), None)
+    product_series = None
+    if product.get("series_id"):
+        try:
+            product_series = await api.series(product["series_id"])
+        except Exception:
+            product_series = _cached_series_by_id(product["series_id"])
     context.update({
         "request": request,
         "seo": seo_meta(
@@ -477,8 +534,22 @@ async def product_page(request: Request, product_slug: str):
             f"/products/{product_slug}",
         ),
         "product": product,
+        "series": product_series,
         "product_sections": build_description_sections(product),
         "product_graph": build_product_graph_payload(product, product_type),
+        "product_type_downloads": build_downloads(
+            product_type,
+            ("product_type_printed_pdf_url", "product_type_pdf_url"),
+            f"{product_type['label']} catalogue" if product_type else "Product catalogue",
+        ),
+        "series_downloads": build_downloads(
+            _cached_series_by_id(product.get("series_id")) if product.get("series_id") else None,
+            ("series_printed_pdf_url", "series_pdf_url"),
+            "PDF spec sheet",
+        ),
+        "product_downloads": build_downloads(
+            product, ("product_printed_pdf_url", "product_pdf_url"), "PDF spec sheet"
+        ),
     })
 
     return templates.TemplateResponse(request, "product.html", context)

@@ -35,7 +35,10 @@
           <div class="small text-muted">Products listed in this type: {{ products|length }}</div>
           <hr>
           {% for item in product_type_downloads %}
-            <a class="btn btn-outline-secondary btn-sm" href="{{ media_url(item.url) }}" target="_blank" rel="noopener">{{ item.label }}</a>
+            <a class="btn btn-outline-secondary btn-sm text-start" href="{{ media_url(item.url) }}" target="_blank" rel="noopener">
+              <span class="d-block">{{ item.label }}</span>
+              {% if item.size %}<span class="d-block small text-muted">{{ item.size }}</span>{% endif %}
+            </a>
           {% endfor %}
         </div>
       </div>

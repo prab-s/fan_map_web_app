@@ -23,7 +23,7 @@
       <h1 class="display-6 mb-3">{{ product.model }}</h1>
       <p class="lead text-muted mb-3">
         {% if product.series_name %}
-        {{ product.series_name }} ·
+        {% if series %}<a class="fw-semibold text-decoration-none" href="{{ series_url(series) }}">{{ series.name }}</a>{% else %}<strong>{{ product.series_name }}</strong>{% endif %} ·
         {% endif %}
         Exact model data, performance output, and downloadable PDFs.
       </p>
@@ -42,11 +42,13 @@
       </div>
       <hr>
       {% if product_downloads %}
-      <p class="section-kicker text-uppercase fw-semibold mb-1">Product downloads</p>
+      <p class="section-kicker text-uppercase fw-semibold mb-1">Files</p>
       <div class="d-flex flex-wrap gap-2">
         {% for item in product_downloads %}
-        <a class="btn btn-outline-secondary btn-sm" href="{{ media_url(item.url) }}" target="_blank" rel="noopener">{{
-          item.label }}</a>
+        <a class="btn btn-outline-secondary btn-sm text-start" href="{{ media_url(item.url) }}" target="_blank" rel="noopener">
+          <span class="d-block">{{ item.label }}</span>
+          {% if item.size %}<span class="d-block small text-muted">{{ item.size }}</span>{% endif %}
+        </a>
         {% endfor %}
       </div>
       {% endif %}
@@ -54,7 +56,6 @@
 
     {% for section in product_sections %}
     <section class="content-section mb-4">
-      <h2 class="h4">{{ section.title }}</h2>
       <div class="content-block">
         {{ section.html | safe }}
       </div>
@@ -91,9 +92,6 @@
     {% endif %}
   </div>
 
-  <!-- <aside class="col-lg-4">
-    {% include "partials/downloads_panel.html" %}
-  </aside> -->
   <aside class="col">
     {% if product.product_images %}
     <section class="card shadow-sm mb-4">

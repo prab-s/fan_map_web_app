@@ -1,5 +1,6 @@
 <script>
   import JobProgressPanel from '$lib/JobProgressPanel.svelte';
+  import AssociatedDocumentsPanel from '$lib/editor/AssociatedDocumentsPanel.svelte';
 
   export let productForm;
   export let productImages = [];
@@ -19,7 +20,10 @@
   export let saveBandGraphStyle = () => {};
 </script>
 
-<div class="vstack gap-3">
+  <div class="vstack gap-3">
+  {#if selectedProductId}
+    <AssociatedDocumentsPanel ownerType="product" ownerId={selectedProductId} />
+  {/if}
   <div class="card shadow-sm h-100">
     <div class="card-body">
       <h3 class="h6">Product images</h3>
@@ -72,7 +76,7 @@
   <div class="card shadow-sm h-100">
     <div class="card-body">
       <h3 class="h6">Generated Assets</h3>
-      <p class="text-body-secondary">Generate and download the current graph plus printed and online PDFs for this product.</p>
+      <p class="text-body-secondary">Generate and download the current graph and printed PDF for this product.</p>
       <div class="d-flex flex-wrap gap-2">
         <button class="btn btn-outline-secondary" on:click={generateProductGraph} disabled={refreshingProductGraphId === selectedProductId || !selectedProductId}>
           {refreshingProductGraphId === selectedProductId ? 'Generating Graph...' : 'Generate Product Graph'}
@@ -81,14 +85,12 @@
           <a href={currentProduct.graph_image_url} download class="btn btn-outline-secondary">Download Current Graph</a>
         {/if}
         <button class="btn btn-outline-secondary" on:click={generateProductPdf} disabled={productPdfJob?.status === 'running' || !selectedProductId}>
-          {productPdfJob?.status === 'running' ? 'Generating PDFs...' : 'Generate Product PDFs'}
+          {productPdfJob?.status === 'running' ? 'Generating PDF...' : 'Generate Product PDF'}
         </button>
         {#if currentProduct?.product_printed_pdf_url}
           <a href={currentProduct.product_printed_pdf_url} download class="btn btn-outline-secondary">Download Printed PDF</a>
         {/if}
-        {#if currentProduct?.product_online_pdf_url}
-          <a href={currentProduct.product_online_pdf_url} download class="btn btn-outline-secondary">Download Online PDF</a>
-        {:else if currentProduct?.product_pdf_url}
+        {#if !currentProduct?.product_printed_pdf_url && currentProduct?.product_pdf_url}
           <a href={currentProduct.product_pdf_url} download class="btn btn-outline-secondary">Download Existing PDF</a>
         {/if}
       </div>

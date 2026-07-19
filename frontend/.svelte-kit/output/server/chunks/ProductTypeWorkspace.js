@@ -8,6 +8,7 @@ import "@sveltejs/kit/internal/server";
 import "./root.js";
 import "./state.svelte.js";
 import { S as SeriesNamesBadgeList, J as JobProgressPanel } from "./SeriesNamesBadgeList.js";
+import { A as AssociatedDocumentsPanel } from "./AssociatedDocumentsPanel.js";
 function ProductTypeWorkspace($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
     let selectedProductType;
@@ -186,7 +187,16 @@ function ProductTypeWorkspace($$renderer, $$props) {
     } else {
       $$renderer2.push("<!--[-1-->");
     }
-    $$renderer2.push(`<!--]--> <button class="btn btn-outline-secondary">Cancel</button></div></div></div></div></div>`);
+    $$renderer2.push(`<!--]--> <button class="btn btn-outline-secondary">Cancel</button></div> `);
+    if (productTypeDraft.id) {
+      $$renderer2.push("<!--[0-->");
+      $$renderer2.push(`<div class="mt-3">`);
+      AssociatedDocumentsPanel($$renderer2, { ownerType: "product_type", ownerId: productTypeDraft.id });
+      $$renderer2.push(`<!----></div>`);
+    } else {
+      $$renderer2.push("<!--[-1-->");
+    }
+    $$renderer2.push(`<!--]--></div></div></div></div>`);
     bind_props($$props, { initialMode, initialProductTypeId });
   });
 }

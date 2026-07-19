@@ -23,6 +23,13 @@ def _versioned_media_url(file_path: str, route_prefix: str, file_name: str) -> s
     return f"{route_prefix}/{file_name}?v={version}" if version is not None else f"{route_prefix}/{file_name}"
 
 
+def _media_file_size_bytes(file_path: str) -> int | None:
+    try:
+        return os.path.getsize(file_path)
+    except OSError:
+        return None
+
+
 def _stable_hex_color(identity: str | int) -> str:
     digest = hashlib.sha1(str(identity).encode("utf-8")).digest()
     hue = int.from_bytes(digest[:2], "big") / 65535.0
@@ -273,6 +280,10 @@ class ProductType(Base):
     )
     series = relationship("Series", back_populates="product_type", cascade="all, delete-orphan")
     products = relationship("Product", back_populates="product_type")
+    associated_documents = relationship(
+        "AssociatedDocument", back_populates="product_type", cascade="all, delete-orphan",
+        foreign_keys="AssociatedDocument.product_type_id",
+    )
 
     @property
     def series_names(self):
@@ -303,6 +314,12 @@ class ProductType(Base):
         file_name = f"product_type_printed_{safe_key or 'unknown'}.pdf"
         file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "product_type_pdfs", file_name)
         return _versioned_media_url(file_path, "/api/public/media/product_type_pdfs", file_name)
+
+    @property
+    def product_type_printed_pdf_size_bytes(self):
+        safe_key = re.sub(r"[^a-z0-9]+", "_", (self.key or "").strip().lower()).strip("_")
+        file_name = f"product_type_printed_{safe_key or 'unknown'}.pdf"
+        return _media_file_size_bytes(os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "product_type_pdfs", file_name))
 
 
 class ProductTypeParameterGroupPreset(Base):
@@ -404,6 +421,10 @@ class Series(Base):
         cascade="all, delete-orphan",
         order_by="SeriesImage.sort_order",
     )
+    associated_documents = relationship(
+        "AssociatedDocument", back_populates="series", cascade="all, delete-orphan",
+        foreign_keys="AssociatedDocument.series_id",
+    )
 
     @property
     def product_type_key(self):
@@ -443,7 +464,7 @@ class Series(Base):
 
     @property
     def series_pdf_url(self):
-        return self.series_online_pdf_url or self.series_printed_pdf_url or self.legacy_series_pdf_url
+        return self.series_printed_pdf_url or self.legacy_series_pdf_url
 
     @property
     def legacy_series_pdf_url(self):
@@ -465,6 +486,14 @@ class Series(Base):
         file_name = f"series_online_{safe_name or 'unknown'}.pdf"
         file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "series_pdfs", file_name)
         return _versioned_media_url(file_path, "/api/public/media/series_pdfs", file_name)
+
+    @property
+    def series_printed_pdf_size_bytes(self):
+        safe_name = re.sub(
+            r"[^a-z0-9]+", "_", f"{self.product_type_key or 'series'}_{(self.name or '').strip().lower()}"
+        ).strip("_")
+        file_name = f"series_printed_{safe_name or 'unknown'}.pdf"
+        return _media_file_size_bytes(os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "series_pdfs", file_name))
 
 
 class Product(Base):
@@ -505,6 +534,10 @@ class Product(Base):
         back_populates="product",
         cascade="all, delete-orphan",
         order_by="ProductImage.sort_order",
+    )
+    associated_documents = relationship(
+        "AssociatedDocument", back_populates="product", cascade="all, delete-orphan",
+        foreign_keys="AssociatedDocument.product_id",
     )
 
     @property
@@ -565,7 +598,7 @@ class Product(Base):
 
     @property
     def product_pdf_url(self):
-        return self.product_online_pdf_url or self.product_printed_pdf_url or self.legacy_product_pdf_url
+        return self.product_printed_pdf_url or self.legacy_product_pdf_url
 
     @property
     def legacy_product_pdf_url(self):
@@ -593,6 +626,14 @@ class Product(Base):
             return None
         file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "product_pdfs", file_name)
         return _versioned_media_url(file_path, "/api/public/media/product_pdfs", file_name)
+
+    @property
+    def product_printed_pdf_size_bytes(self):
+        safe_model = re.sub(r"[^a-z0-9]+", "_", (self.model or "").strip().lower()).strip("_")
+        file_name = f"product_printed_{safe_model or 'unknown'}.pdf" if self.model is not None else None
+        if not file_name:
+            return None
+        return _media_file_size_bytes(os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "product_pdfs", file_name))
 
     @property
     def product_type_key(self):
@@ -667,6 +708,39 @@ Series.description_html = _series_description_alias_property("description1_html"
 Series.features_html = _series_description_alias_property("description2_html")
 Series.specifications_html = _series_description_alias_property("description3_html")
 Series.comments_html = _series_description_alias_property("description4_html")
+
+
+class AssociatedDocument(Base):
+    __tablename__ = "associated_documents"
+
+    id = Column(Integer, primary_key=True, index=True)
+    product_type_id = Column(Integer, ForeignKey("product_types.id"), nullable=True)
+    series_id = Column(Integer, ForeignKey("series.id"), nullable=True)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=True)
+    owner_type = Column(String(32), nullable=False)
+    original_file_name = Column(String(512), nullable=False)
+    file_name = Column(String(512), nullable=False, unique=True)
+    mime_type = Column(String(255), nullable=True)
+    sort_order = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+
+    product_type = relationship("ProductType", back_populates="associated_documents", foreign_keys=[product_type_id])
+    series = relationship("Series", back_populates="associated_documents", foreign_keys=[series_id])
+    product = relationship("Product", back_populates="associated_documents", foreign_keys=[product_id])
+
+    @property
+    def download_url(self):
+        return f"/api/public/media/associated_documents/{self.owner_type}/{self.owner_id}/{self.file_name}"
+
+    @property
+    def owner_id(self):
+        return self.product_type_id or self.series_id or self.product_id
+
+    @property
+    def file_size_bytes(self):
+        return _media_file_size_bytes(
+            os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "associated_documents", self.owner_type, str(self.owner_id), self.file_name)
+        )
 
 
 class AppSettings(Base):

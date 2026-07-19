@@ -318,6 +318,28 @@ export async function deleteSeriesImage(seriesId, imageId) {
   return r.json();
 }
 
+export async function getAssociatedDocuments(ownerType, ownerId) {
+  const r = await apiFetch(`/${ownerType === 'product_type' ? 'product-types' : `${ownerType}s`}/${ownerId}/documents`);
+  return r.json();
+}
+
+export async function uploadAssociatedDocuments(ownerType, ownerId, files) {
+  const formData = new FormData();
+  for (const file of files) formData.append('files', file);
+  const r = await apiFetch(`/${ownerType === 'product_type' ? 'product-types' : `${ownerType}s`}/${ownerId}/documents`, {
+    method: 'POST',
+    body: formData
+  });
+  return r.json();
+}
+
+export async function deleteAssociatedDocument(ownerType, ownerId, documentId) {
+  const r = await apiFetch(`/${ownerType === 'product_type' ? 'product-types' : `${ownerType}s`}/${ownerId}/documents/${documentId}`, {
+    method: 'DELETE'
+  });
+  return r.json();
+}
+
 export async function refreshSeriesGraphImage(id) {
   const r = await apiFetch(`/series/${id}/graph-image/refresh`, {
     method: 'POST'

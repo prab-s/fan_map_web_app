@@ -1787,7 +1787,6 @@ cat > "$ROOT_DIR/app/static/js/product-graph.js" <<'EOF'
     tooltip: {
       trigger: 'axis',
       renderMode: 'richText',
-      zlevel: 9999999,
       z: 9999999,
       axisPointer: {
         type: 'cross',

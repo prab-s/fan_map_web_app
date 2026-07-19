@@ -23,6 +23,7 @@
   import { buildFullChartOption } from '$lib/fullChart.js';
   import JobProgressPanel from '$lib/JobProgressPanel.svelte';
   import SeriesNamesBadgeList from '$lib/editor/SeriesNamesBadgeList.svelte';
+  import AssociatedDocumentsPanel from '$lib/editor/AssociatedDocumentsPanel.svelte';
   import { runMaintenanceJob } from '$lib/maintenanceJobs.js';
 
   export let data = {};
@@ -1192,10 +1193,10 @@
         </div>
       </div>
 
-      <div class="card shadow-sm">
-        <div class="card-body">
-          <h3 class="h5">Product PDFs</h3>
-          {#if currentProduct.product_printed_pdf_url || currentProduct.product_online_pdf_url}
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <h3 class="h5">Product PDFs</h3>
+          {#if currentProduct.product_printed_pdf_url || (!currentProduct.product_online_pdf_url && currentProduct.product_pdf_url)}
             <div class="vstack gap-3 mt-3">
               {#if currentProduct.product_printed_pdf_url}
                 <div>
@@ -1205,14 +1206,7 @@
                   </div>
                 </div>
               {/if}
-              {#if currentProduct.product_online_pdf_url}
-                <div>
-                  <div class="small text-body-secondary mb-2">Online</div>
-                  <div class="ratio ratio-16x9">
-                    <iframe src={productPdfPreviewUrl(currentProduct, 'online')} title={`${currentProduct.model} online PDF preview`}></iframe>
-                  </div>
-                </div>
-              {:else if currentProduct.product_pdf_url}
+              {#if !currentProduct.product_printed_pdf_url && currentProduct.product_pdf_url}
                 <div>
                   <div class="small text-body-secondary mb-2">Existing</div>
                   <div class="ratio ratio-16x9">
@@ -1226,6 +1220,9 @@
           {/if}
           </div>
         </div>
+        {#if currentProduct?.id}
+          <AssociatedDocumentsPanel ownerType="product" ownerId={currentProduct.id} editable={false} />
+        {/if}
       {:else}
         <div class="card shadow-sm">
           <div class="card-body">
@@ -1308,6 +1305,10 @@
                 </div>
               </div>
             </div>
+
+            {#if selectedProductTypeRecord?.id}
+              <AssociatedDocumentsPanel ownerType="product_type" ownerId={selectedProductTypeRecord.id} editable={false} />
+            {/if}
 
             <div class="card shadow-sm">
               <div class="card-body">
@@ -1435,9 +1436,7 @@
               {#if selectedSeriesRecord.series_printed_pdf_url}
                 <a class="btn btn-outline-secondary btn-sm" href={selectedSeriesRecord.series_printed_pdf_url} target="_blank" rel="noreferrer">Open Printed PDF</a>
               {/if}
-              {#if selectedSeriesRecord.series_online_pdf_url}
-                <a class="btn btn-outline-secondary btn-sm" href={selectedSeriesRecord.series_online_pdf_url} target="_blank" rel="noreferrer">Open Online PDF</a>
-              {:else if selectedSeriesRecord.series_pdf_url}
+              {#if !selectedSeriesRecord.series_printed_pdf_url && selectedSeriesRecord.series_pdf_url}
                 <a class="btn btn-outline-secondary btn-sm" href={selectedSeriesRecord.series_pdf_url} target="_blank" rel="noreferrer">Open Existing PDF</a>
               {/if}
             </div>
@@ -1511,7 +1510,7 @@
         <div class="card shadow-sm">
           <div class="card-body">
             <h3 class="h5">Series PDFs</h3>
-            {#if selectedSeriesRecord.series_printed_pdf_url || selectedSeriesRecord.series_online_pdf_url}
+            {#if selectedSeriesRecord.series_printed_pdf_url || (!selectedSeriesRecord.series_online_pdf_url && selectedSeriesRecord.series_pdf_url)}
               <div class="vstack gap-3 mt-3">
                 {#if selectedSeriesRecord.series_printed_pdf_url}
                   <div>
@@ -1521,14 +1520,7 @@
                     </div>
                   </div>
                 {/if}
-                {#if selectedSeriesRecord.series_online_pdf_url}
-                  <div>
-                    <div class="small text-body-secondary mb-2">Online</div>
-                    <div class="ratio ratio-16x9">
-                      <iframe src={seriesPdfPreviewUrl(selectedSeriesRecord, 'online')} title={`${selectedSeriesRecord.name} online PDF preview`}></iframe>
-                    </div>
-                  </div>
-                {:else if selectedSeriesRecord.series_pdf_url}
+                {#if !selectedSeriesRecord.series_printed_pdf_url && selectedSeriesRecord.series_pdf_url}
                   <div>
                     <div class="small text-body-secondary mb-2">Existing</div>
                     <div class="ratio ratio-16x9">
@@ -1542,6 +1534,9 @@
             {/if}
           </div>
         </div>
+        {#if selectedSeriesRecord?.id}
+          <AssociatedDocumentsPanel ownerType="series" ownerId={selectedSeriesRecord.id} editable={false} />
+        {/if}
       {:else}
         <div class="card shadow-sm">
           <div class="card-body">

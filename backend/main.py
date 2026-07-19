@@ -71,6 +71,7 @@ from backend.models import (
     ProductTypeEfficiencyPointPreset,
     ProductParameterGroup,
     ProductParameter,
+    AssociatedDocument,
     QuoteRequest,
     User,
 )
@@ -141,6 +142,7 @@ from backend.schemas import (
     QuoteRequestEmailTestRequest,
     QuoteRequestEmailTestResponse,
     QuoteRequestStatusUpdate,
+    AssociatedDocumentResponse,
 )
 
 SAFE_CHARS_RE = re.compile(r"[^a-z0-9]+")
@@ -154,6 +156,7 @@ PRODUCT_PDFS_DIR = Path(DEFAULT_DATA_DIR) / "product_pdfs"
 PRODUCT_TYPE_PDFS_DIR = Path(DEFAULT_DATA_DIR) / "product_type_pdfs"
 SERIES_GRAPHS_DIR = Path(DEFAULT_DATA_DIR) / "series_graphs"
 SERIES_PDFS_DIR = Path(DEFAULT_DATA_DIR) / "series_pdfs"
+ASSOCIATED_DOCUMENTS_DIR = Path(DEFAULT_DATA_DIR) / "associated_documents"
 BACKUP_OUTPUT_DIR = Path(DEFAULT_DATA_DIR) / "backups"
 DATA_BACKUP_DIRS = [
     PRODUCT_IMAGES_DIR,
@@ -163,6 +166,7 @@ DATA_BACKUP_DIRS = [
     PRODUCT_TYPE_PDFS_DIR,
     SERIES_GRAPHS_DIR,
     SERIES_PDFS_DIR,
+    ASSOCIATED_DOCUMENTS_DIR,
 ]
 DATA_BACKUP_DIR_NAMES = [path.name for path in DATA_BACKUP_DIRS]
 FRONTEND_DIR = Path(__file__).resolve().parents[1] / "frontend"
@@ -2954,6 +2958,16 @@ def series_image_path(series_id: int, file_name: str) -> Path:
     return legacy_path if legacy_path.exists() else target_path
 
 
+def associated_document_path(owner_type: str, owner_id: int, file_name: str) -> Path:
+    return ASSOCIATED_DOCUMENTS_DIR / owner_type / str(owner_id) / _normalize_media_relative_path(file_name)
+
+
+def associated_document_directory(owner_type: str, owner_id: int) -> Path:
+    directory = ASSOCIATED_DOCUMENTS_DIR / owner_type / str(owner_id)
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
 def remove_file(path: str | os.PathLike | None):
     if not path:
         return
@@ -3635,7 +3649,31 @@ def sync_series_image_files(series: Series):
 
 
 def render_richtext_html(value: str | None) -> str:
-    return value or '<p class="placeholder">Not provided.</p>'
+    return value or ""
+
+
+def remove_empty_richtext_sections(rendered: str) -> str:
+    """Remove PDF template blocks whose optional rich-text value is empty."""
+    patterns = (
+        re.compile(
+            r'<div\b[^>]*class="[^"]*\bcopy-section\b[^"]*"[^>]*>'
+            r'(?:(?!<div\b[^>]*class="[^"]*\bcopy-section\b).)*?'
+            r'<div class="(?:richtext|compact-richtext)">\s*</div>\s*</div>',
+            re.DOTALL,
+        ),
+        re.compile(
+            r'<section\b[^>]*class="[^"]*\b(?:panel|spec-card)\b[^"]*"[^>]*>'
+            r'(?:(?!<section\b[^>]*class="[^"]*\b(?:panel|spec-card)\b).)*?'
+            r'<div class="(?:richtext|compact-richtext)">\s*</div>.*?</section>',
+            re.DOTALL,
+        ),
+    )
+    previous = None
+    while previous != rendered:
+        previous = rendered
+        for pattern in patterns:
+            rendered = pattern.sub("", rendered)
+    return rendered
 
 
 def render_grouped_specs_table(product: Product) -> str:
@@ -4094,7 +4132,7 @@ def build_product_pdf_html(product: Product, variant: str) -> tuple[str, str]:
     rendered = html_template
     for token, value in replacements.items():
         rendered = rendered.replace(token, value)
-    return rendered, stylesheet_text
+    return remove_empty_richtext_sections(rendered), stylesheet_text
 
 
 def resolve_product_pdf_template_definition(product: Product, variant: str) -> dict | None:
@@ -4153,38 +4191,13 @@ def generate_product_pdf(product: Product, variant: str, progress_callback=None)
     return generate_product_pdf_variant(product, variant, progress_callback=progress_callback)
 
 
-def generate_product_pdfs(product: Product, progress_callback=None) -> tuple[Path, Path]:
+def generate_product_pdfs(product: Product, progress_callback=None) -> Path:
     printed_output_path = product_pdf_path(product, "printed")
-    online_output_path = product_pdf_path(product, "online")
-    printed_signature = pdf_template_signature(resolve_product_pdf_template_definition(product, "printed"))
-    online_signature = pdf_template_signature(resolve_product_pdf_template_definition(product, "online"))
-
-    if printed_signature == online_signature:
-        generated_path = generate_product_pdf_variant(
-            product,
-            "printed",
-            printed_output_path,
-            progress_callback=_make_progress_window(progress_callback, 1, 3) if progress_callback else None,
-        )
-        if online_output_path != generated_path:
-            if progress_callback:
-                progress_callback(f"Copying rendered product PDF to online file for {product.model or 'product'}", 3, 3)
-            shutil.copyfile(generated_path, online_output_path)
-        return generated_path, online_output_path
-
-    return (
-        generate_product_pdf_variant(
-            product,
-            "printed",
-            printed_output_path,
-            progress_callback=_make_progress_window(progress_callback, 1, 2) if progress_callback else None,
-        ),
-        generate_product_pdf_variant(
-            product,
-            "online",
-            online_output_path,
-            progress_callback=_make_progress_window(progress_callback, 2, 3) if progress_callback else None,
-        ),
+    return generate_product_pdf_variant(
+        product,
+        "printed",
+        printed_output_path,
+        progress_callback=progress_callback,
     )
 
 
@@ -4951,7 +4964,7 @@ def build_series_pdf_html(series: Series, variant: str, temp_dir: Path) -> tuple
     rendered = html_template
     for token, value in replacements.items():
         rendered = rendered.replace(token, value)
-    return rendered, stylesheet_text
+    return remove_empty_richtext_sections(rendered), stylesheet_text
 
 
 def build_series_pdf_base(series: Series, variant: str, temp_dir: Path, progress_callback=None) -> tuple[Path, int]:
@@ -5019,38 +5032,13 @@ def generate_series_pdf(series: Series, variant: str, progress_callback=None) ->
     return generate_series_pdf_variant(series, variant, progress_callback=progress_callback)
 
 
-def generate_series_pdfs(series: Series, progress_callback=None) -> tuple[Path, Path]:
+def generate_series_pdfs(series: Series, progress_callback=None) -> Path:
     printed_output_path = series_pdf_path(series, "printed")
-    online_output_path = series_pdf_path(series, "online")
-    printed_signature = pdf_template_signature(resolve_series_pdf_template_definition(series, "printed"))
-    online_signature = pdf_template_signature(resolve_series_pdf_template_definition(series, "online"))
-
-    if printed_signature == online_signature:
-        generated_path = generate_series_pdf_variant(
-            series,
-            "printed",
-            printed_output_path,
-            progress_callback=_make_progress_window(progress_callback, 1, 70) if progress_callback else None,
-        )
-        if online_output_path != generated_path:
-            if progress_callback:
-                progress_callback(f"Copying rendered series PDF to online file for {series.name or 'series'}", 95, 100)
-            shutil.copyfile(generated_path, online_output_path)
-        return generated_path, online_output_path
-
-    return (
-        generate_series_pdf_variant(
-            series,
-            "printed",
-            printed_output_path,
-            progress_callback=_make_progress_window(progress_callback, 1, 45) if progress_callback else None,
-        ),
-        generate_series_pdf_variant(
-            series,
-            "online",
-            online_output_path,
-            progress_callback=_make_progress_window(progress_callback, 46, 90) if progress_callback else None,
-        ),
+    return generate_series_pdf_variant(
+        series,
+        "printed",
+        printed_output_path,
+        progress_callback=progress_callback,
     )
 
 
@@ -5677,10 +5665,16 @@ def delete_series_image_file(image: SeriesImage):
     remove_file(SERIES_IMAGES_DIR / _normalize_media_relative_path(image.file_name))
 
 
+def delete_associated_document_files(owner):
+    for document in list(getattr(owner, "associated_documents", []) or []):
+        remove_file(associated_document_path(document.owner_type, document.owner_id, document.file_name))
+
+
 def delete_product_type_assets(product_type: ProductType):
     safe_key = re.sub(r"[^a-z0-9]+", "_", (product_type.key or "").strip().lower()).strip("_") or "unknown"
     for pdf_path in PRODUCT_TYPE_PDFS_DIR.glob(f"product_type_*_{safe_key}.pdf"):
         remove_file(pdf_path)
+    delete_associated_document_files(product_type)
 
 
 def build_graph_config(product_type: ProductType | None) -> dict:
@@ -8014,6 +8008,7 @@ def delete_series(series_id: int, db: Session = Depends(get_db)):
     series = db.get(Series, series_id)
     if not series:
         raise HTTPException(status_code=404, detail="Series not found")
+    delete_associated_document_files(series)
     for product in list(series.products):
         sync_product_series(product, None)
     db.delete(series)
@@ -8880,6 +8875,7 @@ def patch_product(product_id: int, body: ProductUpdate, db: Session = Depends(ge
 @app.delete("/api/products/{product_id}", dependencies=[Depends(get_current_user)], tags=["Products"], summary="Delete a product")
 def delete_product(product_id: int, db: Session = Depends(get_db)):
     product = require_product(db, product_id)
+    delete_associated_document_files(product)
     delete_product_assets(product)
     db.delete(product)
     db.commit()
@@ -9976,6 +9972,121 @@ def delete_series_image(series_id: int, image_id: int, db: Session = Depends(get
     return {"deleted": image_id}
 
 
+ASSOCIATED_DOCUMENT_EXTENSIONS = {
+    ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".csv", ".txt", ".rtf",
+    ".dwg", ".dxf", ".png", ".jpg", ".jpeg", ".webp",
+}
+ASSOCIATED_DOCUMENT_MAX_BYTES = 25 * 1024 * 1024
+
+
+def _associated_document_owner(db: Session, owner_type: str, owner_id: int):
+    if owner_type == "product":
+        return db.get(Product, owner_id)
+    if owner_type == "series":
+        return db.get(Series, owner_id)
+    if owner_type == "product_type":
+        return db.get(ProductType, owner_id)
+    raise HTTPException(400, "Unsupported document owner type")
+
+
+def _associated_document_query_filter(document: AssociatedDocument, owner_type: str, owner_id: int) -> bool:
+    return (
+        document.owner_type == owner_type
+        and document.owner_id == owner_id
+    )
+
+
+async def _upload_associated_documents(owner_type: str, owner_id: int, files: list[UploadFile], db: Session):
+    owner = _associated_document_owner(db, owner_type, owner_id)
+    if not owner:
+        raise HTTPException(404, f"{owner_type.replace('_', ' ').title()} not found")
+    if not files:
+        raise HTTPException(400, "No files provided")
+
+    existing = list(owner.associated_documents)
+    next_order = len(existing)
+    for upload in files:
+        original_name = Path(upload.filename or "document").name
+        suffix = Path(original_name).suffix.lower()
+        if suffix not in ASSOCIATED_DOCUMENT_EXTENSIONS:
+            raise HTTPException(400, f"Unsupported document type: {suffix or 'unknown'}")
+        contents = await upload.read(ASSOCIATED_DOCUMENT_MAX_BYTES + 1)
+        if len(contents) > ASSOCIATED_DOCUMENT_MAX_BYTES:
+            raise HTTPException(413, f"{original_name} exceeds the 25 MB limit")
+        stored_name = f"{uuid4().hex}{suffix}"
+        document = AssociatedDocument(
+            owner_type=owner_type,
+            original_file_name=original_name,
+            file_name=stored_name,
+            mime_type=upload.content_type or "application/octet-stream",
+            sort_order=next_order,
+        )
+        setattr(document, f"{owner_type if owner_type != 'product_type' else 'product_type'}_id", owner_id)
+        db.add(document)
+        target_path = associated_document_directory(owner_type, owner_id) / stored_name
+        target_path.write_bytes(contents)
+        next_order += 1
+
+    db.commit()
+    db.refresh(owner)
+    notify_public_catalogue_cache_refresh()
+    return sorted(owner.associated_documents, key=lambda item: (item.sort_order, item.id))
+
+
+@app.get("/api/products/{product_id}/documents", response_model=list[AssociatedDocumentResponse], dependencies=[Depends(get_current_user)], tags=["Associated Documents"])
+def get_product_documents(product_id: int, db: Session = Depends(get_db)):
+    owner = _associated_document_owner(db, "product", product_id)
+    if not owner:
+        raise HTTPException(404, "Product not found")
+    return sorted(owner.associated_documents, key=lambda item: (item.sort_order, item.id))
+
+
+@app.post("/api/products/{product_id}/documents", response_model=list[AssociatedDocumentResponse], dependencies=[Depends(get_current_user)], tags=["Associated Documents"])
+async def upload_product_documents(product_id: int, files: list[UploadFile] = File(...), db: Session = Depends(get_db)):
+    return await _upload_associated_documents("product", product_id, files, db)
+
+
+@app.get("/api/series/{series_id}/documents", response_model=list[AssociatedDocumentResponse], dependencies=[Depends(get_current_user)], tags=["Associated Documents"])
+def get_series_documents(series_id: int, db: Session = Depends(get_db)):
+    owner = _associated_document_owner(db, "series", series_id)
+    if not owner:
+        raise HTTPException(404, "Series not found")
+    return sorted(owner.associated_documents, key=lambda item: (item.sort_order, item.id))
+
+
+@app.post("/api/series/{series_id}/documents", response_model=list[AssociatedDocumentResponse], dependencies=[Depends(get_current_user)], tags=["Associated Documents"])
+async def upload_series_documents(series_id: int, files: list[UploadFile] = File(...), db: Session = Depends(get_db)):
+    return await _upload_associated_documents("series", series_id, files, db)
+
+
+@app.get("/api/product-types/{product_type_id}/documents", response_model=list[AssociatedDocumentResponse], dependencies=[Depends(get_current_user)], tags=["Associated Documents"])
+def get_product_type_documents(product_type_id: int, db: Session = Depends(get_db)):
+    owner = _associated_document_owner(db, "product_type", product_type_id)
+    if not owner:
+        raise HTTPException(404, "Product type not found")
+    return sorted(owner.associated_documents, key=lambda item: (item.sort_order, item.id))
+
+
+@app.post("/api/product-types/{product_type_id}/documents", response_model=list[AssociatedDocumentResponse], dependencies=[Depends(get_current_user)], tags=["Associated Documents"])
+async def upload_product_type_documents(product_type_id: int, files: list[UploadFile] = File(...), db: Session = Depends(get_db)):
+    return await _upload_associated_documents("product_type", product_type_id, files, db)
+
+
+@app.delete("/api/{owner_type}/{owner_id}/documents/{document_id}", response_model=dict, dependencies=[Depends(get_current_user)], tags=["Associated Documents"])
+def delete_associated_document(owner_type: str, owner_id: int, document_id: int, db: Session = Depends(get_db)):
+    owner = _associated_document_owner(db, owner_type, owner_id)
+    if not owner:
+        raise HTTPException(404, f"{owner_type.replace('_', ' ').title()} not found")
+    document = db.get(AssociatedDocument, document_id)
+    if not document or not _associated_document_query_filter(document, owner_type, owner_id):
+        raise HTTPException(404, "Document not found")
+    remove_file(associated_document_path(owner_type, owner_id, document.file_name))
+    db.delete(document)
+    db.commit()
+    notify_public_catalogue_cache_refresh()
+    return {"deleted": document_id}
+
+
 @app.get("/api/media/product_images/{product_id}/{file_name:path}", dependencies=[Depends(get_current_user)], tags=["Media"])
 def serve_product_image(product_id: int, file_name: str):
     file_path = product_image_path(product_id, file_name)
@@ -10121,6 +10232,30 @@ def serve_cms_series_pdf(file_name: str):
     if not file_path.is_file():
         raise HTTPException(status_code=404, detail="Series PDF not found")
     return pdf_file_response(file_path)
+
+
+@app.get("/api/media/associated_documents/{owner_type}/{owner_id}/{file_name:path}", dependencies=[Depends(get_current_user)], tags=["Media"])
+def serve_associated_document(owner_type: str, owner_id: int, file_name: str, db: Session = Depends(get_db)):
+    file_path = associated_document_path(owner_type, owner_id, file_name)
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Associated document not found")
+    document = db.query(AssociatedDocument).filter(
+        AssociatedDocument.file_name == file_name,
+        AssociatedDocument.owner_type == owner_type,
+    ).first()
+    return FileResponse(file_path, media_type=None, filename=document.original_file_name if document else file_path.name)
+
+
+@app.get("/api/public/media/associated_documents/{owner_type}/{owner_id}/{file_name:path}", tags=["Public Media"])
+def serve_public_associated_document(owner_type: str, owner_id: int, file_name: str, db: Session = Depends(get_db)):
+    file_path = associated_document_path(owner_type, owner_id, file_name)
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Associated document not found")
+    document = db.query(AssociatedDocument).filter(
+        AssociatedDocument.file_name == file_name,
+        AssociatedDocument.owner_type == owner_type,
+    ).first()
+    return FileResponse(file_path, media_type=None, filename=document.original_file_name if document else file_path.name)
 
 
 # --- Frontend static serving ---

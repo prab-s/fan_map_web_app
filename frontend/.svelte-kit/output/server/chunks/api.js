@@ -113,6 +113,10 @@ async function deleteSeriesImage(seriesId, imageId) {
   });
   return r.json();
 }
+async function getAssociatedDocuments(ownerType, ownerId) {
+  const r = await apiFetch(`/${ownerType === "product_type" ? "product-types" : `${ownerType}s`}/${ownerId}/documents`);
+  return r.json();
+}
 async function getProduct(id) {
   const r = await apiFetch(`/products/${id}`);
   return r.json();
@@ -191,7 +195,8 @@ async function getUsers() {
   return r.json();
 }
 export {
-  getSeriesById as A,
+  getProductChartData as A,
+  getSeriesById as B,
   reorderProductImages as a,
   uploadProductImages as b,
   getProduct as c,
@@ -207,15 +212,15 @@ export {
   login as m,
   getAuthSession as n,
   getMaintenanceJob as o,
-  getPublicProductTypes as p,
-  getPublicProduct as q,
+  getAssociatedDocuments as p,
+  getPublicProductTypes as q,
   refreshGraphImage as r,
   startRefreshProductPdfJob as s,
-  getPublicProducts as t,
+  getPublicProduct as t,
   updateProduct as u,
-  getPublicSeries as v,
-  getSeries as w,
-  getUsers as x,
-  getProductTypes as y,
-  getProductChartData as z
+  getPublicProducts as v,
+  getPublicSeries as w,
+  getSeries as x,
+  getUsers as y,
+  getProductTypes as z
 };

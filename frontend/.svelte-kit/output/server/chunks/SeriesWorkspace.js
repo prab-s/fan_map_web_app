@@ -3,6 +3,8 @@ import { f as fallback } from "./equality.js";
 import { g as goto } from "./client.js";
 import { i as deleteSeriesImage, j as reorderSeriesImages, k as uploadSeriesImages } from "./api.js";
 import { c as createDescriptionSectionDrafts, g as getDescriptionFieldCount } from "./descriptionSections.js";
+import { A as AssociatedDocumentsPanel } from "./AssociatedDocumentsPanel.js";
+import { R as RichTextEditor } from "./RichTextEditor.js";
 function SeriesMediaPanel($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
     let seriesForm = $$props["seriesForm"];
@@ -14,7 +16,14 @@ function SeriesMediaPanel($$renderer, $$props) {
     });
     let removeSeriesImage = fallback($$props["removeSeriesImage"], () => {
     });
-    $$renderer2.push(`<div class="vstack gap-3"><div class="card shadow-sm h-100"><div class="card-body"><h3 class="h6">Series images</h3> <p class="text-body-secondary">Upload multiple images, reorder them, and the first two become the primary and secondary series images.</p> <div class="mb-3"><label class="form-label" for="edit-series-images">Select image files</label> <input class="form-control" id="edit-series-images" type="file" accept="image/*" multiple=""/></div> <div class="d-flex flex-wrap gap-2"><button class="btn btn-primary"${attr("disabled", pendingImageFiles.length === 0, true)}>Upload Selected Images</button></div> `);
+    $$renderer2.push(`<div class="vstack gap-3">`);
+    if (seriesForm?.id) {
+      $$renderer2.push("<!--[0-->");
+      AssociatedDocumentsPanel($$renderer2, { ownerType: "series", ownerId: seriesForm.id });
+    } else {
+      $$renderer2.push("<!--[-1-->");
+    }
+    $$renderer2.push(`<!--]--> <div class="card shadow-sm h-100"><div class="card-body"><h3 class="h6">Series images</h3> <p class="text-body-secondary">Upload multiple images, reorder them, and the first two become the primary and secondary series images.</p> <div class="mb-3"><label class="form-label" for="edit-series-images">Select image files</label> <input class="form-control" id="edit-series-images" type="file" accept="image/*" multiple=""/></div> <div class="d-flex flex-wrap gap-2"><button class="btn btn-primary"${attr("disabled", pendingImageFiles.length === 0, true)}>Upload Selected Images</button></div> `);
     if (seriesImages.length > 0) {
       $$renderer2.push("<!--[0-->");
       $$renderer2.push(`<div class="row g-3 mt-1"><!--[-->`);
@@ -291,38 +300,23 @@ function SeriesWorkspace($$renderer, $$props) {
           $$renderer4.push(`<!--]-->`);
         }
       );
-      $$renderer3.push(`</div> <div class="col-12 col-md-6"><label class="form-label" for="series-online-template">Online PDF template</label> `);
-      $$renderer3.select(
-        {
-          class: "form-select",
-          id: "series-online-template",
-          value: seriesDraft.online_template_id
-        },
-        ($$renderer4) => {
-          $$renderer4.option({ value: "" }, ($$renderer5) => {
-            $$renderer5.push(`No template`);
-          });
-          $$renderer4.push(`<!--[-->`);
-          const each_array_4 = ensure_array_like(templateRegistry.series_templates ?? []);
-          for (let $$index_4 = 0, $$length = each_array_4.length; $$index_4 < $$length; $$index_4++) {
-            let template = each_array_4[$$index_4];
-            $$renderer4.option({ value: template.id }, ($$renderer5) => {
-              $$renderer5.push(`${escape_html(template.label)}`);
-            });
-          }
-          $$renderer4.push(`<!--]-->`);
-        }
-      );
       $$renderer3.push(`</div> <div class="col-12"><div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2"><div><div class="form-label mb-0">Description sections</div> <div class="form-text">Add or remove as many HTML blocks as this series needs.</div></div> <button class="btn btn-outline-primary btn-sm" type="button">Add section</button></div> <div class="vstack gap-3"><!--[-->`);
-      const each_array_5 = ensure_array_like(seriesDescriptionSections);
-      for (let sectionIndex = 0, $$length = each_array_5.length; sectionIndex < $$length; sectionIndex++) {
-        let section = each_array_5[sectionIndex];
-        $$renderer3.push(`<div class="border rounded p-3 bg-body-tertiary"><div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2"><label class="form-label mb-0"${attr("for", `series-description-${sectionIndex + 1}`)}>${escape_html(section.title)}</label> <button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", seriesDescriptionSections.length === 1, true)}>Remove</button></div> <textarea class="form-control"${attr("id", `series-description-${sectionIndex + 1}`)} rows="3">`);
-        const $$body = escape_html(seriesDescriptionSections[sectionIndex].html);
-        if ($$body) {
-          $$renderer3.push(`${$$body}`);
-        }
-        $$renderer3.push(`</textarea></div>`);
+      const each_array_4 = ensure_array_like(seriesDescriptionSections);
+      for (let sectionIndex = 0, $$length = each_array_4.length; sectionIndex < $$length; sectionIndex++) {
+        let section = each_array_4[sectionIndex];
+        $$renderer3.push(`<div class="border rounded p-3 bg-body-tertiary"><div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2"><label class="form-label mb-0"${attr("for", `series-description-${sectionIndex + 1}`)}>${escape_html(section.title)}</label> <button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", seriesDescriptionSections.length === 1, true)}>Remove</button></div> `);
+        RichTextEditor($$renderer3, {
+          id: `series-description-${sectionIndex + 1}`,
+          rows: 3,
+          get value() {
+            return seriesDescriptionSections[sectionIndex].html;
+          },
+          set value($$value) {
+            seriesDescriptionSections[sectionIndex].html = $$value;
+            $$settled = false;
+          }
+        });
+        $$renderer3.push(`<!----></div>`);
       }
       $$renderer3.push(`<!--]--></div></div></div> <div class="d-flex flex-wrap gap-2 mt-3"><button class="btn btn-primary"${attr("disabled", saving, true)}>${escape_html(saving ? "Saving..." : "Save Series")}</button> `);
       if (seriesDraft.id) {

@@ -98,7 +98,6 @@ export function buildPublicProductGraphOption(payload, themeName) {
     tooltip: {
       trigger: 'axis',
       renderMode: 'richText',
-      zlevel: 9999999,
       z: 9999999,
       axisPointer: {
         type: 'cross',
@@ -154,7 +153,7 @@ function attachPublicHoverTracking(chart, baseOption) {
       return {
         ...element,
         x,
-        y: y + 1,
+        y: y + 2,
         invisible: !visible
       };
     });

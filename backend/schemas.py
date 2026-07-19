@@ -129,6 +129,7 @@ class ProductTypeResponse(BaseModel):
     product_count: int = 0
     product_type_pdf_url: Optional[str] = None
     product_type_printed_pdf_url: Optional[str] = None
+    product_type_printed_pdf_size_bytes: Optional[int] = None
     supports_graph: bool
     graph_kind: Optional[str] = None
     supports_graph_overlays: bool = False
@@ -151,6 +152,7 @@ class ProductTypeResponse(BaseModel):
     parameter_group_presets: list[ProductTypeParameterGroupPresetResponse] = Field(default_factory=list)
     rpm_line_presets: list[ProductTypeRpmLinePresetResponse] = Field(default_factory=list)
     efficiency_point_presets: list[ProductTypeEfficiencyPointPresetResponse] = Field(default_factory=list)
+    associated_documents: list["AssociatedDocumentResponse"] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -209,6 +211,19 @@ class TemplateDefinitionResponse(BaseModel):
     type: str
     path: str
     stylesheet: Optional[str] = None
+
+
+class AssociatedDocumentResponse(BaseModel):
+    id: int
+    owner_type: str
+    original_file_name: str
+    file_name: str
+    mime_type: Optional[str] = None
+    sort_order: int = 0
+    download_url: Optional[str] = None
+    file_size_bytes: Optional[int] = None
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TemplateRegistryResponse(BaseModel):
@@ -394,11 +409,13 @@ class SeriesResponse(BaseModel):
     series_graph_image_url: Optional[str] = None
     series_pdf_url: Optional[str] = None
     series_printed_pdf_url: Optional[str] = None
+    series_printed_pdf_size_bytes: Optional[int] = None
     series_online_pdf_url: Optional[str] = None
     series_tab_color: Optional[str] = None
     series_images: list["SeriesImageResponse"] = Field(default_factory=list)
     performance_table_html: Optional[str] = None
     series_graph_payload: Optional[dict] = None
+    associated_documents: list[AssociatedDocumentResponse] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -523,10 +540,12 @@ class ProductResponse(ProductBase):
     grouped_specs_main_table: Optional[str] = None
     product_pdf_url: Optional[str] = None
     product_printed_pdf_url: Optional[str] = None
+    product_printed_pdf_size_bytes: Optional[int] = None
     product_online_pdf_url: Optional[str] = None
     primary_product_image_url: Optional[str] = None
     parameter_groups: list["ProductParameterGroupResponse"] = Field(default_factory=list)
     product_images: list["ProductImageResponse"] = Field(default_factory=list)
+    associated_documents: list[AssociatedDocumentResponse] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -832,6 +851,7 @@ class CmsProductResponse(BaseModel):
     grouped_specs_main_table: Optional[str] = None
     product_pdf_url: Optional[str] = None
     product_printed_pdf_url: Optional[str] = None
+    product_printed_pdf_size_bytes: Optional[int] = None
     product_online_pdf_url: Optional[str] = None
     primary_product_image_url: Optional[str] = None
     product_images: list["ProductImageResponse"] = Field(default_factory=list)
@@ -839,6 +859,7 @@ class CmsProductResponse(BaseModel):
     rpm_lines: list[RpmLineResponse] = Field(default_factory=list)
     efficiency_points: list[EfficiencyPointResponse] = Field(default_factory=list)
     fan_acoustic_table: Optional[FanAcousticTable] = None
+    associated_documents: list[AssociatedDocumentResponse] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -874,6 +895,7 @@ class CmsSeriesResponse(BaseModel):
     series_graph_image_url: Optional[str] = None
     series_pdf_url: Optional[str] = None
     series_printed_pdf_url: Optional[str] = None
+    series_printed_pdf_size_bytes: Optional[int] = None
     series_online_pdf_url: Optional[str] = None
     series_tab_color: Optional[str] = None
     primary_series_image_url: Optional[str] = None
@@ -882,6 +904,7 @@ class CmsSeriesResponse(BaseModel):
     products: list[CmsSeriesProductSummary] = Field(default_factory=list)
     performance_table_html: Optional[str] = None
     series_graph_payload: Optional[dict] = None
+    associated_documents: list[AssociatedDocumentResponse] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -931,5 +954,6 @@ class ProductTypePdfResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 ProductResponse.model_rebuild()
+ProductTypeResponse.model_rebuild()
 ProductParameterGroupResponse.model_rebuild()
 RpmLineResponse.model_rebuild()

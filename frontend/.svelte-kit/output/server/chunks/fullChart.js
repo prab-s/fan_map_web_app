@@ -518,7 +518,6 @@ function buildCursorPointGraphic(chartTheme, chartFontFamily, labelTextScale = 1
     type: "text",
     silent: true,
     invisible: true,
-    zlevel: 9999999,
     z: 9999999,
     x: 0,
     y: 0,
@@ -1563,7 +1562,6 @@ function buildFullChartOption({
     tooltip: tooltip ?? (graphMode === "product" ? {
       trigger: "axis",
       renderMode: "richText",
-      zlevel: 9999999,
       z: 9999999,
       axisPointer: {
         type: "cross",

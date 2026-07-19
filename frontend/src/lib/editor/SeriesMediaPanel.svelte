@@ -1,4 +1,5 @@
 <script>
+  import AssociatedDocumentsPanel from '$lib/editor/AssociatedDocumentsPanel.svelte';
   export let seriesForm;
   export let seriesImages = [];
   export let pendingImageFiles = [];
@@ -8,6 +9,9 @@
 </script>
 
 <div class="vstack gap-3">
+  {#if seriesForm?.id}
+    <AssociatedDocumentsPanel ownerType="series" ownerId={seriesForm.id} />
+  {/if}
   <div class="card shadow-sm h-100">
     <div class="card-body">
       <h3 class="h6">Series images</h3>

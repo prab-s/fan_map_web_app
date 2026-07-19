@@ -4,6 +4,7 @@
   import { createProductType, deleteProductType, getProductTypes, getTemplates, startRefreshProductTypePdfJob, updateProductType } from '$lib/api.js';
   import JobProgressPanel from '$lib/JobProgressPanel.svelte';
   import SeriesNamesBadgeList from '$lib/editor/SeriesNamesBadgeList.svelte';
+  import AssociatedDocumentsPanel from '$lib/editor/AssociatedDocumentsPanel.svelte';
   import { runMaintenanceJob } from '$lib/maintenanceJobs.js';
 
   export let initialMode = 'create';
@@ -223,12 +224,20 @@
         await updateProductType(productTypeDraft.id, body);
         success = 'Product type updated.';
       } else {
-        await createProductType(body);
+        const created = await createProductType(body);
+        productTypeDraft = resetDraft(created);
+        selectedProductTypeId = created?.id ?? '';
+        mode = 'edit';
         success = 'Product type created.';
       }
 
       await loadProductTypes();
-      cancelEditing();
+      if (productTypeDraft.id) {
+        selectedProductTypeId = productTypeDraft.id;
+        mode = 'edit';
+        syncProductTypeEditorUrl(productTypeDraft.id);
+        hydrateSelectedProductType(productTypeDraft.id);
+      }
     } catch (e) {
       error = e.message;
     } finally {
@@ -469,6 +478,11 @@
           {/if}
           <button class="btn btn-outline-secondary" on:click={cancelEditing}>Cancel</button>
         </div>
+        {#if productTypeDraft.id}
+          <div class="mt-3">
+            <AssociatedDocumentsPanel ownerType="product_type" ownerId={productTypeDraft.id} />
+          </div>
+        {/if}
       </div>
     </div>
   </div>

@@ -56,13 +56,6 @@ function _page($$renderer, $$props) {
       $$renderer2.push("<!--[-1-->");
     }
     $$renderer2.push(`<!--]--> `);
-    if (series?.series_online_pdf_url) {
-      $$renderer2.push("<!--[0-->");
-      $$renderer2.push(`<a class="btn btn-outline-secondary"${attr("href", series.series_online_pdf_url)} target="_blank" rel="noreferrer">Online PDF</a>`);
-    } else {
-      $$renderer2.push("<!--[-1-->");
-    }
-    $$renderer2.push(`<!--]--> `);
     if (series?.series_pdf_url) {
       $$renderer2.push("<!--[0-->");
       $$renderer2.push(`<a class="btn btn-primary"${attr("href", series.series_pdf_url)} target="_blank" rel="noreferrer">Open PDF</a>`);
@@ -98,7 +91,7 @@ function _page($$renderer, $$props) {
     const each_array = ensure_array_like(seriesDescriptionSections);
     for (let $$index = 0, $$length = each_array.length; $$index < $$length; $$index++) {
       let section = each_array[$$index];
-      $$renderer2.push(`<div class="col-12 col-lg-6"><div class="card shadow-sm h-100 border-0"><div class="card-body p-4"><p class="section-label mb-2 svelte-a8na6i">${escape_html(section.title)}</p> <div class="public-html svelte-a8na6i">${html(section.html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div>`);
+      $$renderer2.push(`<div class="col-12 col-lg-6"><div class="card shadow-sm h-100 border-0"><div class="card-body p-4"><div class="public-html svelte-a8na6i">${html(section.html || '<p class="text-body-secondary mb-0">Not provided.</p>')}</div></div></div></div>`);
     }
     $$renderer2.push(`<!--]--></section></div>`);
     if ($$store_subs) unsubscribe_stores($$store_subs);

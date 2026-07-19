@@ -66,9 +66,6 @@
           {#if series?.series_printed_pdf_url}
             <a class="btn btn-outline-secondary" href={series.series_printed_pdf_url} target="_blank" rel="noreferrer">Printed PDF</a>
           {/if}
-          {#if series?.series_online_pdf_url}
-            <a class="btn btn-outline-secondary" href={series.series_online_pdf_url} target="_blank" rel="noreferrer">Online PDF</a>
-          {/if}
           {#if series?.series_pdf_url}
             <a class="btn btn-primary" href={series.series_pdf_url} target="_blank" rel="noreferrer">Open PDF</a>
           {/if}
@@ -126,7 +123,6 @@
       <div class="col-12 col-lg-6">
         <div class="card shadow-sm h-100 border-0">
           <div class="card-body p-4">
-            <p class="section-label mb-2">{section.title}</p>
             <div class="public-html">{@html section.html || '<p class="text-body-secondary mb-0">Not provided.</p>'}</div>
           </div>
         </div>

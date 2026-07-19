@@ -10,6 +10,15 @@
       "_internal.js"
     ]
   },
+  "_AssociatedDocumentsPanel.js": {
+    "file": "chunks/AssociatedDocumentsPanel.js",
+    "name": "AssociatedDocumentsPanel",
+    "imports": [
+      "_index2.js",
+      "_api.js",
+      "_equality.js"
+    ]
+  },
   "_ManagePageShell.js": {
     "file": "chunks/ManagePageShell.js",
     "name": "ManagePageShell",
@@ -29,7 +38,8 @@
       "_equality.js",
       "_root.js",
       "_state.svelte.js",
-      "_SeriesNamesBadgeList.js"
+      "_SeriesNamesBadgeList.js",
+      "_AssociatedDocumentsPanel.js"
     ]
   },
   "_ProductWorkspace.js": {
@@ -46,11 +56,24 @@
       "_api.js",
       "_fullChart.js",
       "_SeriesNamesBadgeList.js",
+      "_AssociatedDocumentsPanel.js",
+      "_RichTextEditor.js",
       "_config.js",
       "_descriptionSections.js"
     ],
     "css": [
       "_app/immutable/assets/ProductWorkspace.Cdp6zMrW.css"
+    ]
+  },
+  "_RichTextEditor.js": {
+    "file": "chunks/RichTextEditor.js",
+    "name": "RichTextEditor",
+    "imports": [
+      "_index2.js",
+      "_equality.js"
+    ],
+    "css": [
+      "_app/immutable/assets/RichTextEditor.DcTaxRxL.css"
     ]
   },
   "_SeriesNamesBadgeList.js": {
@@ -71,7 +94,9 @@
       "_equality.js",
       "_client.js",
       "_api.js",
-      "_descriptionSections.js"
+      "_descriptionSections.js",
+      "_AssociatedDocumentsPanel.js",
+      "_RichTextEditor.js"
     ]
   },
   "_api.js": {
@@ -645,7 +670,7 @@
       "_html.js"
     ],
     "css": [
-      "_app/immutable/assets/_page.CrEJ17fl.css"
+      "_app/immutable/assets/_page.ddqZ9DKb.css"
     ]
   },
   "src/routes/setup/+page.svelte": {
@@ -723,6 +748,7 @@
       "_config.js",
       "_descriptionSections.js",
       "_SeriesNamesBadgeList.js",
+      "_AssociatedDocumentsPanel.js",
       "_html.js"
     ],
     "css": [

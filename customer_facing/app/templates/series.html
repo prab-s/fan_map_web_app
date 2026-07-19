@@ -34,20 +34,20 @@
       </div>
       {% if series_downloads %}
         <hr>
-        <div class="d-flex flex-wrap align-items-center gap-2">
-          <span class="section-kicker text-uppercase fw-semibold mb-0">Series downloads</span>
-          <div class="d-flex flex-wrap gap-2">
-            {% for item in series_downloads %}
-              <a class="btn btn-outline-secondary btn-sm" href="{{ media_url(item.url) }}" target="_blank" rel="noopener">{{ item.label }}</a>
-            {% endfor %}
-          </div>
+        <p class="section-kicker text-uppercase fw-semibold mb-1">Files</p>
+        <div class="d-flex flex-wrap gap-2">
+          {% for item in series_downloads %}
+            <a class="btn btn-outline-secondary btn-sm text-start" href="{{ media_url(item.url) }}" target="_blank" rel="noopener">
+              <span class="d-block">{{ item.label }}</span>
+              {% if item.size %}<span class="d-block small text-muted">{{ item.size }}</span>{% endif %}
+            </a>
+          {% endfor %}
         </div>
       {% endif %}
     </section>
 
     {% for section in series_sections %}
       <section class="content-section mb-4">
-        <h2 class="h4">{{ section.title }}</h2>
         <div class="content-block">
           {{ section.html | safe }}
         </div>

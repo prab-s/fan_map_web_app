@@ -18,6 +18,7 @@
     getDescriptionFieldCount
   } from '$lib/descriptionSections.js';
   import SeriesMediaPanel from '$lib/editor/SeriesMediaPanel.svelte';
+  import RichTextEditor from '$lib/editor/RichTextEditor.svelte';
 
   export let initialMode = 'create';
   export let initialSeriesId = '';
@@ -253,12 +254,20 @@
         await updateSeries(seriesDraft.id, body);
         success = 'Series updated.';
       } else {
-        await createSeries(body);
+        const created = await createSeries(body);
+        seriesDraft = resetDraft(created);
+        selectedSeriesId = created?.id ?? '';
+        mode = 'edit';
         success = 'Series created.';
       }
 
       await loadData();
-      cancelEditing();
+      if (seriesDraft.id) {
+        selectedSeriesId = seriesDraft.id;
+        mode = 'edit';
+        syncSeriesEditorUrl(seriesDraft.id);
+        hydrateSelectedSeries(seriesDraft.id);
+      }
     } catch (e) {
       error = e.message;
     } finally {
@@ -434,15 +443,6 @@
               {/each}
             </select>
           </div>
-          <div class="col-12 col-md-6">
-            <label class="form-label" for="series-online-template">Online PDF template</label>
-            <select class="form-select" id="series-online-template" bind:value={seriesDraft.online_template_id}>
-              <option value="">No template</option>
-              {#each templateRegistry.series_templates ?? [] as template}
-                <option value={template.id}>{template.label}</option>
-              {/each}
-            </select>
-          </div>
           <div class="col-12">
             <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
               <div>
@@ -458,7 +458,7 @@
                     <label class="form-label mb-0" for={`series-description-${sectionIndex + 1}`}>{section.title}</label>
                     <button class="btn btn-outline-danger btn-sm" type="button" on:click={() => removeSeriesDescriptionSection(sectionIndex)} disabled={seriesDescriptionSections.length === 1}>Remove</button>
                   </div>
-                  <textarea class="form-control" id={`series-description-${sectionIndex + 1}`} rows="3" bind:value={seriesDescriptionSections[sectionIndex].html}></textarea>
+                  <RichTextEditor id={`series-description-${sectionIndex + 1}`} rows={3} bind:value={seriesDescriptionSections[sectionIndex].html} />
                 </div>
               {/each}
             </div>
