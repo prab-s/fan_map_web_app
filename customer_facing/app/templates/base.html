@@ -98,6 +98,8 @@
 <body class="site-page">
   {% include "partials/nav.html" %}
 
+  {% block full_bleed_content %}{% endblock %}
+
   <main class="container site-shell py-4">
     {% block content %}{% endblock %}
   </main>

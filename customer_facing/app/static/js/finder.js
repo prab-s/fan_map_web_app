@@ -37,25 +37,45 @@ function filterMarkup(group, parameter) {
       `</select></div>`;
   }
 
-  const min = parameter.range_min == null ? "" : ` placeholder="Min ${escapeHtml(parameter.range_min)}"`;
-  const max = parameter.range_max == null ? "" : ` placeholder="Max ${escapeHtml(parameter.range_max)}"`;
-  return `<div class="mb-3"><label class="form-label">${escapeHtml(labelFor(parameter))}</label><div class="row g-2">` +
-    `<div class="col-6"><input class="form-control finder-filter-min" type="number" step="any" inputmode="decimal" data-group="${escapeHtml(group.group_name)}" data-parameter="${escapeHtml(parameter.parameter_name)}" data-kind="range" data-filter-key="${escapeHtml(key)}"${min}></div>` +
-    `<div class="col-6"><input class="form-control finder-filter-max" type="number" step="any" inputmode="decimal" data-group="${escapeHtml(group.group_name)}" data-parameter="${escapeHtml(parameter.parameter_name)}" data-kind="range" data-filter-key="${escapeHtml(key)}"${max}></div>` +
-    `</div></div>`;
+  const bounds = parameter.range_min != null && parameter.range_max != null
+    ? ` placeholder="${escapeHtml(parameter.range_min)}–${escapeHtml(parameter.range_max)}"`
+    : "";
+  return `<div class="mb-3"><label class="form-label">${escapeHtml(labelFor(parameter))}</label>` +
+    `<input class="form-control finder-filter-value" type="number" step="any" inputmode="decimal" data-group="${escapeHtml(group.group_name)}" data-parameter="${escapeHtml(parameter.parameter_name)}" data-kind="range" data-filter-key="${escapeHtml(key)}"${bounds}>` +
+    `</div>`;
 }
 
 function renderMetadata() {
   if (!mainHost || !advancedHost || !seriesHost) return;
   const groups = (metadata.groups || []).filter(group => group.group_name !== "__graph__");
   const graph = (metadata.groups || []).find(group => group.group_name === "__graph__");
-  const normal = groups.flatMap(group => group.parameters.map(parameter => ({ group, parameter })));
-  const advanced = graph ? graph.parameters.map(parameter => ({ group: graph, parameter })) : [];
-  const split = Math.min(6, normal.length);
 
-  mainHost.innerHTML = normal.slice(0, split).map(item => filterMarkup(item.group, item.parameter)).join("");
-  advancedHost.innerHTML = normal.slice(split).concat(advanced)
-    .map(item => filterMarkup(item.group, item.parameter)).join("");
+  // Keep complete specification groups together so their headings remain
+  // meaningful and a group is never split between the two filter sections.
+  const mainGroups = [];
+  const advancedGroups = [];
+  let mainParameterCount = 0;
+  for (const group of groups) {
+    if (mainParameterCount < 6 || mainGroups.length === 0) {
+      mainGroups.push(group);
+      mainParameterCount += (group.parameters || []).length;
+    } else {
+      advancedGroups.push(group);
+    }
+  }
+  // Performance filters are core fan-selection inputs, so keep RPM, Airflow,
+  // and Pressure visible without requiring the user to open Advanced.
+  if (graph) mainGroups.unshift(graph);
+
+  const renderGroup = group => {
+    const heading = group.group_name === "__graph__" ? "Performance" : group.group_name;
+    return `<section class="finder-filter-group mb-4"><h3 class="h6 text-uppercase text-muted fw-semibold border-bottom pb-2 mb-3">${escapeHtml(heading)}</h3>` +
+    (group.parameters || []).map(parameter => filterMarkup(group, parameter)).join("") +
+    `</section>`;
+  };
+
+  mainHost.innerHTML = mainGroups.map(renderGroup).join("");
+  advancedHost.innerHTML = advancedGroups.map(renderGroup).join("");
   advancedToggle?.classList.toggle("d-none", advancedHost.children.length === 0);
   if (advancedHost.children.length === 0) advancedHost.classList.add("d-none");
 
@@ -74,8 +94,11 @@ function selectedFilters() {
     const key = input.dataset.filterKey;
     const item = byKey.get(key) || { group_name: input.dataset.group, parameter_name: input.dataset.parameter };
     if (input.dataset.kind === "select" && input.value) item.value_string = input.value;
-    if (input.classList.contains("finder-filter-min") && input.value) item.min_number = Number(input.value);
-    if (input.classList.contains("finder-filter-max") && input.value) item.max_number = Number(input.value);
+    if (input.classList.contains("finder-filter-value") && input.value) {
+      const value = Number(input.value);
+      item.min_number = value;
+      item.max_number = value;
+    }
     byKey.set(key, item);
   });
   return [...byKey.values()].filter(item => item.value_string || item.min_number != null || item.max_number != null);

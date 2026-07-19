@@ -17,22 +17,8 @@
             aria-current="page"
           {% endif %}
         >
-          Product Finder
+          Products
         </a>
-
-        <div class="nav-type-group d-grid gap-3">
-          {% for type in product_types %}
-            <a
-              class="btn btn-outline-light nav-type-button btn-sm"
-              href="{{ product_type_url(type) }}"
-              {% if request.url.path == product_type_url(type) %}
-                aria-current="page"
-              {% endif %}
-            >
-              {{ type.label }}s
-            </a>
-          {% endfor %}
-        </div>
 
         <span class="nav-actions-divider d-none d-lg-block" aria-hidden="true"></span>
 

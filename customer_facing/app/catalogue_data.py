@@ -7,6 +7,7 @@ from app.config import settings
 
 
 GRAPH_FILTER_GROUP_NAME = "__graph__"
+ACOUSTIC_FILTER_GROUP_NAME = "Acoustic"
 logger = logging.getLogger(__name__)
 
 
@@ -223,6 +224,32 @@ def graph_filter_values_from_product_type(product_type: dict) -> dict[str, list[
     }
 
 
+def acoustic_filter_parameters(product: dict) -> list[dict]:
+    table = product.get("fan_acoustic_table") or {}
+    rows = table.get("rows") or []
+    fields = [
+        ("Peak Pressure", "peak_pressure_pa", "Pa"),
+        ("Peak Power", "peak_power_kw", "kW"),
+        ("Running Frequency", "running_frequency_hz", "Hz"),
+        ("Sound Pressure Level", "sound_pressure_db_3m", "dB @ 3 m"),
+    ]
+    parameters = []
+    for row in rows:
+        for label, field_name, unit in fields:
+            value = coerce_float(row.get(field_name))
+            if value is not None:
+                parameters.append({"parameter_name": label, "value_number": value, "unit": unit})
+        for column in table.get("sound_power_columns", []) or []:
+            value = coerce_float((row.get("sound_power_levels") or {}).get(column))
+            if value is not None:
+                parameters.append({
+                    "parameter_name": f"Sound Power {column} Hz",
+                    "value_number": value,
+                    "unit": "dB",
+                })
+    return parameters
+
+
 def value_in_window(value: float, minimum: float | None, maximum: float | None) -> bool:
     if minimum is not None and value < minimum:
         return False
@@ -242,6 +269,10 @@ def product_matches_parameter_filters(product: dict, parameter_filters: list[dic
         for parameter in group.get("parameters", []) or []:
             parameter_name = (parameter.get("parameter_name") or "").strip().casefold()
             grouped_parameters.setdefault((group_name, parameter_name), []).append(parameter)
+
+    for parameter in acoustic_filter_parameters(product):
+        parameter_name = parameter["parameter_name"].strip().casefold()
+        grouped_parameters.setdefault((ACOUSTIC_FILTER_GROUP_NAME.casefold(), parameter_name), []).append(parameter)
 
     graph_values = graph_filter_values(product)
 
@@ -269,7 +300,13 @@ def product_matches_parameter_filters(product: dict, parameter_filters: list[dic
                     filter_key[1],
                 )
                 return False
-            graph_matches = [value_in_window(metric_value, min_number, max_number) for metric_value in graph_metric_values]
+            target_value = min_number if min_number is not None and min_number == max_number else None
+            if target_value is not None:
+                graph_matches = [
+                    min(graph_metric_values) <= target_value <= max(graph_metric_values)
+                ]
+            else:
+                graph_matches = [value_in_window(metric_value, min_number, max_number) for metric_value in graph_metric_values]
             trace_finder_filter(
                 "finder trace compare: product=%s graph_filter=%s comparisons=%s mode=all",
                 product_label,
@@ -307,7 +344,18 @@ def product_matches_parameter_filters(product: dict, parameter_filters: list[dic
         max_number = filter_item.get("max_number")
 
         matched = False
+        target_value = min_number if min_number is not None and min_number == max_number else None
+        numeric_values = [
+            float(parameter["value_number"])
+            for parameter in matching_parameters
+            if parameter.get("value_number") is not None
+        ]
+        if target_value is not None and numeric_values:
+            matched = min(numeric_values) <= target_value <= max(numeric_values)
+
         for parameter in matching_parameters:
+            if matched:
+                break
             if value_string is not None:
                 if (parameter.get("value_string") or "").strip().casefold() == value_string.casefold():
                     matched = True
@@ -540,6 +588,45 @@ def build_finder_metadata(selected_type: dict, products: list[dict], product_typ
                 if not entry["unit"] and parameter.get("unit"):
                     entry["unit"] = str(parameter.get("unit")).strip()
 
+        acoustic_group_key = ACOUSTIC_FILTER_GROUP_NAME.casefold()
+        if acoustic_filter_parameters(product):
+            group_order.setdefault(acoustic_group_key, len(group_order))
+        for parameter in acoustic_filter_parameters(product):
+            parameter_name = parameter["parameter_name"]
+            key = (acoustic_group_key, parameter_name.casefold())
+            entry = values_by_key.setdefault(
+                key,
+                {
+                    "group_name": ACOUSTIC_FILTER_GROUP_NAME,
+                    "parameter_name": parameter_name,
+                    "sort_order": len(values_by_key),
+                    "force_range": True,
+                    "string_values": set(),
+                    "numeric_values": set(),
+                    "unit": parameter.get("unit"),
+                },
+            )
+            entry["numeric_values"].add(parameter["value_number"])
+
+    # Keep the Peak Pressure control visible for fan finders even when the
+    # current catalogue snapshot has empty acoustic cells. Populated rows are
+    # still aggregated across every RPM row above.
+    if product_type_key == "fan":
+        acoustic_group_key = ACOUSTIC_FILTER_GROUP_NAME.casefold()
+        group_order.setdefault(acoustic_group_key, len(group_order))
+        values_by_key.setdefault(
+            (acoustic_group_key, "peak pressure"),
+            {
+                "group_name": ACOUSTIC_FILTER_GROUP_NAME,
+                "parameter_name": "Peak Pressure",
+                "sort_order": 0,
+                "force_range": True,
+                "string_values": set(),
+                "numeric_values": set(),
+                "unit": "Pa",
+            },
+        )
+
     fallback_graph_values = graph_filter_values_for_products(products)
     for field_name, field_values in fallback_graph_values.items():
         graph_group_values[field_name]["numeric_values"].update(field_values)
@@ -564,10 +651,10 @@ def build_finder_metadata(selected_type: dict, products: list[dict], product_typ
         string_values = sorted(values_entry["string_values"])
         numeric_values = sorted(values_entry["numeric_values"])
 
-        if string_values:
-            kind = "select"
-        elif numeric_values:
+        if values_entry.get("force_range") or numeric_values:
             kind = "range"
+        elif string_values:
+            kind = "select"
         else:
             kind = "select"
 

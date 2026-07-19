@@ -1,8 +1,14 @@
 {% extends "base.html" %}
 
+{% block full_bleed_content %}
+<section id="product-types" class="home-intro-section">
+  <img class="home-main-image" src="/static/media/home-bg-art-1.png" alt="" aria-hidden="true">
+</section>
+{% endblock %}
+
 {% block content %}
-<section id="product-types" class="mb-4 mb-lg-5 home-intro-section home-intro-section--flush">
-  <div class="home-intro-section__inner">
+<section class="home-secondary-section mb-4 mb-lg-5">
+  <div class="home-secondary-content">
     <div class="card section-card chooser-callout">
       <div class="card-body p-3 p-lg-4">
         <div class="row g-3 align-items-center">
@@ -72,10 +78,9 @@
       {% endfor %}
     </div>
   </div>
-</section>
 
-<section class="page-hero hero-shell mb-4 mb-lg-5">
-  <div class="row g-4 g-lg-5 align-items-center">
+  <div class="page-hero hero-shell">
+    <div class="row g-4 g-lg-5 align-items-center">
     <div class="col-lg-7">
       <h3 class="display-10 fw-semibold lh-1 mb-4">
         Vent-Tech designs and builds standard and non-standard fans to suit customer requirements, with practical lead
@@ -107,6 +112,7 @@
             allowfullscreen></iframe>
         </div>
       </div>
+    </div>
     </div>
   </div>
 </section>
