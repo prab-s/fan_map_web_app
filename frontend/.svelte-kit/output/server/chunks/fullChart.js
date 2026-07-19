@@ -8,6 +8,7 @@ const LIGHT_CHART_THEME = {
   efficiency: "#15803d",
   permissible: "#dc2626",
   neutralLine: "#dddddd",
+  crosshairText: "#1e293b",
   fontFamily: "DejaVu Sans, Liberation Sans, Arial, sans-serif"
 };
 const DARK_CHART_THEME = {
@@ -18,6 +19,7 @@ const DARK_CHART_THEME = {
   efficiency: "#4ade80",
   permissible: "#f87171",
   neutralLine: "#dddddd",
+  crosshairText: "#f8fafc",
   fontFamily: "DejaVu Sans, Liberation Sans, Arial, sans-serif"
 };
 function getChartTheme(currentTheme) {
@@ -510,7 +512,7 @@ function buildFullChartTooltipFormatter(graphConfig, lineDefinitions) {
 }
 function buildCursorPointGraphic(chartTheme, chartFontFamily, labelTextScale = 1) {
   const resolvedScale = Number.isFinite(Number(labelTextScale)) && Number(labelTextScale) > 0 ? Number(labelTextScale) : 1;
-  const markerFontSize = Math.max(10, Math.round(14 * resolvedScale));
+  const markerFontSize = Math.max(16, Math.round(24 * resolvedScale));
   return {
     id: "cursor-point-marker",
     type: "text",
@@ -522,12 +524,11 @@ function buildCursorPointGraphic(chartTheme, chartFontFamily, labelTextScale = 1
     y: 0,
     style: {
       text: "+",
-      fill: chartTheme.text,
+      fill: chartTheme.crosshairText ?? chartTheme.text,
       font: `bold ${markerFontSize}px ${chartFontFamily}`,
       textAlign: "center",
       textVerticalAlign: "middle",
-      textBorderColor: chartTheme.background,
-      textBorderWidth: 3
+      textBackgroundColor: "transparent"
     }
   };
 }
@@ -1006,7 +1007,7 @@ function buildRpmBandPolygonSeries(rpmCurveEntries, rpmLines, chartTheme, permis
     return series;
   });
 }
-function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, permissibleBoundaryData, clipRpmAreaToPermissibleUse, showRpmBandShading, maximumVisibleFlow = null, pressureAxisMax = null, rpmBandLabelColor = null, fadedBandOpacity = CHART_STYLE.rpmBandFadedOpacity, graphConfig = DEFAULT_GRAPH_CONFIG, labelTextScale = 1, graphMode = "product") {
+function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, permissibleBoundaryData, clipRpmAreaToPermissibleUse, showRpmBandShading, maximumVisibleFlow = null, pressureAxisMax = null, rpmBandLabelColor = null, fadedBandOpacity = CHART_STYLE.rpmBandFadedOpacity, graphConfig = DEFAULT_GRAPH_CONFIG, labelTextScale = 1, graphMode = "product", colorRpmLinesByBand = false) {
   const resolvedLabelTextScale = Number.isFinite(Number(labelTextScale)) && Number(labelTextScale) > 0 ? Number(labelTextScale) : 1;
   const normalizedGraphMode = String(graphMode || "").trim().toLowerCase();
   function buildBandLabelAnchorData(lineData) {
@@ -1049,7 +1050,7 @@ function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, per
   const rpms = Object.keys(byRpm).filter((key) => key !== "").map((rpm) => Number(rpm)).filter((rpm) => !Number.isNaN(rpm)).sort((a, b) => a - b);
   const series = [];
   const rpmCurveEntries = [];
-  const useBandLineColors = normalizedGraphMode === "product" && showRpmBandShading;
+  const useBandLineColors = colorRpmLinesByBand || normalizedGraphMode === "product" && showRpmBandShading;
   for (const [idx, rpm] of rpms.entries()) {
     const rpmLine = lineByRpm.get(Number(rpm)) ?? null;
     const pointsAtRpm = byRpm[String(rpm)] ?? [];
@@ -1488,7 +1489,8 @@ function buildFullChartOption({
   adaptGraphBackgroundToTheme = false,
   labelTextScale = 1,
   permissibleLabelOffset = null,
-  graphMode = "product"
+  graphMode = "product",
+  colorRpmLinesByBand = false
 }) {
   const resolvedLabelTextScale = Number.isFinite(Number(labelTextScale)) && Number(labelTextScale) > 0 ? Number(labelTextScale) : 1;
   const resolvedGraphConfig = resolveGraphConfig(graphConfig);
@@ -1534,7 +1536,8 @@ function buildFullChartOption({
     bandGraphFadedOpacity,
     resolvedGraphConfig,
     resolvedLabelTextScale,
-    graphMode
+    graphMode,
+    colorRpmLinesByBand
   );
   const chartFontFamily = chartTheme.fontFamily ?? "sans-serif";
   const chartTitleFontSize = CHART_STYLE.titleFontSize - 6;
@@ -1591,13 +1594,14 @@ function buildFullChartOption({
       formatter: buildCursorTooltipFormatter(resolvedGraphConfig)
     } : {
       trigger: "axis",
-      axisPointer: { type: "line", snap: true },
+      axisPointer: { type: "line", snap: false },
       formatter: buildFullChartTooltipFormatter(resolvedGraphConfig)
     }),
     graphic: [buildCursorPointGraphic(chartTheme, chartFontFamily, resolvedLabelTextScale)],
     grid: { left: "7%", right: "5%", top: "6%", bottom: "8%", z: -1 },
     xAxis: {
       type: "value",
+      axisPointer: { snap: false },
       name: xAxisName,
       nameLocation: "middle",
       nameGap: 32,
@@ -1621,6 +1625,7 @@ function buildFullChartOption({
     },
     yAxis: {
       type: "value",
+      axisPointer: { snap: false },
       name: yAxisName,
       nameTextStyle: {
         color: chartTheme.text,

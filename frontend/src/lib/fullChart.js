@@ -840,7 +840,7 @@ function buildCursorPointGraphic(chartTheme, chartFontFamily, labelTextScale = 1
   const resolvedScale = Number.isFinite(Number(labelTextScale)) && Number(labelTextScale) > 0
     ? Number(labelTextScale)
     : 1;
-  const markerFontSize = Math.max(10, Math.round(14 * resolvedScale));
+  const markerFontSize = Math.max(16, Math.round(24 * resolvedScale));
 
   return {
     id: 'cursor-point-marker',
@@ -853,12 +853,11 @@ function buildCursorPointGraphic(chartTheme, chartFontFamily, labelTextScale = 1
     y: 0,
     style: {
       text: '+',
-      fill: chartTheme.text,
+      fill: chartTheme.crosshairText ?? chartTheme.text,
       font: `bold ${markerFontSize}px ${chartFontFamily}`,
       textAlign: 'center',
       textVerticalAlign: 'middle',
-      textBorderColor: chartTheme.background,
-      textBorderWidth: 3
+      textBackgroundColor: 'transparent'
     }
   };
 }
@@ -1617,7 +1616,8 @@ function buildRpmSeries(
   fadedBandOpacity = CHART_STYLE.rpmBandFadedOpacity,
   graphConfig = DEFAULT_GRAPH_CONFIG,
   labelTextScale = 1,
-  graphMode = 'product'
+  graphMode = 'product',
+  colorRpmLinesByBand = false
 ) {
   const resolvedLabelTextScale = Number.isFinite(Number(labelTextScale)) && Number(labelTextScale) > 0
     ? Number(labelTextScale)
@@ -1676,7 +1676,7 @@ function buildRpmSeries(
 
   const series = [];
   const rpmCurveEntries = [];
-  const useBandLineColors = normalizedGraphMode === 'product' && showRpmBandShading;
+  const useBandLineColors = colorRpmLinesByBand || (normalizedGraphMode === 'product' && showRpmBandShading);
   for (const [idx, rpm] of rpms.entries()) {
     const rpmLine = lineByRpm.get(Number(rpm)) ?? null;
     const pointsAtRpm = byRpm[String(rpm)] ?? [];
@@ -2202,7 +2202,8 @@ export function buildFullChartOption({
   adaptGraphBackgroundToTheme = false,
   labelTextScale = 1,
   permissibleLabelOffset = null,
-  graphMode = 'product'
+  graphMode = 'product',
+  colorRpmLinesByBand = false
 }) {
   const resolvedLabelTextScale = Number.isFinite(Number(labelTextScale)) && Number(labelTextScale) > 0
     ? Number(labelTextScale)
@@ -2277,7 +2278,8 @@ export function buildFullChartOption({
     bandGraphFadedOpacity,
     resolvedGraphConfig,
     resolvedLabelTextScale,
-    graphMode
+    graphMode,
+    colorRpmLinesByBand
   );
   const chartFontFamily = chartTheme.fontFamily ?? 'sans-serif';
   const chartTitleFontSize = CHART_STYLE.titleFontSize - 6;
@@ -2337,13 +2339,14 @@ export function buildFullChartOption({
         }
       : {
           trigger: 'axis',
-          axisPointer: { type: 'line', snap: true },
+          axisPointer: { type: 'line', snap: false },
           formatter: buildFullChartTooltipFormatter(resolvedGraphConfig, lineDefinitions)
         }),
     graphic: [buildCursorPointGraphic(chartTheme, chartFontFamily, resolvedLabelTextScale)],
     grid: { left: '7%', right: '5%', top: '6%', bottom: '8%', z: -1 },
     xAxis: {
       type: 'value',
+      axisPointer: { snap: false },
       name: xAxisName,
       nameLocation: 'middle',
       nameGap: 32,
@@ -2367,6 +2370,7 @@ export function buildFullChartOption({
     },
     yAxis: {
       type: 'value',
+      axisPointer: { snap: false },
       name: yAxisName,
       nameTextStyle: {
         color: chartTheme.text,

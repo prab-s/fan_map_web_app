@@ -6,6 +6,7 @@ export const LIGHT_CHART_THEME = {
   efficiency: '#15803d',
   permissible: '#dc2626',
   neutralLine: '#dddddd',
+  crosshairText: '#1e293b',
   fontFamily: 'DejaVu Sans, Liberation Sans, Arial, sans-serif'
 };
 
@@ -17,6 +18,7 @@ export const DARK_CHART_THEME = {
   efficiency: '#4ade80',
   permissible: '#f87171',
   neutralLine: '#dddddd',
+  crosshairText: '#f8fafc',
   fontFamily: 'DejaVu Sans, Liberation Sans, Arial, sans-serif'
 };
 

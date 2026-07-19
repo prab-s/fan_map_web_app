@@ -94,6 +94,7 @@ export function buildPublicProductGraphOption(payload, themeName) {
     clipRpmAreaToPermissibleUse: true,
     graphStyle: payload?.graphStyle ?? payload?.graphConfig ?? null,
     adaptGraphBackgroundToTheme: true,
+    colorRpmLinesByBand: true,
     tooltip: {
       trigger: 'axis',
       renderMode: 'richText',
@@ -153,7 +154,7 @@ function attachPublicHoverTracking(chart, baseOption) {
       return {
         ...element,
         x,
-        y,
+        y: y + 1,
         invisible: !visible
       };
     });

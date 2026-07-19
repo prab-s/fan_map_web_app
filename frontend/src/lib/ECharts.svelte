@@ -48,7 +48,7 @@
       return {
         ...element,
         x,
-        y,
+        y: y + 1,
         invisible: !visible
       };
     });
