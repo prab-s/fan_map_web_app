@@ -184,15 +184,15 @@ function _page($$renderer, $$props) {
     let presetGroups = [];
     let presetRpmLines = [];
     let presetEfficiencyPoints = [];
-    let presetPrintedProductTemplateId = "";
-    let presetOnlineProductTemplateId = "";
+    let presetProductTemplateId = "";
+    let presetSeriesTemplateId = "";
     let presetBandGraphStyle = {
       band_graph_background_color: "#ffffff",
       band_graph_label_text_color: "#000000",
       band_graph_faded_opacity: 0.18,
       band_graph_permissible_label_color: "#000000"
     };
-    let templateRegistry = { product_templates: [] };
+    let templateRegistry = { product_templates: [], series_templates: [] };
     let successMessages = [];
     let seriesByIdMap = /* @__PURE__ */ new Map();
     let productsByIdMap = /* @__PURE__ */ new Map();
@@ -313,12 +313,13 @@ function _page($$renderer, $$props) {
       const productType = productTypes.find((item) => String(item.id) === String(productTypeId));
       return (productType?.efficiency_point_presets ?? []).map((point) => createPresetEfficiencyPointDraft(point));
     }
-    function clonePresetProductTemplateIdForType(productTypeId, variant) {
+    function clonePresetProductTemplateIdForType(productTypeId) {
       const productType = productTypes.find((item) => String(item.id) === String(productTypeId));
-      if (variant === "printed") {
-        return productType?.printed_product_template_id || productType?.product_template_id || "";
-      }
-      return productType?.online_product_template_id || productType?.product_template_id || "";
+      return productType?.printed_product_template_id || productType?.product_template_id || productType?.online_product_template_id || "";
+    }
+    function clonePresetSeriesTemplateIdForType(productTypeId) {
+      const productType = productTypes.find((item) => String(item.id) === String(productTypeId));
+      return productType?.series_template_id || "";
     }
     function clonePresetBandGraphStyleForType(productTypeId) {
       const productType = productTypes.find((item) => String(item.id) === String(productTypeId));
@@ -333,8 +334,8 @@ function _page($$renderer, $$props) {
       presetGroups = [];
       presetRpmLines = [];
       presetEfficiencyPoints = [];
-      presetPrintedProductTemplateId = "";
-      presetOnlineProductTemplateId = "";
+      presetProductTemplateId = "";
+      presetSeriesTemplateId = "";
       presetBandGraphStyle = clonePresetBandGraphStyleForType("");
     }
     function syncPresetDraftsForSelectedType(productTypeId = selectedProductTypeId) {
@@ -345,8 +346,8 @@ function _page($$renderer, $$props) {
       presetGroups = clonePresetGroupsForType(productTypeId);
       presetRpmLines = clonePresetRpmLinesForType(productTypeId);
       presetEfficiencyPoints = clonePresetEfficiencyPointsForType(productTypeId);
-      presetPrintedProductTemplateId = clonePresetProductTemplateIdForType(productTypeId, "printed");
-      presetOnlineProductTemplateId = clonePresetProductTemplateIdForType(productTypeId, "online");
+      presetProductTemplateId = clonePresetProductTemplateIdForType(productTypeId);
+      presetSeriesTemplateId = clonePresetSeriesTemplateIdForType(productTypeId);
       presetBandGraphStyle = clonePresetBandGraphStyleForType(productTypeId);
     }
     async function loadProductTypes() {
@@ -581,12 +582,12 @@ function _page($$renderer, $$props) {
       $$renderer2.push(`</div> <div class="col-12 col-md-auto"><button class="btn btn-outline-primary" type="button"${attr("disabled", !selectedProductTypeId, true)}>Add Group</button></div> <div class="col-12 col-md-auto"><button class="btn btn-outline-secondary" type="button"${attr("disabled", !selectedProductTypeId, true)}>Reset from saved</button></div> <div class="col-12 col-md-auto"><button class="btn btn-primary" type="button"${attr("disabled", !selectedProductTypeId, true)}>${escape_html("Save Presets")}</button></div></div> `);
       if (selectedProductTypeId) {
         $$renderer2.push("<!--[0-->");
-        $$renderer2.push(`<div class="mt-3"><div class="row g-3 align-items-end mb-4"><div class="col-12 col-lg-6"><label class="form-label" for="type-preset-printed-product-template">Default printed PDF template</label> `);
+        $$renderer2.push(`<div class="mt-3"><div class="row g-3 align-items-end mb-4"><div class="col-12 col-lg-6"><label class="form-label" for="type-preset-product-template">Default product PDF template</label> `);
         $$renderer2.select(
           {
             class: "form-select",
-            id: "type-preset-printed-product-template",
-            value: presetPrintedProductTemplateId
+            id: "type-preset-product-template",
+            value: presetProductTemplateId
           },
           ($$renderer3) => {
             $$renderer3.option({ value: "" }, ($$renderer4) => {
@@ -603,19 +604,19 @@ function _page($$renderer, $$props) {
             $$renderer3.push(`<!--]-->`);
           }
         );
-        $$renderer2.push(`</div> <div class="col-12 col-lg-6"><label class="form-label" for="type-preset-online-product-template">Default online PDF template</label> `);
+        $$renderer2.push(`</div> <div class="col-12 col-lg-6"><label class="form-label" for="type-preset-series-template">Default series PDF template</label> `);
         $$renderer2.select(
           {
             class: "form-select",
-            id: "type-preset-online-product-template",
-            value: presetOnlineProductTemplateId
+            id: "type-preset-series-template",
+            value: presetSeriesTemplateId
           },
           ($$renderer3) => {
             $$renderer3.option({ value: "" }, ($$renderer4) => {
               $$renderer4.push(`-- Choose option --`);
             });
             $$renderer3.push(`<!--[-->`);
-            const each_array_4 = ensure_array_like(productTemplates());
+            const each_array_4 = ensure_array_like(templateRegistry.series_templates ?? []);
             for (let $$index_4 = 0, $$length = each_array_4.length; $$index_4 < $$length; $$index_4++) {
               let template = each_array_4[$$index_4];
               $$renderer3.option({ value: template.id }, ($$renderer4) => {

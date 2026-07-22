@@ -274,7 +274,7 @@
       "_config.js"
     ],
     "css": [
-      "_app/immutable/assets/_layout.DCIJJ4E9.css"
+      "_app/immutable/assets/_layout.C9kvZXr2.css"
     ]
   },
   "src/routes/+page.svelte": {
@@ -581,7 +581,7 @@
       "_equality.js"
     ],
     "css": [
-      "_app/immutable/assets/_page.Bfs23XLE.css"
+      "_app/immutable/assets/_page.Ba9XkRvu.css"
     ]
   },
   "src/routes/products/[product]/+page.js": {

@@ -253,6 +253,7 @@ class ProductType(Base):
     graph_y_axis_unit = Column(String(64), nullable=True)
     product_type_template_id = Column(String(128), nullable=True)
     product_template_id = Column(String(128), nullable=True)
+    series_template_id = Column(String(128), nullable=True)
     printed_product_template_id = Column(String(128), nullable=True)
     online_product_template_id = Column(String(128), nullable=True)
     contents_icon_url = Column(String(512), nullable=True)

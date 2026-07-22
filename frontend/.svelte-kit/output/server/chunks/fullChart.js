@@ -53,6 +53,13 @@ const CHART_STYLE = {
 };
 const FULL_CHART_LINE_DEFINITIONS = [
   {
+    key: "permissible_use",
+    label: "Permissible Use",
+    colorKey: "neutralLine",
+    tooltipLabel: "Permissible use",
+    lineWidth: 3
+  },
+  {
     key: "efficiency_centre",
     label: "Efficiency Centre",
     colorKey: "efficiency",
@@ -71,13 +78,6 @@ const FULL_CHART_LINE_DEFINITIONS = [
     label: "Efficiency Higher End",
     colorKey: "permissible",
     tooltipLabel: "Efficiency higher end",
-    lineWidth: 3
-  },
-  {
-    key: "permissible_use",
-    label: "Permissible Use",
-    colorKey: "neutralLine",
-    tooltipLabel: "Permissible use",
     lineWidth: 3
   }
 ];

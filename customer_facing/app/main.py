@@ -1,4 +1,6 @@
-from fastapi import FastAPI, Request
+import secrets
+
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -19,6 +21,24 @@ async def site_version():
         {"version": settings.app_build_marker},
         headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
     )
+
+
+@app.post("/api/cache/refresh", include_in_schema=False)
+async def refresh_cache(request: Request):
+    configured_token = settings.cms_api_token
+    authorization = request.headers.get("authorization", "")
+    supplied_token = authorization.removeprefix("Bearer ").strip()
+    if not configured_token or not supplied_token or not secrets.compare_digest(supplied_token, configured_token):
+        raise HTTPException(status_code=401, detail="Invalid cache refresh credentials.")
+
+    await catalogue_cache.refresh()
+    snapshot = catalogue_cache.snapshot()
+    return {
+        "product_types": len(snapshot.product_types),
+        "series": len(snapshot.series),
+        "products": len(snapshot.products),
+        "fetched_at": snapshot.fetched_at,
+    }
 
 app.include_router(pages.router)
 app.include_router(finder.router)

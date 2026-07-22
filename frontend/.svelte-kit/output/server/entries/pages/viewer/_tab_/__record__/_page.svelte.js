@@ -114,20 +114,14 @@ function _page($$renderer, $$props) {
       if (selectedId) return selectedId;
       return "Default";
     }
-    function productPdfTemplateLabels(product) {
-      return {
-        printed: templateLabel("product", product?.printed_template_id, product?.template_id || "product-default"),
-        online: templateLabel("product", product?.online_template_id, product?.template_id || "product-default")
-      };
-    }
-    function seriesPdfTemplateLabels(series) {
-      return {
-        printed: templateLabel("series", series?.printed_template_id, series?.template_id || "series-default"),
-        online: templateLabel("series", series?.online_template_id, series?.template_id || "series-default")
-      };
+    function productPdfTemplateLabel(product) {
+      return templateLabel("product", product?.printed_template_id, product?.template_id || product?.online_template_id || "product-default");
     }
     function productTypePdfTemplateLabel(productType) {
       return templateLabel("product_type", productType?.product_type_template_id, "product_type-default");
+    }
+    function seriesPdfTemplateLabel(series) {
+      return templateLabel("series", series?.printed_template_id, series?.template_id || series?.online_template_id || "series-default");
     }
     function productTypePdfPreviewUrl(productType) {
       if (!productType?.product_type_pdf_url) return "";
@@ -139,12 +133,12 @@ function _page($$renderer, $$props) {
       const separator = baseUrl.includes("?") ? "&" : "?";
       return `${baseUrl}${separator}v=${revision}`;
     }
-    function productPdfPreviewUrl(product, variant) {
-      const baseUrl = product?.product_printed_pdf_url;
+    function productPdfPreviewUrl(product) {
+      const baseUrl = product?.product_printed_pdf_url || product?.product_pdf_url || product?.product_online_pdf_url;
       return versionedPdfPreviewUrl(baseUrl, productPdfPreviewRevision);
     }
-    function seriesPdfPreviewUrl(series, variant) {
-      const baseUrl = series?.series_printed_pdf_url;
+    function seriesPdfPreviewUrl(series) {
+      const baseUrl = series?.series_printed_pdf_url || series?.series_pdf_url || series?.series_online_pdf_url;
       return versionedPdfPreviewUrl(baseUrl, seriesPdfPreviewRevision);
     }
     function getCurrentGraphConfig() {
@@ -412,7 +406,7 @@ function _page($$renderer, $$props) {
     }
     selectedProductTypeRecord = productTypes.find((productType) => String(productType.id) === String(selectedProductTypeId) || String(productType.key) === String(selectedProductTypeId)) || null;
     selectedProductTypeContextMissingSeries = selectedProductTypeContext?.series?.filter((series) => Number(series.page_count || 0) === 0) || [];
-    selectedProductTypeContextWarning = selectedProductTypeContextMissingSeries.length ? "One or more linked series PDFs are missing or not generated yet, so this PDF context is incomplete." : "";
+    selectedProductTypeContextWarning = selectedProductTypeContextMissingSeries.length ? "One or more linked series PDF files are missing or not generated yet, so this PDF context is incomplete." : "";
     if (selectedSeriesGraphRecord && store_get($$store_subs ??= {}, "$theme", theme)) {
       buildSeriesChartOptions();
     } else if (!selectedSeriesGraphRecord) {
@@ -515,7 +509,7 @@ function _page($$renderer, $$props) {
         } else {
           $$renderer2.push("<!--[-1-->");
         }
-        $$renderer2.push(`<!--]--></div></div> <button class="btn btn-outline-secondary btn-sm"${attr("disabled", refreshingProductGraphId === currentProduct.id, true)}>${escape_html(refreshingProductGraphId === currentProduct.id ? "Generating Graph..." : "Generate Graph")}</button> <button class="btn btn-outline-secondary btn-sm"${attr("disabled", refreshingProductPdfJob?.status === "running", true)}>${escape_html("Generate PDFs")}</button> <a class="btn btn-outline-primary btn-sm"${attr("href", productEditorUrl(currentProduct.id))}>Open in Editor</a> `);
+        $$renderer2.push(`<!--]--></div></div> <button class="btn btn-outline-secondary btn-sm"${attr("disabled", refreshingProductGraphId === currentProduct.id, true)}>${escape_html(refreshingProductGraphId === currentProduct.id ? "Generating Graph..." : "Generate Graph")}</button> <button class="btn btn-outline-secondary btn-sm"${attr("disabled", refreshingProductPdfJob?.status === "running", true)}>${escape_html("Generate PDF")}</button> <a class="btn btn-outline-primary btn-sm"${attr("href", productEditorUrl(currentProduct.id))}>Open in Editor</a> `);
         if (currentProduct.graph_image_url) {
           $$renderer2.push("<!--[0-->");
           $$renderer2.push(`<a class="btn btn-outline-secondary btn-sm"${attr("href", currentProduct.graph_image_url)} target="_blank" rel="noreferrer">Open Graph</a>`);
@@ -523,41 +517,18 @@ function _page($$renderer, $$props) {
           $$renderer2.push("<!--[-1-->");
         }
         $$renderer2.push(`<!--]--> `);
-        if (currentProduct.product_printed_pdf_url) {
+        if (currentProduct.product_printed_pdf_url || currentProduct.product_pdf_url || currentProduct.product_online_pdf_url) {
           $$renderer2.push("<!--[0-->");
-          $$renderer2.push(`<a class="btn btn-outline-secondary btn-sm"${attr("href", currentProduct.product_printed_pdf_url)} target="_blank" rel="noreferrer">Open Printed PDF</a>`);
+          $$renderer2.push(`<a class="btn btn-outline-secondary btn-sm"${attr("href", currentProduct.product_printed_pdf_url || currentProduct.product_pdf_url || currentProduct.product_online_pdf_url)} target="_blank" rel="noreferrer">Open PDF</a>`);
         } else {
           $$renderer2.push("<!--[-1-->");
         }
-        $$renderer2.push(`<!--]--> `);
-        if (currentProduct.product_online_pdf_url) {
-          $$renderer2.push("<!--[0-->");
-          $$renderer2.push(`<a class="btn btn-outline-secondary btn-sm"${attr("href", currentProduct.product_online_pdf_url)} target="_blank" rel="noreferrer">Open Online PDF</a>`);
-        } else if (currentProduct.product_pdf_url) {
-          $$renderer2.push("<!--[1-->");
-          $$renderer2.push(`<a class="btn btn-outline-secondary btn-sm"${attr("href", currentProduct.product_pdf_url)} target="_blank" rel="noreferrer">Open Existing PDF</a>`);
-        } else {
-          $$renderer2.push("<!--[-1-->");
-        }
-        $$renderer2.push(`<!--]--></div> <div class="small text-body-secondary mt-2">Printed template: ${escape_html(productPdfTemplateLabels(currentProduct).printed)} · Online template: ${escape_html(productPdfTemplateLabels(currentProduct).online)}</div> `);
+        $$renderer2.push(`<!--]--></div> `);
         JobProgressPanel($$renderer2, {
           job: refreshingProductPdfJob,
           label: "Product PDF generation"
         });
-        $$renderer2.push(`<!----> <div class="row g-3 mt-1"><div class="col-12 col-md-3"><div class="viewer-metric svelte-36khdd"><div class="viewer-metric-label svelte-36khdd">Product Type</div> <div>${escape_html(currentProduct.product_type_label || currentProduct.product_type_key || "—")}</div></div></div> <div class="col-12 col-md-3"><div class="viewer-metric svelte-36khdd"><div class="viewer-metric-label svelte-36khdd">Series</div> <div>${escape_html(currentProduct.series_name || "—")}</div></div></div></div> `);
-        if (getCurrentProductType()) {
-          $$renderer2.push("<!--[0-->");
-          $$renderer2.push(`<div class="mt-3">`);
-          SeriesNamesBadgeList($$renderer2, {
-            seriesNames: getCurrentProductType()?.series_names || [],
-            title: `Series names for ${getCurrentProductType()?.label || "this product type"}`,
-            emptyLabel: "This product type has no linked series yet."
-          });
-          $$renderer2.push(`<!----></div>`);
-        } else {
-          $$renderer2.push("<!--[-1-->");
-        }
-        $$renderer2.push(`<!--]--></div></div> <div class="row g-3"><!--[-->`);
+        $$renderer2.push(`<!----> <div class="row g-3 mt-1"><div class="col-12 col-md-3"><div class="viewer-metric svelte-36khdd"><div class="viewer-metric-label svelte-36khdd">Product Type</div> <div>${escape_html(currentProduct.product_type_label || currentProduct.product_type_key || "—")}</div></div></div> <div class="col-12 col-md-3"><div class="viewer-metric svelte-36khdd"><div class="viewer-metric-label svelte-36khdd">Series</div> <div>${escape_html(currentProduct.series_name || "—")}</div></div></div> <div class="col-12 col-md-3"><div class="viewer-metric svelte-36khdd"><div class="viewer-metric-label svelte-36khdd">Printed PDF template</div> <div>${escape_html(productPdfTemplateLabel(currentProduct))}</div></div></div></div></div></div> <div class="row g-3"><!--[-->`);
         const each_array_3 = ensure_array_like(productDescriptionSections);
         for (let $$index_3 = 0, $$length = each_array_3.length; $$index_3 < $$length; $$index_3++) {
           let section = each_array_3[$$index_3];
@@ -649,27 +620,13 @@ function _page($$renderer, $$props) {
           ECharts($$renderer2, { option: chartOption, height: "700px" });
           $$renderer2.push(`<!----></div>`);
         }
-        $$renderer2.push(`<!--]--></div></div> <div class="card shadow-sm"><div class="card-body"><h3 class="h5">Product PDFs</h3> `);
-        if (currentProduct.product_printed_pdf_url || !currentProduct.product_online_pdf_url && currentProduct.product_pdf_url) {
+        $$renderer2.push(`<!--]--></div></div> <div class="card shadow-sm"><div class="card-body"><h3 class="h5">Product PDF</h3> `);
+        if (currentProduct.product_printed_pdf_url || currentProduct.product_pdf_url || currentProduct.product_online_pdf_url) {
           $$renderer2.push("<!--[0-->");
-          $$renderer2.push(`<div class="vstack gap-3 mt-3">`);
-          if (currentProduct.product_printed_pdf_url) {
-            $$renderer2.push("<!--[0-->");
-            $$renderer2.push(`<div><div class="small text-body-secondary mb-2">Printed</div> <div class="ratio ratio-16x9"><iframe${attr("src", productPdfPreviewUrl(currentProduct))}${attr("title", `${currentProduct.model} printed PDF preview`)}></iframe></div></div>`);
-          } else {
-            $$renderer2.push("<!--[-1-->");
-          }
-          $$renderer2.push(`<!--]--> `);
-          if (!currentProduct.product_printed_pdf_url && currentProduct.product_pdf_url) {
-            $$renderer2.push("<!--[0-->");
-            $$renderer2.push(`<div><div class="small text-body-secondary mb-2">Existing</div> <div class="ratio ratio-16x9"><iframe${attr("src", versionedPdfPreviewUrl(currentProduct.product_pdf_url, productPdfPreviewRevision))}${attr("title", `${currentProduct.model} PDF preview`)}></iframe></div></div>`);
-          } else {
-            $$renderer2.push("<!--[-1-->");
-          }
-          $$renderer2.push(`<!--]--></div>`);
+          $$renderer2.push(`<div class="vstack gap-3 mt-3"><div class="ratio ratio-16x9"><iframe${attr("src", productPdfPreviewUrl(currentProduct))}${attr("title", `${currentProduct.model} PDF preview`)}></iframe></div></div>`);
         } else {
           $$renderer2.push("<!--[-1-->");
-          $$renderer2.push(`<p class="text-body-secondary mb-0">No product PDFs generated yet.</p>`);
+          $$renderer2.push(`<p class="text-body-secondary mb-0">No product PDF generated yet.</p>`);
         }
         $$renderer2.push(`<!--]--></div></div> `);
         if (currentProduct?.id) {
@@ -741,7 +698,7 @@ function _page($$renderer, $$props) {
       $$renderer2.push(`<!--]--></div></div></div></div> <div class="col-12 col-xxl-8">`);
       if (selectedProductTypeRecord) {
         $$renderer2.push("<!--[0-->");
-        $$renderer2.push(`<div class="vstack gap-3"><div class="card shadow-sm"><div class="card-body"><div class="d-flex flex-wrap align-items-start gap-2"><div class="me-auto"><h2 class="h4 mb-1">${escape_html(selectedProductTypeRecord.label)}</h2> <div class="text-body-secondary">${escape_html(selectedProductTypeRecord.key)}</div></div></div> <div class="row g-3 mt-1"><div class="col-12 col-md-4"><div class="viewer-metric svelte-36khdd"><div class="viewer-metric-label svelte-36khdd">Series</div> <div>${escape_html(selectedProductTypeRecord.series_names?.length || 0)}</div></div></div> <div class="col-12 col-md-4"><div class="viewer-metric svelte-36khdd"><div class="viewer-metric-label svelte-36khdd">PDF</div> <div>${escape_html(selectedProductTypeRecord.product_type_pdf_url ? "Available" : "Not generated yet")}</div></div></div></div> <div class="mt-3">`);
+        $$renderer2.push(`<div class="vstack gap-3"><div class="card shadow-sm"><div class="card-body"><div class="d-flex flex-wrap align-items-start gap-2"><div class="me-auto"><h2 class="h4 mb-1">${escape_html(selectedProductTypeRecord.label)}</h2> <div class="text-body-secondary">${escape_html(selectedProductTypeRecord.key)}</div></div></div> <div class="row g-3 mt-1"><div class="col-12 col-md-4"><div class="viewer-metric svelte-36khdd"><div class="viewer-metric-label svelte-36khdd">Series</div> <div>${escape_html(selectedProductTypeRecord.series_names?.length || 0)}</div></div></div> <div class="col-12 col-md-4"><div class="viewer-metric svelte-36khdd"><div class="viewer-metric-label svelte-36khdd">PDF</div> <div>${escape_html(selectedProductTypeRecord.product_type_pdf_url ? "Available" : "Not generated yet")}</div></div></div> <div class="col-12 col-md-4"><div class="viewer-metric svelte-36khdd"><div class="viewer-metric-label svelte-36khdd">Product type PDF template</div> <div>${escape_html(productTypePdfTemplateLabel(selectedProductTypeRecord))}</div></div></div></div> <div class="mt-3">`);
         SeriesNamesBadgeList($$renderer2, {
           seriesNames: selectedProductTypeRecord.series_names || [],
           title: `Series names for ${selectedProductTypeRecord.label}`,
@@ -870,23 +827,16 @@ function _page($$renderer, $$props) {
       $$renderer2.push(`</div></div></div></div> `);
       if (selectedSeriesRecord) {
         $$renderer2.push("<!--[0-->");
-        $$renderer2.push(`<div class="card shadow-sm"><div class="card-body"><h3 class="h5">Series Data</h3> <div class="text-body-secondary small mb-3">${escape_html(selectedSeriesRecord.name)} · ${escape_html(selectedSeriesRecord.product_count)} products</div> <div class="d-flex flex-wrap align-items-start gap-2 mb-3"><div class="me-auto"></div> <a class="btn btn-outline-primary btn-sm"${attr("href", seriesEditorUrl(selectedSeriesRecord.id))}>Open in Editor</a> <button class="btn btn-outline-secondary btn-sm"${attr("disabled", refreshingSeriesGraphId === selectedSeriesRecord.id, true)}>${escape_html(refreshingSeriesGraphId === selectedSeriesRecord.id ? "Generating Graph..." : "Generate Series Graph")}</button> <button class="btn btn-outline-secondary btn-sm"${attr("disabled", refreshingSeriesPdfJob?.status === "running", true)}>${escape_html("Generate Series PDFs")}</button> `);
-        if (selectedSeriesRecord.series_printed_pdf_url) {
+        $$renderer2.push(`<div class="card shadow-sm"><div class="card-body"><h3 class="h5">Series Data</h3> <div class="text-body-secondary small mb-3">${escape_html(selectedSeriesRecord.name)} · ${escape_html(selectedSeriesRecord.product_count)} products</div> <div class="d-flex flex-wrap align-items-start gap-2 mb-3"><div class="me-auto"></div> <a class="btn btn-outline-primary btn-sm"${attr("href", seriesEditorUrl(selectedSeriesRecord.id))}>Open in Editor</a> <button class="btn btn-outline-secondary btn-sm"${attr("disabled", refreshingSeriesGraphId === selectedSeriesRecord.id, true)}>${escape_html(refreshingSeriesGraphId === selectedSeriesRecord.id ? "Generating Graph..." : "Generate Series Graph")}</button> <button class="btn btn-outline-secondary btn-sm"${attr("disabled", refreshingSeriesPdfJob?.status === "running", true)}>${escape_html("Generate Series PDF")}</button> `);
+        if (selectedSeriesRecord.series_printed_pdf_url || selectedSeriesRecord.series_pdf_url || selectedSeriesRecord.series_online_pdf_url) {
           $$renderer2.push("<!--[0-->");
-          $$renderer2.push(`<a class="btn btn-outline-secondary btn-sm"${attr("href", selectedSeriesRecord.series_printed_pdf_url)} target="_blank" rel="noreferrer">Open Printed PDF</a>`);
+          $$renderer2.push(`<a class="btn btn-outline-secondary btn-sm"${attr("href", selectedSeriesRecord.series_printed_pdf_url || selectedSeriesRecord.series_pdf_url || selectedSeriesRecord.series_online_pdf_url)} target="_blank" rel="noreferrer">Open PDF</a>`);
         } else {
           $$renderer2.push("<!--[-1-->");
         }
-        $$renderer2.push(`<!--]--> `);
-        if (!selectedSeriesRecord.series_printed_pdf_url && selectedSeriesRecord.series_pdf_url) {
-          $$renderer2.push("<!--[0-->");
-          $$renderer2.push(`<a class="btn btn-outline-secondary btn-sm"${attr("href", selectedSeriesRecord.series_pdf_url)} target="_blank" rel="noreferrer">Open Existing PDF</a>`);
-        } else {
-          $$renderer2.push("<!--[-1-->");
-        }
-        $$renderer2.push(`<!--]--></div> <div class="small text-body-secondary mb-3">Printed template: ${escape_html(seriesPdfTemplateLabels(selectedSeriesRecord).printed)} · Online template: ${escape_html(seriesPdfTemplateLabels(selectedSeriesRecord).online)}</div> `);
+        $$renderer2.push(`<!--]--></div> `);
         JobProgressPanel($$renderer2, { job: refreshingSeriesPdfJob, label: "Series PDF generation" });
-        $$renderer2.push(`<!----> <div class="card series-graph-card shadow-sm mb-3 svelte-36khdd"><div class="card-body"><div class="d-flex flex-wrap align-items-center gap-2 mb-2"><h4 class="h6 mb-0">Series Graph</h4> <div class="ms-auto">`);
+        $$renderer2.push(`<!----> <div class="row g-3 mb-3"><div class="col-12 col-md-4"><div class="viewer-metric svelte-36khdd"><div class="viewer-metric-label svelte-36khdd">Series PDF template</div> <div>${escape_html(seriesPdfTemplateLabel(selectedSeriesRecord))}</div></div></div></div> <div class="card series-graph-card shadow-sm mb-3 svelte-36khdd"><div class="card-body"><div class="d-flex flex-wrap align-items-center gap-2 mb-2"><h4 class="h6 mb-0">Series Graph</h4> <div class="ms-auto">`);
         if (selectedSeriesRecord.series_graph_image_url) {
           $$renderer2.push("<!--[0-->");
           $$renderer2.push(`<a class="btn btn-outline-secondary btn-sm"${attr("href", selectedSeriesRecord.series_graph_image_url)} target="_blank" rel="noreferrer">Open Series Graph</a>`);
@@ -931,27 +881,13 @@ function _page($$renderer, $$props) {
           $$renderer2.push("<!--[-1-->");
           $$renderer2.push(`<p class="text-body-secondary mb-0">No series images yet.</p>`);
         }
-        $$renderer2.push(`<!--]--></div></div> <div class="card shadow-sm"><div class="card-body"><h3 class="h5">Series PDFs</h3> `);
-        if (selectedSeriesRecord.series_printed_pdf_url || !selectedSeriesRecord.series_online_pdf_url && selectedSeriesRecord.series_pdf_url) {
+        $$renderer2.push(`<!--]--></div></div> <div class="card shadow-sm"><div class="card-body"><h3 class="h5">Series PDF</h3> `);
+        if (selectedSeriesRecord.series_printed_pdf_url || selectedSeriesRecord.series_pdf_url || selectedSeriesRecord.series_online_pdf_url) {
           $$renderer2.push("<!--[0-->");
-          $$renderer2.push(`<div class="vstack gap-3 mt-3">`);
-          if (selectedSeriesRecord.series_printed_pdf_url) {
-            $$renderer2.push("<!--[0-->");
-            $$renderer2.push(`<div><div class="small text-body-secondary mb-2">Printed</div> <div class="ratio ratio-16x9"><iframe${attr("src", seriesPdfPreviewUrl(selectedSeriesRecord))}${attr("title", `${selectedSeriesRecord.name} printed PDF preview`)}></iframe></div></div>`);
-          } else {
-            $$renderer2.push("<!--[-1-->");
-          }
-          $$renderer2.push(`<!--]--> `);
-          if (!selectedSeriesRecord.series_printed_pdf_url && selectedSeriesRecord.series_pdf_url) {
-            $$renderer2.push("<!--[0-->");
-            $$renderer2.push(`<div><div class="small text-body-secondary mb-2">Existing</div> <div class="ratio ratio-16x9"><iframe${attr("src", versionedPdfPreviewUrl(selectedSeriesRecord.series_pdf_url, seriesPdfPreviewRevision))}${attr("title", `${selectedSeriesRecord.name} PDF preview`)}></iframe></div></div>`);
-          } else {
-            $$renderer2.push("<!--[-1-->");
-          }
-          $$renderer2.push(`<!--]--></div>`);
+          $$renderer2.push(`<div class="vstack gap-3 mt-3"><div class="ratio ratio-16x9"><iframe${attr("src", seriesPdfPreviewUrl(selectedSeriesRecord))}${attr("title", `${selectedSeriesRecord.name} PDF preview`)}></iframe></div></div>`);
         } else {
           $$renderer2.push("<!--[-1-->");
-          $$renderer2.push(`<p class="text-body-secondary mb-0">No series PDFs generated yet.</p>`);
+          $$renderer2.push(`<p class="text-body-secondary mb-0">No series PDF generated yet.</p>`);
         }
         $$renderer2.push(`<!--]--></div></div> `);
         if (selectedSeriesRecord?.id) {

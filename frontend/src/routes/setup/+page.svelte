@@ -80,8 +80,8 @@
   let presetGroups = [];
   let presetRpmLines = [];
   let presetEfficiencyPoints = [];
-  let presetPrintedProductTemplateId = '';
-  let presetOnlineProductTemplateId = '';
+  let presetProductTemplateId = '';
+  let presetSeriesTemplateId = '';
   let presetBandGraphStyle = {
     band_graph_background_color: '#ffffff',
     band_graph_label_text_color: '#000000',
@@ -367,12 +367,14 @@
     return (productType?.efficiency_point_presets ?? []).map((point) => createPresetEfficiencyPointDraft(point));
   }
 
-  function clonePresetProductTemplateIdForType(productTypeId, variant) {
+  function clonePresetProductTemplateIdForType(productTypeId) {
     const productType = productTypes.find((item) => String(item.id) === String(productTypeId));
-    if (variant === 'printed') {
-      return productType?.printed_product_template_id || productType?.product_template_id || '';
-    }
-    return productType?.online_product_template_id || productType?.product_template_id || '';
+    return productType?.printed_product_template_id || productType?.product_template_id || productType?.online_product_template_id || '';
+  }
+
+  function clonePresetSeriesTemplateIdForType(productTypeId) {
+    const productType = productTypes.find((item) => String(item.id) === String(productTypeId));
+    return productType?.series_template_id || '';
   }
 
   function clonePresetBandGraphStyleForType(productTypeId) {
@@ -390,8 +392,8 @@
     presetGroups = [];
     presetRpmLines = [];
     presetEfficiencyPoints = [];
-    presetPrintedProductTemplateId = '';
-    presetOnlineProductTemplateId = '';
+    presetProductTemplateId = '';
+    presetSeriesTemplateId = '';
     presetBandGraphStyle = clonePresetBandGraphStyleForType('');
   }
 
@@ -404,8 +406,8 @@
     presetGroups = clonePresetGroupsForType(productTypeId);
     presetRpmLines = clonePresetRpmLinesForType(productTypeId);
     presetEfficiencyPoints = clonePresetEfficiencyPointsForType(productTypeId);
-    presetPrintedProductTemplateId = clonePresetProductTemplateIdForType(productTypeId, 'printed');
-    presetOnlineProductTemplateId = clonePresetProductTemplateIdForType(productTypeId, 'online');
+    presetProductTemplateId = clonePresetProductTemplateIdForType(productTypeId);
+    presetSeriesTemplateId = clonePresetSeriesTemplateIdForType(productTypeId);
     presetBandGraphStyle = clonePresetBandGraphStyleForType(productTypeId);
   }
 
@@ -676,8 +678,8 @@
     clearSuccessToast();
     try {
       await updateProductTypePresets(Number(selectedProductTypeId), {
-        printed_product_template_id: presetPrintedProductTemplateId || null,
-        online_product_template_id: presetOnlineProductTemplateId || null,
+        product_template_id: presetProductTemplateId || null,
+        series_template_id: presetSeriesTemplateId || null,
         parameter_group_presets: serializePresetGroups(),
         rpm_line_presets: serializePresetRpmLines(),
         efficiency_point_presets: serializePresetEfficiencyPoints()
@@ -695,8 +697,8 @@
       presetGroups = clonePresetGroupsForType(selectedProductTypeId);
       presetRpmLines = clonePresetRpmLinesForType(selectedProductTypeId);
       presetEfficiencyPoints = clonePresetEfficiencyPointsForType(selectedProductTypeId);
-      presetPrintedProductTemplateId = clonePresetProductTemplateIdForType(selectedProductTypeId, 'printed');
-      presetOnlineProductTemplateId = clonePresetProductTemplateIdForType(selectedProductTypeId, 'online');
+      presetProductTemplateId = clonePresetProductTemplateIdForType(selectedProductTypeId);
+      presetSeriesTemplateId = clonePresetSeriesTemplateIdForType(selectedProductTypeId);
       presetBandGraphStyle = clonePresetBandGraphStyleForType(selectedProductTypeId);
       addSuccess('Type presets updated.');
     } catch (error) {
@@ -1576,8 +1578,9 @@
                       presetGroups = clonePresetGroupsForType(selectedProductTypeId);
                       presetRpmLines = clonePresetRpmLinesForType(selectedProductTypeId);
                       presetEfficiencyPoints = clonePresetEfficiencyPointsForType(selectedProductTypeId);
-                      presetPrintedProductTemplateId = clonePresetProductTemplateIdForType(selectedProductTypeId, 'printed');
-                      presetOnlineProductTemplateId = clonePresetProductTemplateIdForType(selectedProductTypeId, 'online');
+                      presetProductTemplateId = clonePresetProductTemplateIdForType(selectedProductTypeId);
+                      presetSeriesTemplateId = clonePresetSeriesTemplateIdForType(selectedProductTypeId);
+                      presetBandGraphStyle = clonePresetBandGraphStyleForType(selectedProductTypeId);
                     }}
                     disabled={!selectedProductTypeId}
                   >
@@ -1595,8 +1598,8 @@
                 <div class="mt-3">
                   <div class="row g-3 align-items-end mb-4">
                     <div class="col-12 col-lg-6">
-                      <label class="form-label" for="type-preset-printed-product-template">Default printed PDF template</label>
-                      <select class="form-select" id="type-preset-printed-product-template" bind:value={presetPrintedProductTemplateId}>
+                      <label class="form-label" for="type-preset-product-template">Default product PDF template</label>
+                      <select class="form-select" id="type-preset-product-template" bind:value={presetProductTemplateId}>
                         <option value="">-- Choose option --</option>
                         {#each productTemplates() as template}
                           <option value={template.id}>{template.label}</option>
@@ -1604,10 +1607,10 @@
                       </select>
                     </div>
                     <div class="col-12 col-lg-6">
-                      <label class="form-label" for="type-preset-online-product-template">Default online PDF template</label>
-                      <select class="form-select" id="type-preset-online-product-template" bind:value={presetOnlineProductTemplateId}>
+                      <label class="form-label" for="type-preset-series-template">Default series PDF template</label>
+                      <select class="form-select" id="type-preset-series-template" bind:value={presetSeriesTemplateId}>
                         <option value="">-- Choose option --</option>
-                        {#each productTemplates() as template}
+                        {#each templateRegistry.series_templates ?? [] as template}
                           <option value={template.id}>{template.label}</option>
                         {/each}
                       </select>

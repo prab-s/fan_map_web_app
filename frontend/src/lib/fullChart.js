@@ -3,6 +3,13 @@ export { RPM_BAND_FALLBACK_COLORS } from './chartStyle.js';
 
 export const FULL_CHART_LINE_DEFINITIONS = [
   {
+    key: 'permissible_use',
+    label: 'Permissible Use',
+    colorKey: 'neutralLine',
+    tooltipLabel: 'Permissible use',
+    lineWidth: 3
+  },
+  {
     key: 'efficiency_centre',
     label: 'Efficiency Centre',
     colorKey: 'efficiency',
@@ -23,13 +30,6 @@ export const FULL_CHART_LINE_DEFINITIONS = [
     tooltipLabel: 'Efficiency higher end',
     lineWidth: 3
   },
-  {
-    key: 'permissible_use',
-    label: 'Permissible Use',
-    colorKey: 'neutralLine',
-    tooltipLabel: 'Permissible use',
-    lineWidth: 3
-  }
 ];
 // The `colorKey` values above map to `chartTheme.<key>` in `chartTheme.js` (`neutralLine`, `efficiency`, `permissible`).
 export const OVERLAY_LINE_DECORATION = {

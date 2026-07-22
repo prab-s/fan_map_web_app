@@ -16,6 +16,7 @@ class Settings:
     backend_api_base_url = _normalize_backend_api_base_url(os.getenv("BACKEND_API_BASE_URL", "https://p2.bitrep.nz"))
     public_site_url = os.getenv("PUBLIC_SITE_URL", "http://localhost:8004").rstrip("/")
     site_name = os.getenv("SITE_NAME", "Vent-tech catalogue")
+    cms_api_token = os.getenv("CMS_API_TOKEN", "").strip()
     app_build_marker = os.getenv("APP_BUILD_MARKER", "").strip() or datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
     finder_debug = os.getenv("FINDER_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}
     request_timeout_seconds = float(os.getenv("REQUEST_TIMEOUT_SECONDS", "10"))

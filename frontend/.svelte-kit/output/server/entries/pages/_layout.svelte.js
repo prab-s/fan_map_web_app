@@ -56,9 +56,13 @@ function _layout($$renderer, $$props) {
     $$renderer2.push(`<div class="app-shell">`);
     if (isPublicRoute) {
       $$renderer2.push("<!--[0-->");
-      $$renderer2.push(`<main class="app-frame py-0"><!--[-->`);
+      $$renderer2.push(`<header class="public-topbar"><div class="public-nav app-frame"><a class="public-brand" href="/products" aria-label="Products home">Fan Graphs</a> <nav class="public-links" aria-label="Customer-facing navigation"><a href="/products">Products</a></nav> <button class="public-search-trigger" type="button" aria-label="Search products"><span aria-hidden="true">⌕</span> Search</button></div></header> <main class="app-frame py-0"><!--[-->`);
       slot($$renderer2, $$props, "default", {});
-      $$renderer2.push(`<!--]--></main>`);
+      $$renderer2.push(`<!--]--></main> `);
+      {
+        $$renderer2.push("<!--[-1-->");
+      }
+      $$renderer2.push(`<!--]-->`);
     } else if (!store_get($$store_subs ??= {}, "$auth", auth).ready) {
       $$renderer2.push("<!--[1-->");
       $$renderer2.push(`<main class="app-frame py-5"><div class="d-flex justify-content-center"><div class="card shadow-sm" style="max-width: 420px; width: 100%;"><div class="card-body p-4 text-center"><h1 class="h4 mb-2">Internal Facing</h1> <p class="text-body-secondary mb-0">Checking your session...</p></div></div></div></main>`);

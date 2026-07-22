@@ -219,6 +219,7 @@
   let graphCsvInput = null;
   let graphCsvDownsampleImportedCurves = true;
   let graphCsvDownsamplePointCount = 5;
+  let graphCsvUseLowerEfficiencyLine = false;
   let graphCsvImportSource = {
     rows: [],
     fileName: "",
@@ -254,7 +255,7 @@
     graphCsvImportSource.productId === selectedProductId &&
     `${selectedProductId ?? ""}|${graphCsvDownsampleImportedCurves ? "1" : "0"}|${String(
       graphCsvDownsamplePointCount ?? "",
-    )}` !== graphCsvImportSignature
+    )}|${graphCsvUseLowerEfficiencyLine ? "lower" : "upper"}` !== graphCsvImportSignature
   ) {
     applyImportedGraphCsvSource({
       rows: graphCsvImportSource.rows,
@@ -684,6 +685,15 @@
     });
 
     addSuccess(`Scaled ${field.replaceAll("_", " ")} values locally.`);
+  }
+
+  function swapEfficiencyLineFields(firstField, secondField, firstLabel, secondLabel) {
+    efficiencyPoints = efficiencyPoints.map((point) => ({
+      ...point,
+      [firstField]: point?.[secondField] ?? null,
+      [secondField]: point?.[firstField] ?? null,
+    }));
+    addSuccess(`${firstLabel} and ${secondLabel} lines switched locally.`);
   }
 
   function collectEditorNumericValidationErrors() {
@@ -1881,29 +1891,6 @@
     );
   }
 
-  function findHighestEfficiencyOverlayKey(points) {
-    const overlayKeys = [
-      "efficiency_centre",
-      "efficiency_higher_end",
-      "efficiency_lower_end",
-    ];
-    let bestKey = null;
-    let bestValue = Number.NEGATIVE_INFINITY;
-
-    for (const key of overlayKeys) {
-      for (const point of points ?? []) {
-        const rawValue = point?.[key];
-        if (rawValue === "" || rawValue == null) continue;
-        const value = Number(rawValue);
-        if (!Number.isFinite(value) || value <= bestValue) continue;
-        bestValue = value;
-        bestKey = key;
-      }
-    }
-
-    return bestKey;
-  }
-
   function buildGraphCsvPreview(rows, fileName) {
     if (!Array.isArray(rows) || !rows.length) return null;
 
@@ -3072,7 +3059,11 @@
 
   function buildImportedGraphState(
     rows,
-    { downsampleImportedCurves = true, downsamplePointCount = 5 } = {},
+    {
+      downsampleImportedCurves = true,
+      downsamplePointCount = 5,
+      permissibleUseSourceKey = "efficiency_higher_end",
+    } = {},
   ) {
     const [headerRow, ...dataRows] = rows;
     const normalizedHeaders = headerRow.map((header) =>
@@ -3216,18 +3207,13 @@
       }
     }
 
-    const highestEfficiencyOverlayKey = findHighestEfficiencyOverlayKey(
-      nextEfficiencyPoints,
-    );
-    if (highestEfficiencyOverlayKey) {
+    if (
+      permissibleUseSourceKey === "efficiency_higher_end" ||
+      permissibleUseSourceKey === "efficiency_lower_end"
+    ) {
       for (const point of nextEfficiencyPoints) {
-        if (
-          point.permissible_use != null &&
-          point.permissible_use !== ""
-        ) {
-          continue;
-        }
-        const sourceValue = point?.[highestEfficiencyOverlayKey];
+        if (point.permissible_use != null && point.permissible_use !== "") continue;
+        const sourceValue = point?.[permissibleUseSourceKey];
         if (sourceValue == null || sourceValue === "") continue;
         point.permissible_use = sourceValue;
       }
@@ -3337,6 +3323,9 @@
       const imported = buildImportedGraphState(cleanedRows, {
         downsampleImportedCurves,
         downsamplePointCount: downsamplePointCount ?? 5,
+        permissibleUseSourceKey: graphCsvUseLowerEfficiencyLine
+          ? "efficiency_lower_end"
+          : "efficiency_higher_end",
       });
       rpmLines = imported.rpmLines;
       rpmPoints = imported.rpmPoints;
@@ -3345,7 +3334,7 @@
       graphCsvFileName = fileName;
       graphCsvImportSignature = `${selectedProductId ?? ""}|${downsampleImportedCurves ? "1" : "0"}|${
         downsampleImportedCurves ? downsamplePointCount : "full"
-      }`;
+      }|${graphCsvUseLowerEfficiencyLine ? "lower" : "upper"}`;
       const validTargets = new Set([
         ...rpmLines.map((line) => `rpm:${line.id}`),
         ...currentOverlayLineDefinitions().map(
@@ -3850,6 +3839,16 @@
     savingProductDetails = true;
     try {
       if (editingProductId) {
+        // Save graph changes before the product details. Replacing graph data
+        // recreates RPM lines, so saving the acoustic table first can leave it
+        // out of sync with the new lines and discard the edited values.
+        if (saveMapData) {
+          await saveMapPoints({
+            showSuccess: false,
+            clearMessages: false,
+            reloadAfterSave: false,
+          });
+        }
         currentProduct = await updateProduct(editingProductId, body);
         products = await getProducts();
         if (!saveMapData && showSuccess) {
@@ -3868,11 +3867,7 @@
         mode = "editExisting";
       }
       if (mode !== "create" && editingProductId && saveMapData) {
-        await saveMapPoints({
-          showSuccess: false,
-          clearMessages: false,
-          reloadAfterSave: true,
-        });
+        await loadProductData();
         if (showSuccess) {
           addSuccess("All changes saved.");
         }
@@ -6429,6 +6424,22 @@
                             Downsample imported curves
                           </label>
                         </div>
+                        {#if productSupportsGraphOverlays()}
+                          <div class="form-check form-switch mb-0">
+                            <input
+                              class="form-check-input"
+                              id="graph-csv-permissible-source-lower"
+                              type="checkbox"
+                              bind:checked={graphCsvUseLowerEfficiencyLine}
+                            />
+                            <label
+                              class="form-check-label"
+                              for="graph-csv-permissible-source-lower"
+                            >
+                              Generate missing permissible use from lower efficiency line
+                            </label>
+                          </div>
+                        {/if}
                         <div>
                           <label
                             class="form-label form-label-sm mb-1"
@@ -6464,6 +6475,13 @@
                           Imported curves are injected at full resolution.
                         {/if}
                       </p>
+                      {#if productSupportsGraphOverlays()}
+                        <p class="text-body-secondary small mb-2">
+                          Missing permissible-use values are copied from the
+                          {graphCsvUseLowerEfficiencyLine ? " lower" : " upper"}
+                          efficiency line. Uploaded permissible-use values are preserved.
+                        </p>
+                      {/if}
                       {#if productSupportsGraphOverlays()}
                         <p class="text-body-secondary small mb-2">
                           Imported efficiency and permissible overlay points
@@ -6768,6 +6786,44 @@
                           These scale the current draft values for each overlay
                           column and round the result back to whole numbers.
                         </p>
+                        <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                          <span class="small text-body-secondary me-1">
+                            Switch efficiency lines:
+                          </span>
+                          <button
+                            class="btn btn-outline-secondary btn-sm"
+                            type="button"
+                            on:click={() =>
+                              swapEfficiencyLineFields(
+                                "efficiency_centre",
+                                "efficiency_lower_end",
+                                "Centre",
+                                "Lower End",
+                              )}
+                          >Centre ↔ Lower End</button>
+                          <button
+                            class="btn btn-outline-secondary btn-sm"
+                            type="button"
+                            on:click={() =>
+                              swapEfficiencyLineFields(
+                                "efficiency_centre",
+                                "efficiency_higher_end",
+                                "Centre",
+                                "Higher End",
+                              )}
+                          >Centre ↔ Higher End</button>
+                          <button
+                            class="btn btn-outline-secondary btn-sm"
+                            type="button"
+                            on:click={() =>
+                              swapEfficiencyLineFields(
+                                "efficiency_lower_end",
+                                "efficiency_higher_end",
+                                "Lower End",
+                                "Higher End",
+                              )}
+                          >Lower End ↔ Higher End</button>
+                        </div>
                         <div class="table-responsive">
                           <table
                             class="table table-sm align-middle editable-table mb-0"

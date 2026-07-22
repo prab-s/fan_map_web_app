@@ -232,6 +232,7 @@ function ProductWorkspace($$renderer, $$props) {
     let graphCsvFileName = "";
     let graphCsvDownsampleImportedCurves = true;
     let graphCsvDownsamplePointCount = 5;
+    let graphCsvUseLowerEfficiencyLine = false;
     let graphCsvImportSource = { rows: [], fileName: "", productId: null };
     let graphCsvImportSignature = "";
     let graphCsvPreview = null;
@@ -732,26 +733,6 @@ function ProductWorkspace($$renderer, $$props) {
       const rowsWithZeroAirflowFallback = carryForwardGraphCsvZeroAirflowValues(rows);
       return rowsWithZeroAirflowFallback.map((row, rowIndex) => row.map((cell, cellIndex) => rowIndex === 0 ? normalizeGraphCsvHeader(cell) : normalizeGraphCsvCell(cell)));
     }
-    function findHighestEfficiencyOverlayKey(points) {
-      const overlayKeys = [
-        "efficiency_centre",
-        "efficiency_higher_end",
-        "efficiency_lower_end"
-      ];
-      let bestKey = null;
-      let bestValue = Number.NEGATIVE_INFINITY;
-      for (const key of overlayKeys) {
-        for (const point of points ?? []) {
-          const rawValue = point?.[key];
-          if (rawValue === "" || rawValue == null) continue;
-          const value = Number(rawValue);
-          if (!Number.isFinite(value) || value <= bestValue) continue;
-          bestValue = value;
-          bestKey = key;
-        }
-      }
-      return bestKey;
-    }
     function buildGraphCsvPreview(rows, fileName) {
       if (!Array.isArray(rows) || !rows.length) return null;
       const normalizedRows = normalizeGraphCsvRows(rows);
@@ -982,7 +963,11 @@ function ProductWorkspace($$renderer, $$props) {
         clearTimeout(successDismissTimeout);
       }
     });
-    function buildImportedGraphState(rows, { downsampleImportedCurves = true, downsamplePointCount = 5 } = {}) {
+    function buildImportedGraphState(rows, {
+      downsampleImportedCurves = true,
+      downsamplePointCount = 5,
+      permissibleUseSourceKey = "efficiency_higher_end"
+    } = {}) {
       const [headerRow, ...dataRows] = rows;
       const normalizedHeaders = headerRow.map((header) => String(header ?? "").trim());
       const airflowHeader = normalizedHeaders[0]?.toLowerCase();
@@ -1083,13 +1068,10 @@ function ProductWorkspace($$renderer, $$props) {
           }
         }
       }
-      const highestEfficiencyOverlayKey = findHighestEfficiencyOverlayKey(nextEfficiencyPoints);
-      if (highestEfficiencyOverlayKey) {
+      if (permissibleUseSourceKey === "efficiency_higher_end" || permissibleUseSourceKey === "efficiency_lower_end") {
         for (const point of nextEfficiencyPoints) {
-          if (point.permissible_use != null && point.permissible_use !== "") {
-            continue;
-          }
-          const sourceValue = point?.[highestEfficiencyOverlayKey];
+          if (point.permissible_use != null && point.permissible_use !== "") continue;
+          const sourceValue = point?.[permissibleUseSourceKey];
           if (sourceValue == null || sourceValue === "") continue;
           point.permissible_use = sourceValue;
         }
@@ -1163,14 +1145,15 @@ function ProductWorkspace($$renderer, $$props) {
         const downsamplePointCount = downsampleImportedCurves ? normalizeGraphCsvDownsampleCount(graphCsvDownsamplePointCount) : null;
         const imported = buildImportedGraphState(cleanedRows, {
           downsampleImportedCurves,
-          downsamplePointCount: downsamplePointCount ?? 5
+          downsamplePointCount: downsamplePointCount ?? 5,
+          permissibleUseSourceKey: graphCsvUseLowerEfficiencyLine ? "efficiency_lower_end" : "efficiency_higher_end"
         });
         rpmLines = imported.rpmLines;
         rpmPoints = imported.rpmPoints;
         efficiencyPoints = imported.efficiencyPoints;
         syncFanAcousticTableWithRpmLines(rpmLines);
         graphCsvFileName = fileName;
-        graphCsvImportSignature = `${selectedProductId ?? ""}|${downsampleImportedCurves ? "1" : "0"}|${downsampleImportedCurves ? downsamplePointCount : "full"}`;
+        graphCsvImportSignature = `${selectedProductId ?? ""}|${downsampleImportedCurves ? "1" : "0"}|${downsampleImportedCurves ? downsamplePointCount : "full"}|${graphCsvUseLowerEfficiencyLine ? "lower" : "upper"}`;
         const validTargets = /* @__PURE__ */ new Set([
           ...rpmLines.map((line) => `rpm:${line.id}`),
           ...currentOverlayLineDefinitions().map((definition) => `efficiency:${definition.key}`)
@@ -1585,7 +1568,7 @@ function ProductWorkspace($$renderer, $$props) {
         }
       }
     }
-    if (graphCsvImportSource.rows.length && graphCsvImportSource.productId === selectedProductId && `${selectedProductId ?? ""}|${"1"}|${String(graphCsvDownsamplePointCount)}` !== graphCsvImportSignature) {
+    if (graphCsvImportSource.rows.length && graphCsvImportSource.productId === selectedProductId && `${selectedProductId ?? ""}|${"1"}|${String(graphCsvDownsamplePointCount)}|${"upper"}` !== graphCsvImportSignature) {
       applyImportedGraphCsvSource({
         rows: graphCsvImportSource.rows,
         fileName: graphCsvImportSource.fileName || "graph-data.csv",
@@ -2564,7 +2547,14 @@ function ProductWorkspace($$renderer, $$props) {
               } else {
                 $$renderer4.push("<!--[-1-->");
               }
-              $$renderer4.push(`<!--]--></p> <label class="form-label" for="graph-csv-file">Import Graph CSV or XLSX file</label> <div class="d-flex flex-wrap align-items-end gap-3 mb-2"><div class="form-check form-switch mb-0"><input class="form-check-input" id="graph-csv-downsample-enabled" type="checkbox"${attr("checked", graphCsvDownsampleImportedCurves, true)}/> <label class="form-check-label" for="graph-csv-downsample-enabled">Downsample imported curves</label></div> <div><label class="form-label form-label-sm mb-1" for="graph-csv-downsample-count">Points per curve</label> <input class="form-control form-control-sm" id="graph-csv-downsample-count" type="text" inputmode="numeric" pattern="[0-9]*" min="1" step="1"${attr("value", graphCsvDownsamplePointCount)}${attr("disabled", !graphCsvDownsampleImportedCurves, true)} style="width: 7rem;"/></div></div> <p class="text-body-secondary small mb-2">`);
+              $$renderer4.push(`<!--]--></p> <label class="form-label" for="graph-csv-file">Import Graph CSV or XLSX file</label> <div class="d-flex flex-wrap align-items-end gap-3 mb-2"><div class="form-check form-switch mb-0"><input class="form-check-input" id="graph-csv-downsample-enabled" type="checkbox"${attr("checked", graphCsvDownsampleImportedCurves, true)}/> <label class="form-check-label" for="graph-csv-downsample-enabled">Downsample imported curves</label></div> `);
+              if (productSupportsGraphOverlays()) {
+                $$renderer4.push("<!--[0-->");
+                $$renderer4.push(`<div class="form-check form-switch mb-0"><input class="form-check-input" id="graph-csv-permissible-source-lower" type="checkbox"${attr("checked", graphCsvUseLowerEfficiencyLine, true)}/> <label class="form-check-label" for="graph-csv-permissible-source-lower">Generate missing permissible use from lower efficiency line</label></div>`);
+              } else {
+                $$renderer4.push("<!--[-1-->");
+              }
+              $$renderer4.push(`<!--]--> <div><label class="form-label form-label-sm mb-1" for="graph-csv-downsample-count">Points per curve</label> <input class="form-control form-control-sm" id="graph-csv-downsample-count" type="text" inputmode="numeric" pattern="[0-9]*" min="1" step="1"${attr("value", graphCsvDownsamplePointCount)}${attr("disabled", !graphCsvDownsampleImportedCurves, true)} style="width: 7rem;"/></div></div> <p class="text-body-secondary small mb-2">`);
               {
                 $$renderer4.push("<!--[0-->");
                 $$renderer4.push(`Each imported curve is resampled across its valid axis
@@ -2572,6 +2562,15 @@ function ProductWorkspace($$renderer, $$props) {
                           draft.`);
               }
               $$renderer4.push(`<!--]--></p> `);
+              if (productSupportsGraphOverlays()) {
+                $$renderer4.push("<!--[0-->");
+                $$renderer4.push(`<p class="text-body-secondary small mb-2">Missing permissible-use values are copied from the
+                          ${escape_html(" upper")}
+                          efficiency line. Uploaded permissible-use values are preserved.</p>`);
+              } else {
+                $$renderer4.push("<!--[-1-->");
+              }
+              $$renderer4.push(`<!--]--> `);
               if (productSupportsGraphOverlays()) {
                 $$renderer4.push("<!--[0-->");
                 $$renderer4.push(`<p class="text-body-secondary small mb-2">Imported efficiency and permissible overlay points
@@ -2636,7 +2635,7 @@ function ProductWorkspace($$renderer, $$props) {
               if (productSupportsGraphOverlays()) {
                 $$renderer4.push("<!--[0-->");
                 $$renderer4.push(`<div class="card shadow-sm"><div class="card-body"><h6 class="card-title mb-3">Efficiency / permissible points</h6> <div class="row g-2 mb-3"><div class="col-12 col-md-3"><label class="form-label form-label-sm" for="scale-efficiency-centre">Centre scale factor</label> <div class="input-group input-group-sm"><input class="form-control" id="scale-efficiency-centre" type="number" step="any"${attr("value", efficiencyScaleFactors.efficiency_centre)}/> <button class="btn btn-outline-secondary" type="button">Apply</button></div></div> <div class="col-12 col-md-3"><label class="form-label form-label-sm" for="scale-efficiency-lower">Lower scale factor</label> <div class="input-group input-group-sm"><input class="form-control" id="scale-efficiency-lower" type="number" step="any"${attr("value", efficiencyScaleFactors.efficiency_lower_end)}/> <button class="btn btn-outline-secondary" type="button">Apply</button></div></div> <div class="col-12 col-md-3"><label class="form-label form-label-sm" for="scale-efficiency-higher">Higher scale factor</label> <div class="input-group input-group-sm"><input class="form-control" id="scale-efficiency-higher" type="number" step="any"${attr("value", efficiencyScaleFactors.efficiency_higher_end)}/> <button class="btn btn-outline-secondary" type="button">Apply</button></div></div> <div class="col-12 col-md-3"><label class="form-label form-label-sm" for="scale-permissible-use">Permissible scale factor</label> <div class="input-group input-group-sm"><input class="form-control" id="scale-permissible-use" type="number" step="any"${attr("value", efficiencyScaleFactors.permissible_use)}/> <button class="btn btn-outline-secondary" type="button">Apply</button></div></div></div> <p class="text-body-secondary small mb-3">These scale the current draft values for each overlay
-                          column and round the result back to whole numbers.</p> <div class="table-responsive"><table class="table table-sm align-middle editable-table mb-0"><thead><tr><th>${escape_html(graphXAxisLabel())}</th><th>Efficiency Centre</th><th>Efficiency Lower End</th><th>Efficiency Higher End</th><th>Permissible Use</th><th>Actions</th></tr></thead><tbody><!--[-->`);
+                          column and round the result back to whole numbers.</p> <div class="d-flex flex-wrap align-items-center gap-2 mb-3"><span class="small text-body-secondary me-1">Switch efficiency lines:</span> <button class="btn btn-outline-secondary btn-sm" type="button">Centre ↔ Lower End</button> <button class="btn btn-outline-secondary btn-sm" type="button">Centre ↔ Higher End</button> <button class="btn btn-outline-secondary btn-sm" type="button">Lower End ↔ Higher End</button></div> <div class="table-responsive"><table class="table table-sm align-middle editable-table mb-0"><thead><tr><th>${escape_html(graphXAxisLabel())}</th><th>Efficiency Centre</th><th>Efficiency Lower End</th><th>Efficiency Higher End</th><th>Permissible Use</th><th>Actions</th></tr></thead><tbody><!--[-->`);
                 const each_array_31 = ensure_array_like(efficiencyPoints);
                 for (let $$index_31 = 0, $$length = each_array_31.length; $$index_31 < $$length; $$index_31++) {
                   let p = each_array_31[$$index_31];

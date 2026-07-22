@@ -227,6 +227,9 @@ class CatalogueCache:
     def home_product_types(self) -> list[dict]:
         return build_home_product_types(self.product_types(), self.products(), self.series_list())
 
+    def snapshot(self) -> CatalogueSnapshot:
+        return self._snapshot
+
     async def refresh_best_effort(self):
         try:
             await self.refresh()

@@ -756,12 +756,15 @@ def apply_product_type_presets(
     preset_lines: list,
     preset_efficiency_points: list,
     product_template_id: str | None = None,
+    series_template_id: str | None = None,
     printed_product_template_id: str | None = None,
     online_product_template_id: str | None = None,
 ):
     apply_product_type_parameter_presets(product_type, preset_groups)
     apply_product_type_rpm_line_presets(product_type, preset_lines)
     apply_product_type_efficiency_point_presets(product_type, preset_efficiency_points)
+    product_template_id = validate_template_id(product_template_id, "product")
+    product_type.series_template_id = validate_template_id(series_template_id, "series")
     if printed_product_template_id is None and online_product_template_id is None:
         printed_product_template_id = product_template_id
         online_product_template_id = product_template_id
@@ -770,7 +773,7 @@ def apply_product_type_presets(
     product_type.product_template_id = (
         product_type.online_product_template_id
         or product_type.printed_product_template_id
-        or validate_template_id(product_template_id, "product")
+        or product_template_id
     )
 
 
@@ -3312,6 +3315,16 @@ def _series_tab_layout(page_height: float, tab_count: int) -> list[tuple[float, 
 def render_pdf_from_html(html_content: str, output_path: Path, stylesheet_text: str | None = None) -> None:
     browser_binary = find_chromium_binary()
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    render_started = time.perf_counter()
+    logger.info(
+        "[pdf-render] starting browser=%s html_bytes=%d css_bytes=%d images=%d tables=%d",
+        browser_binary,
+        len(html_content.encode("utf-8")),
+        len((stylesheet_text or "").encode("utf-8")),
+        html_content.lower().count("<img"),
+        html_content.lower().count("<table"),
+    )
+    timeout_seconds = max(float(os.getenv("PDF_RENDER_TIMEOUT_SECONDS", "120")), 1.0)
 
     with tempfile.TemporaryDirectory(prefix="pdf-render-") as temp_dir_name:
         temp_dir = Path(temp_dir_name)
@@ -3324,23 +3337,42 @@ def render_pdf_from_html(html_content: str, output_path: Path, stylesheet_text: 
         for headless_flag in ("--headless", "--headless=new"):
             if output_path.exists():
                 output_path.unlink()
-            result = subprocess.run(
-                [
-                    browser_binary,
+            attempt_started = time.perf_counter()
+            try:
+                result = subprocess.run(
+                    [
+                        browser_binary,
+                        headless_flag,
+                        "--disable-gpu",
+                        "--no-sandbox",
+                        "--disable-dev-shm-usage",
+                        "--allow-file-access-from-files",
+                        "--print-to-pdf-no-header",
+                        f"--print-to-pdf={output_path}",
+                        html_path.as_uri(),
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout_seconds,
+                )
+            except subprocess.TimeoutExpired as exc:
+                logger.error(
+                    "[pdf-render] Chromium timed out after %.1fs flag=%s total_elapsed=%.1fs",
+                    timeout_seconds,
                     headless_flag,
-                    "--disable-gpu",
-                    "--no-sandbox",
-                    "--disable-dev-shm-usage",
-                    "--allow-file-access-from-files",
-                    "--print-to-pdf-no-header",
-                    f"--print-to-pdf={output_path}",
-                    html_path.as_uri(),
-                ],
-                capture_output=True,
-                text=True,
+                    time.perf_counter() - render_started,
+                )
+                raise RuntimeError(f"Chromium PDF rendering exceeded {timeout_seconds:g} seconds.") from exc
+            logger.info(
+                "[pdf-render] browser finished flag=%s elapsed=%.1fs exit_code=%s output_bytes=%d",
+                headless_flag,
+                time.perf_counter() - attempt_started,
+                result.returncode,
+                output_path.stat().st_size if output_path.is_file() else 0,
             )
             last_result = result
             if output_path.is_file() and output_path.stat().st_size > 0:
+                logger.info("[pdf-render] completed total_elapsed=%.1fs", time.perf_counter() - render_started)
                 return
 
         if last_result is None:
@@ -4193,12 +4225,23 @@ def generate_product_pdf(product: Product, variant: str, progress_callback=None)
 
 def generate_product_pdfs(product: Product, progress_callback=None) -> Path:
     printed_output_path = product_pdf_path(product, "printed")
-    return generate_product_pdf_variant(
+    generate_product_pdf_variant(
         product,
         "printed",
         printed_output_path,
         progress_callback=progress_callback,
     )
+    online_output_path = product_pdf_path(product, "online")
+    if product_pdf_templates_match(product):
+        shutil.copyfile(printed_output_path, online_output_path)
+    else:
+        generate_product_pdf_variant(
+            product,
+            "online",
+            online_output_path,
+            progress_callback=progress_callback,
+        )
+    return printed_output_path
 
 
 def get_template_label(template_id: str | None, template_type: str) -> str:
@@ -7208,6 +7251,7 @@ def create_product_type(body: ProductTypeCreate, db: Session = Depends(get_db)):
         graph_y_axis_label=(body.graph_y_axis_label or "").strip() or None,
         graph_y_axis_unit=(body.graph_y_axis_unit or "").strip() or None,
         product_type_template_id=validate_template_id(body.product_type_template_id, "product_type"),
+        series_template_id=validate_template_id(body.series_template_id, "series"),
         printed_product_template_id=printed_product_template_id,
         online_product_template_id=online_product_template_id,
         product_template_id=online_product_template_id or printed_product_template_id,
@@ -7246,6 +7290,9 @@ def update_product_type(product_type_id: int, body: ProductTypeUpdate, db: Sessi
         if not label:
             raise HTTPException(status_code=400, detail="Product type label cannot be blank.")
         product_type.label = label
+
+    if "series_template_id" in updates:
+        product_type.series_template_id = validate_template_id(updates.pop("series_template_id"), "series")
 
     if any(field in updates for field in ("product_template_id", "printed_product_template_id", "online_product_template_id")):
         printed_product_template_id, online_product_template_id = resolve_template_pair(
@@ -7362,6 +7409,7 @@ def update_product_type_parameter_group_presets(
         body.rpm_line_presets,
         body.efficiency_point_presets,
         body.product_template_id,
+        body.series_template_id,
         body.printed_product_template_id,
         body.online_product_template_id,
     )
@@ -7929,6 +7977,10 @@ def create_series(body: SeriesCreate, db: Session = Depends(get_db)):
         body.printed_template_id,
         body.online_template_id,
     )
+    if printed_template_id is None and online_template_id is None:
+        series_template_id = validate_template_id(product_type.series_template_id, "series")
+        printed_template_id = series_template_id
+        online_template_id = series_template_id
 
     series = Series(
         product_type_id=product_type.id,
@@ -9212,9 +9264,9 @@ def start_refresh_product_pdf_job(product_id: int):
                     generate_product_pdfs(product, progress_callback=_make_progress_window(progress, 15, 95))
                     progress(f"Copying the rendered product PDF to both printed and online files for {product_label}", 96, 100)
                 else:
-                    progress(f"Rendering printed product PDF for {product_label}", 15, 100)
+                    progress(f"Rendering printed and online product PDFs for {product_label} because their templates differ", 15, 100)
                     generate_product_pdfs(product, progress_callback=_make_progress_window(progress, 15, 95))
-                    progress(f"Rendering online product PDF for {product_label}", 96, 100)
+                    progress(f"Printed and online product PDFs generated for {product_label}", 96, 100)
             except Exception as exc:
                 logger.exception("[maintenance:refresh_product_pdf_%s] pdf rendering failed for %s", product_id, product_label)
                 raise_job_phase_error(f"Product {product_label}", "PDF rendering", exc)
@@ -9310,9 +9362,9 @@ def start_regenerate_all_product_pdfs_job():
                         generate_product_pdfs(product, progress_callback=_make_progress_window(item_progress, 20, 90))
                         item_progress(f"Copying the rendered product PDF to both printed and online files for {product.model}", 95, 100)
                     else:
-                        item_progress(f"Rendering printed PDF for {product.model}", 20, 100)
+                        item_progress(f"Rendering printed and online PDFs for {product.model} because their templates differ", 20, 100)
                         generate_product_pdfs(product, progress_callback=_make_progress_window(item_progress, 20, 90))
-                        item_progress(f"Rendering online PDF for {product.model}", 90, 100)
+                        item_progress(f"Printed and online PDFs generated for {product.model}", 95, 100)
                 except Exception as exc:
                     logger.exception("[maintenance:regenerate_all_product_pdfs] pdf rendering failed for %s", product.model)
                     raise_job_phase_error(f"Product {product.model}", "PDF rendering", exc)

@@ -172,22 +172,24 @@
     return 'Default';
   }
 
-  function productPdfTemplateLabels(product) {
-    return {
-      printed: templateLabel('product', product?.printed_template_id, product?.template_id || 'product-default'),
-      online: templateLabel('product', product?.online_template_id, product?.template_id || 'product-default')
-    };
-  }
-
-  function seriesPdfTemplateLabels(series) {
-    return {
-      printed: templateLabel('series', series?.printed_template_id, series?.template_id || 'series-default'),
-      online: templateLabel('series', series?.online_template_id, series?.template_id || 'series-default')
-    };
+  function productPdfTemplateLabel(product) {
+    return templateLabel(
+      'product',
+      product?.printed_template_id,
+      product?.template_id || product?.online_template_id || 'product-default'
+    );
   }
 
   function productTypePdfTemplateLabel(productType) {
     return templateLabel('product_type', productType?.product_type_template_id, 'product_type-default');
+  }
+
+  function seriesPdfTemplateLabel(series) {
+    return templateLabel(
+      'series',
+      series?.printed_template_id,
+      series?.template_id || series?.online_template_id || 'series-default'
+    );
   }
 
   function productTypePdfPreviewUrl(productType) {
@@ -202,13 +204,13 @@
     return `${baseUrl}${separator}v=${revision}`;
   }
 
-  function productPdfPreviewUrl(product, variant) {
-    const baseUrl = variant === 'printed' ? product?.product_printed_pdf_url : product?.product_online_pdf_url;
+  function productPdfPreviewUrl(product) {
+    const baseUrl = product?.product_printed_pdf_url || product?.product_pdf_url || product?.product_online_pdf_url;
     return versionedPdfPreviewUrl(baseUrl, productPdfPreviewRevision);
   }
 
-  function seriesPdfPreviewUrl(series, variant) {
-    const baseUrl = variant === 'printed' ? series?.series_printed_pdf_url : series?.series_online_pdf_url;
+  function seriesPdfPreviewUrl(series) {
+    const baseUrl = series?.series_printed_pdf_url || series?.series_pdf_url || series?.series_online_pdf_url;
     return versionedPdfPreviewUrl(baseUrl, seriesPdfPreviewRevision);
   }
 
@@ -491,7 +493,7 @@
       refreshingProductPdfJob = job;
       await refreshViewerAfterProductMutation();
       productPdfPreviewRevision += 1;
-      success = `Generated printed and online PDFs for ${product.model}.`;
+      success = `Generated PDF for ${product.model}.`;
     } catch (e) {
       error = e.message;
     } finally {
@@ -560,7 +562,7 @@
       refreshingSeriesPdfJob = job;
       await refreshViewerAfterSeriesMutation();
       seriesPdfPreviewRevision += 1;
-      success = `Generated printed and online PDFs for ${series.name}.`;
+      success = `Generated PDF for ${series.name}.`;
     } catch (e) {
       error = e.message;
     } finally {
@@ -799,7 +801,7 @@
   $: selectedProductTypeContextMissingSeries =
     selectedProductTypeContext?.series?.filter((series) => Number(series.page_count || 0) === 0) || [];
   $: selectedProductTypeContextWarning = selectedProductTypeContextMissingSeries.length
-    ? 'One or more linked series PDFs are missing or not generated yet, so this PDF context is incomplete.'
+    ? 'One or more linked series PDF files are missing or not generated yet, so this PDF context is incomplete.'
     : '';
 
   function reviewMissingSeriesPdfContext() {
@@ -1010,23 +1012,15 @@
               {refreshingProductGraphId === currentProduct.id ? 'Generating Graph...' : 'Generate Graph'}
             </button>
             <button class="btn btn-outline-secondary btn-sm" on:click={() => regenerateProductPdf(currentProduct)} disabled={refreshingProductPdfJob?.status === 'running'}>
-              {refreshingProductPdfJob?.status === 'running' ? 'Generating PDFs...' : 'Generate PDFs'}
+              {refreshingProductPdfJob?.status === 'running' ? 'Generating PDF...' : 'Generate PDF'}
             </button>
             <a class="btn btn-outline-primary btn-sm" href={productEditorUrl(currentProduct.id)}>Open in Editor</a>
             {#if currentProduct.graph_image_url}
               <a class="btn btn-outline-secondary btn-sm" href={currentProduct.graph_image_url} target="_blank" rel="noreferrer">Open Graph</a>
             {/if}
-            {#if currentProduct.product_printed_pdf_url}
-              <a class="btn btn-outline-secondary btn-sm" href={currentProduct.product_printed_pdf_url} target="_blank" rel="noreferrer">Open Printed PDF</a>
+            {#if currentProduct.product_printed_pdf_url || currentProduct.product_pdf_url || currentProduct.product_online_pdf_url}
+              <a class="btn btn-outline-secondary btn-sm" href={currentProduct.product_printed_pdf_url || currentProduct.product_pdf_url || currentProduct.product_online_pdf_url} target="_blank" rel="noreferrer">Open PDF</a>
             {/if}
-            {#if currentProduct.product_online_pdf_url}
-              <a class="btn btn-outline-secondary btn-sm" href={currentProduct.product_online_pdf_url} target="_blank" rel="noreferrer">Open Online PDF</a>
-            {:else if currentProduct.product_pdf_url}
-              <a class="btn btn-outline-secondary btn-sm" href={currentProduct.product_pdf_url} target="_blank" rel="noreferrer">Open Existing PDF</a>
-            {/if}
-          </div>
-          <div class="small text-body-secondary mt-2">
-            Printed template: {productPdfTemplateLabels(currentProduct).printed} · Online template: {productPdfTemplateLabels(currentProduct).online}
           </div>
           <JobProgressPanel job={refreshingProductPdfJob} label="Product PDF generation" />
 
@@ -1043,17 +1037,13 @@
             <div>{currentProduct.series_name || '—'}</div>
           </div>
         </div>
-      </div>
-
-      {#if getCurrentProductType()}
-        <div class="mt-3">
-          <SeriesNamesBadgeList
-            seriesNames={getCurrentProductType()?.series_names || []}
-            title={`Series names for ${getCurrentProductType()?.label || 'this product type'}`}
-            emptyLabel="This product type has no linked series yet."
-          />
+        <div class="col-12 col-md-3">
+          <div class="viewer-metric">
+            <div class="viewer-metric-label">Printed PDF template</div>
+            <div>{productPdfTemplateLabel(currentProduct)}</div>
+          </div>
         </div>
-      {/if}
+      </div>
     </div>
   </div>
 
@@ -1195,28 +1185,15 @@
 
         <div class="card shadow-sm">
           <div class="card-body">
-            <h3 class="h5">Product PDFs</h3>
-          {#if currentProduct.product_printed_pdf_url || (!currentProduct.product_online_pdf_url && currentProduct.product_pdf_url)}
+            <h3 class="h5">Product PDF</h3>
+          {#if currentProduct.product_printed_pdf_url || currentProduct.product_pdf_url || currentProduct.product_online_pdf_url}
             <div class="vstack gap-3 mt-3">
-              {#if currentProduct.product_printed_pdf_url}
-                <div>
-                  <div class="small text-body-secondary mb-2">Printed</div>
-                  <div class="ratio ratio-16x9">
-                    <iframe src={productPdfPreviewUrl(currentProduct, 'printed')} title={`${currentProduct.model} printed PDF preview`}></iframe>
-                  </div>
-                </div>
-              {/if}
-              {#if !currentProduct.product_printed_pdf_url && currentProduct.product_pdf_url}
-                <div>
-                  <div class="small text-body-secondary mb-2">Existing</div>
-                  <div class="ratio ratio-16x9">
-                    <iframe src={versionedPdfPreviewUrl(currentProduct.product_pdf_url, productPdfPreviewRevision)} title={`${currentProduct.model} PDF preview`}></iframe>
-                  </div>
-                </div>
-              {/if}
+              <div class="ratio ratio-16x9">
+                <iframe src={productPdfPreviewUrl(currentProduct)} title={`${currentProduct.model} PDF preview`}></iframe>
+              </div>
             </div>
           {:else}
-            <p class="text-body-secondary mb-0">No product PDFs generated yet.</p>
+            <p class="text-body-secondary mb-0">No product PDF generated yet.</p>
           {/if}
           </div>
         </div>
@@ -1293,6 +1270,12 @@
                     <div class="viewer-metric">
                       <div class="viewer-metric-label">PDF</div>
                       <div>{selectedProductTypeRecord.product_type_pdf_url ? 'Available' : 'Not generated yet'}</div>
+                    </div>
+                  </div>
+                  <div class="col-12 col-md-4">
+                    <div class="viewer-metric">
+                      <div class="viewer-metric-label">Product type PDF template</div>
+                      <div>{productTypePdfTemplateLabel(selectedProductTypeRecord)}</div>
                     </div>
                   </div>
                 </div>
@@ -1431,19 +1414,21 @@
                 {refreshingSeriesGraphId === selectedSeriesRecord.id ? 'Generating Graph...' : 'Generate Series Graph'}
               </button>
               <button class="btn btn-outline-secondary btn-sm" on:click={() => regenerateSeriesPdfAsset(selectedSeriesRecord)} disabled={refreshingSeriesPdfJob?.status === 'running'}>
-                {refreshingSeriesPdfJob?.status === 'running' ? 'Generating PDFs...' : 'Generate Series PDFs'}
+                {refreshingSeriesPdfJob?.status === 'running' ? 'Generating PDF...' : 'Generate Series PDF'}
               </button>
-              {#if selectedSeriesRecord.series_printed_pdf_url}
-                <a class="btn btn-outline-secondary btn-sm" href={selectedSeriesRecord.series_printed_pdf_url} target="_blank" rel="noreferrer">Open Printed PDF</a>
+              {#if selectedSeriesRecord.series_printed_pdf_url || selectedSeriesRecord.series_pdf_url || selectedSeriesRecord.series_online_pdf_url}
+                <a class="btn btn-outline-secondary btn-sm" href={selectedSeriesRecord.series_printed_pdf_url || selectedSeriesRecord.series_pdf_url || selectedSeriesRecord.series_online_pdf_url} target="_blank" rel="noreferrer">Open PDF</a>
               {/if}
-              {#if !selectedSeriesRecord.series_printed_pdf_url && selectedSeriesRecord.series_pdf_url}
-                <a class="btn btn-outline-secondary btn-sm" href={selectedSeriesRecord.series_pdf_url} target="_blank" rel="noreferrer">Open Existing PDF</a>
-              {/if}
-            </div>
-            <div class="small text-body-secondary mb-3">
-              Printed template: {seriesPdfTemplateLabels(selectedSeriesRecord).printed} · Online template: {seriesPdfTemplateLabels(selectedSeriesRecord).online}
             </div>
             <JobProgressPanel job={refreshingSeriesPdfJob} label="Series PDF generation" />
+            <div class="row g-3 mb-3">
+              <div class="col-12 col-md-4">
+                <div class="viewer-metric">
+                  <div class="viewer-metric-label">Series PDF template</div>
+                  <div>{seriesPdfTemplateLabel(selectedSeriesRecord)}</div>
+                </div>
+              </div>
+            </div>
 
             <div class="card series-graph-card shadow-sm mb-3">
               <div class="card-body">
@@ -1509,28 +1494,15 @@
 
         <div class="card shadow-sm">
           <div class="card-body">
-            <h3 class="h5">Series PDFs</h3>
-            {#if selectedSeriesRecord.series_printed_pdf_url || (!selectedSeriesRecord.series_online_pdf_url && selectedSeriesRecord.series_pdf_url)}
-              <div class="vstack gap-3 mt-3">
-                {#if selectedSeriesRecord.series_printed_pdf_url}
-                  <div>
-                    <div class="small text-body-secondary mb-2">Printed</div>
-                    <div class="ratio ratio-16x9">
-                      <iframe src={seriesPdfPreviewUrl(selectedSeriesRecord, 'printed')} title={`${selectedSeriesRecord.name} printed PDF preview`}></iframe>
-                    </div>
-                  </div>
-                {/if}
-                {#if !selectedSeriesRecord.series_printed_pdf_url && selectedSeriesRecord.series_pdf_url}
-                  <div>
-                    <div class="small text-body-secondary mb-2">Existing</div>
-                    <div class="ratio ratio-16x9">
-                      <iframe src={versionedPdfPreviewUrl(selectedSeriesRecord.series_pdf_url, seriesPdfPreviewRevision)} title={`${selectedSeriesRecord.name} PDF preview`}></iframe>
-                    </div>
-                  </div>
-                {/if}
+            <h3 class="h5">Series PDF</h3>
+            {#if selectedSeriesRecord.series_printed_pdf_url || selectedSeriesRecord.series_pdf_url || selectedSeriesRecord.series_online_pdf_url}
+            <div class="vstack gap-3 mt-3">
+              <div class="ratio ratio-16x9">
+                <iframe src={seriesPdfPreviewUrl(selectedSeriesRecord)} title={`${selectedSeriesRecord.name} PDF preview`}></iframe>
+            </div>
               </div>
             {:else}
-              <p class="text-body-secondary mb-0">No series PDFs generated yet.</p>
+              <p class="text-body-secondary mb-0">No series PDF generated yet.</p>
             {/if}
           </div>
         </div>

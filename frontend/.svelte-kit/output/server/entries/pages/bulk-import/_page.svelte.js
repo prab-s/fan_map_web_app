@@ -11,12 +11,14 @@ function _page($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
     let targetOptions;
     const DEFAULT_PRODUCT_TYPE_KEY = "fan";
+    const NEW_SERIES_SELECTION = "new";
     let workbookFiles = [];
     let downsampleImportedCurves = true;
     let downsamplePointCount = 5;
     let productTypes = [];
     let selectedProductTypeKey = DEFAULT_PRODUCT_TYPE_KEY;
     let selectedWorkbookSeriesId = "";
+    let selectedWorkbookSeriesName = "";
     let imageFiles = [];
     let imageTargetKind = "product";
     let imageTargetId = "";
@@ -51,6 +53,7 @@ function _page($$renderer, $$props) {
       return item.name || `Series ${item.id}`;
     }
     function resolveSelectedWorkbookSeriesId() {
+      if (selectedWorkbookSeriesId === NEW_SERIES_SELECTION) return NEW_SERIES_SELECTION;
       if (!selectedWorkbookSeriesId) return "";
       if (!series.length) return selectedWorkbookSeriesId;
       return filteredSeries.some((item) => String(item.id) === String(selectedWorkbookSeriesId)) ? String(selectedWorkbookSeriesId) : "";
@@ -144,6 +147,9 @@ function _page($$renderer, $$props) {
         $$renderer3.option({ value: "" }, ($$renderer4) => {
           $$renderer4.push(`No default series`);
         });
+        $$renderer3.option({ value: NEW_SERIES_SELECTION }, ($$renderer4) => {
+          $$renderer4.push(`Create a new series`);
+        });
         $$renderer3.push(`<!--[-->`);
         const each_array = ensure_array_like(filteredSeries);
         for (let $$index = 0, $$length = each_array.length; $$index < $$length; $$index++) {
@@ -155,7 +161,14 @@ function _page($$renderer, $$props) {
         $$renderer3.push(`<!--]-->`);
       }
     );
-    $$renderer2.push(` <div class="form-text">Sheets can inherit this series or override it individually in the dry run.</div></div></div></div></div> <div class="d-flex flex-wrap gap-2 mt-3"><button class="btn btn-outline-secondary" type="button"${attr("disabled", workbookFiles.length === 0, true)}>${escape_html("Analyse Workbook")}</button> <button class="btn btn-primary" type="button"${attr("disabled", workbookFiles.length === 0, true)}>${escape_html("Run Import")}</button></div> `);
+    $$renderer2.push(` `);
+    if (selectedWorkbookSeriesId === NEW_SERIES_SELECTION) {
+      $$renderer2.push("<!--[0-->");
+      $$renderer2.push(`<input class="form-control mt-2" type="text"${attr("value", selectedWorkbookSeriesName)} placeholder="New series name" aria-label="New default series name"/>`);
+    } else {
+      $$renderer2.push("<!--[-1-->");
+    }
+    $$renderer2.push(`<!--]--> <div class="form-text">Sheets can inherit this series or override it individually in the dry run.</div></div></div></div></div> <div class="d-flex flex-wrap gap-2 mt-3"><button class="btn btn-outline-secondary" type="button"${attr("disabled", workbookFiles.length === 0, true)}>${escape_html("Analyse Workbook")}</button> <button class="btn btn-primary" type="button"${attr("disabled", workbookFiles.length === 0, true)}>${escape_html("Run Import")}</button></div> `);
     {
       $$renderer2.push("<!--[-1-->");
     }

@@ -113,6 +113,7 @@ class ProductTypeEfficiencyPointPresetUpdate(BaseModel):
 
 class ProductTypePresetUpdate(BaseModel):
     product_template_id: Optional[str] = None
+    series_template_id: Optional[str] = None
     printed_product_template_id: Optional[str] = None
     online_product_template_id: Optional[str] = None
     parameter_group_presets: list[ProductTypeParameterGroupPresetUpdate] = Field(default_factory=list)
@@ -142,6 +143,7 @@ class ProductTypeResponse(BaseModel):
     graph_y_axis_unit: Optional[str] = None
     product_type_template_id: Optional[str] = None
     product_template_id: Optional[str] = None
+    series_template_id: Optional[str] = None
     printed_product_template_id: Optional[str] = None
     online_product_template_id: Optional[str] = None
     contents_icon_url: Optional[str] = None
@@ -172,6 +174,7 @@ class ProductTypeCreate(BaseModel):
     graph_y_axis_unit: Optional[str] = None
     product_type_template_id: Optional[str] = None
     product_template_id: Optional[str] = None
+    series_template_id: Optional[str] = None
     printed_product_template_id: Optional[str] = None
     online_product_template_id: Optional[str] = None
     contents_icon_url: Optional[str] = None

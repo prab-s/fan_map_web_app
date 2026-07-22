@@ -257,6 +257,7 @@ def _ensure_product_type_columns(target_engine):
         "graph_y_axis_label": "VARCHAR(128)",
         "graph_y_axis_unit": "VARCHAR(64)",
         "product_template_id": "VARCHAR(128)",
+        "series_template_id": "VARCHAR(128)",
         "printed_product_template_id": "VARCHAR(128)",
         "online_product_template_id": "VARCHAR(128)",
         "contents_icon_url": "VARCHAR(512)",
@@ -1068,6 +1069,7 @@ def _remove_deprecated_product_type_secondary_axis_label(target_engine):
                     graph_y_axis_label VARCHAR(128),
                     graph_y_axis_unit VARCHAR(64),
                     product_template_id VARCHAR(128),
+                    series_template_id VARCHAR(128),
                     printed_product_template_id VARCHAR(128),
                     online_product_template_id VARCHAR(128)
                 )
@@ -1093,6 +1095,7 @@ def _remove_deprecated_product_type_secondary_axis_label(target_engine):
                     graph_y_axis_label,
                     graph_y_axis_unit,
                     product_template_id,
+                    series_template_id,
                     printed_product_template_id,
                     online_product_template_id
                 )
@@ -1112,6 +1115,7 @@ def _remove_deprecated_product_type_secondary_axis_label(target_engine):
                     graph_y_axis_label,
                     graph_y_axis_unit,
                     product_template_id,
+                    series_template_id,
                     printed_product_template_id,
                     online_product_template_id
                 FROM product_types
