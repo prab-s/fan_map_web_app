@@ -77,10 +77,20 @@
   <section class="col-lg-9 finder-layout__results">
     <div class="card shadow-sm border-0 mb-4 section-card">
       <div class="card-body">
-        <h2 class="h5 mb-3">Browse by product type</h2>
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
+          <h2 class="h5 mb-0">Browse by product type</h2>
+          <a class="btn btn-outline-secondary btn-sm text-end ms-auto flex-shrink-0" href="{{ media_url((all_product_types_pdf or {}).url or '/api/public/media/all-product-types-pdf') }}" target="_blank" rel="noopener">
+            <span class="d-block fw-semibold">📑 Download Full Catalogue PDF</span>
+            {% if all_product_types_pdf and all_product_types_pdf.size %}
+              <span class="d-block small text-muted">{{ all_product_types_pdf.size }}</span>
+            {% else %}
+              <span class="d-block small text-muted">PDF catalogue</span>
+            {% endif %}
+          </a>
+        </div>
         <div class="d-flex flex-wrap gap-2">
           {% for type in product_types %}
-            <a class="btn btn-outline-secondary btn-sm" href="{{ product_type_url(type) }}">{{ type.label }}</a>
+          <a class="btn btn-outline-secondary btn-sm" href="{{ product_type_url(type) }}">{{ type.label }}</a>
           {% endfor %}
         </div>
       </div>

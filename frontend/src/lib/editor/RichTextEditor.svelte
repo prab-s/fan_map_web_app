@@ -10,6 +10,15 @@
   let lastHtml = '';
   let savedRange;
 
+  const fontOptions = [
+    { value: 'Arial', label: 'Arial' },
+    { value: 'Georgia', label: 'Georgia' },
+    { value: 'Helvetica', label: 'Helvetica' },
+    { value: 'Tahoma', label: 'Tahoma' },
+    { value: 'Times New Roman', label: 'Times New Roman' },
+    { value: 'Verdana', label: 'Verdana' }
+  ];
+
   function syncEditor() {
     if (!editor || document.activeElement === editor) return;
     const nextHtml = value || '';
@@ -52,19 +61,40 @@
     command('foreColor', color);
   }
 
+  function chooseFont(event) {
+    const font = event.currentTarget.value;
+    if (!font) return;
+    editor?.focus();
+    restoreSelection();
+    command('fontName', font);
+    event.currentTarget.value = '';
+  }
+
   onMount(syncEditor);
 
   $: syncEditor();
 </script>
 
 <div class="rich-text-editor">
-  <div class="btn-toolbar gap-1 mb-2" role="toolbar" aria-label="Text formatting">
-    <button class="btn btn-sm btn-outline-secondary" type="button" title="Bold" aria-label="Bold" on:mousedown|preventDefault={() => command('bold')}><strong>B</strong></button>
-    <button class="btn btn-sm btn-outline-secondary" type="button" title="Italic" aria-label="Italic" on:mousedown|preventDefault={() => command('italic')}><em>I</em></button>
-    <button class="btn btn-sm btn-outline-secondary" type="button" title="Underline" aria-label="Underline" on:mousedown|preventDefault={() => command('underline')}><u>U</u></button>
-    <button class="btn btn-sm btn-outline-secondary" type="button" title="Strikethrough" aria-label="Strikethrough" on:mousedown|preventDefault={() => command('strikeThrough')}>S̶</button>
-    <button class="btn btn-sm btn-outline-secondary" type="button" title="Bulleted list" aria-label="Bulleted list" on:mousedown|preventDefault={() => command('insertUnorderedList')}>• List</button>
-    <button class="btn btn-sm btn-outline-secondary" type="button" title="Numbered list" aria-label="Numbered list" on:mousedown|preventDefault={() => command('insertOrderedList')}>1. List</button>
+  <div class="rich-text-editor__toolbar" role="toolbar" aria-label="Text formatting">
+    <div class="btn-group btn-group-sm" role="group" aria-label="Text style">
+      <button class="btn btn-outline-secondary" type="button" title="Bold" aria-label="Bold" on:mousedown|preventDefault={() => command('bold')}><strong>B</strong></button>
+      <button class="btn btn-outline-secondary" type="button" title="Italic" aria-label="Italic" on:mousedown|preventDefault={() => command('italic')}><em>I</em></button>
+      <button class="btn btn-outline-secondary" type="button" title="Underline" aria-label="Underline" on:mousedown|preventDefault={() => command('underline')}><u>U</u></button>
+      <button class="btn btn-outline-secondary" type="button" title="Strikethrough" aria-label="Strikethrough" on:mousedown|preventDefault={() => command('strikeThrough')}>S̶</button>
+    </div>
+    <select class="form-select form-select-sm rich-text-editor__font" aria-label="Font" title="Font" on:mousedown={saveSelection} on:change={chooseFont}>
+      <option value="">Font</option>
+      {#each fontOptions as font}
+        <option value={font.value} style={`font-family: ${font.value}`}>{font.label}</option>
+      {/each}
+    </select>
+    <div class="btn-group btn-group-sm" role="group" aria-label="Paragraph formatting">
+      <button class="btn btn-outline-secondary" type="button" title="Decrease indent" aria-label="Decrease indent" on:mousedown|preventDefault={() => command('outdent')}>⇤</button>
+      <button class="btn btn-outline-secondary" type="button" title="Increase indent" aria-label="Increase indent" on:mousedown|preventDefault={() => command('indent')}>⇥</button>
+      <button class="btn btn-outline-secondary" type="button" title="Bulleted list" aria-label="Bulleted list" on:mousedown|preventDefault={() => command('insertUnorderedList')}>•</button>
+      <button class="btn btn-outline-secondary" type="button" title="Numbered list" aria-label="Numbered list" on:mousedown|preventDefault={() => command('insertOrderedList')}>1.</button>
+    </div>
     <label class="btn btn-sm btn-outline-secondary mb-0" title="Text colour" aria-label="Text colour">
       <span aria-hidden="true">A</span>
       <input class="rich-text-editor__color" type="color" bind:value={color} on:mousedown={saveSelection} on:change={chooseColor} />
@@ -90,6 +120,18 @@
     min-height: 8rem;
     white-space: normal;
     overflow-wrap: anywhere;
+  }
+
+  .rich-text-editor__toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .rich-text-editor__font {
+    width: 9.5rem;
   }
 
   .rich-text-editor__surface--short {

@@ -26,6 +26,7 @@
     startRegenerateAllProductPdfsJob,
     startRegenerateAllSeriesPdfsJob,
     startRegenerateAllProductTypePdfsJob,
+    startRefreshAllProductTypesPdfJob,
     startRefreshCustomerFacingCacheJob,
     startRestoreDataBackupBundleJob,
     startRestoreDatabaseBackupBundleJob,
@@ -1532,6 +1533,35 @@
               </div>
               {#if maintenanceJob && isProductTypePdfMaintenanceJob()}
                 <JobProgressPanel job={maintenanceJob} label="Product Type PDF regeneration" />
+              {/if}
+            </div>
+          </div>
+
+          <div class="card border mb-3">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                <div>
+                  <h3 class="h6 mb-1">All Product Types PDF</h3>
+                  <p class="mb-0 text-body-secondary">
+                    Build one combined catalogue with shared front matter and a contents page for each product type.
+                  </p>
+                </div>
+                <div class="d-flex gap-2 flex-wrap">
+                  <button
+                    class="btn btn-primary btn-sm"
+                    type="button"
+                    on:click={() => runMaintenanceJob(startRefreshAllProductTypesPdfJob, { successMessage: 'Combined all-product-types PDF generated.' })}
+                    disabled={maintenanceLoading}
+                  >
+                    Generate Combined PDF
+                  </button>
+                  <a class="btn btn-outline-secondary btn-sm" href="/api/public/media/all-product-types-pdf" target="_blank" rel="noreferrer">
+                    Open PDF
+                  </a>
+                </div>
+              </div>
+              {#if maintenanceJob && maintenanceJobTypeIncludes('all_product_types_pdf')}
+                <JobProgressPanel job={maintenanceJob} label="Combined catalogue PDF" />
               {/if}
             </div>
           </div>

@@ -51,6 +51,38 @@ class CatalogueApi:
     async def series(self, series_id):
         return await self._get(f"/api/public/series/{series_id}")
 
+    async def all_product_types_pdf(self):
+        metadata_path = "/api/public/catalogue/all-product-types-pdf"
+        media_path = "/api/public/media/all-product-types-pdf"
+        try:
+            metadata = await self._get(metadata_path)
+            if metadata.get("available") and metadata.get("size_bytes"):
+                return metadata
+        except (httpx.HTTPError, ValueError):
+            metadata = {}
+
+        # Keep the customer page useful while an older SIT backend is being
+        # refreshed: the PDF response itself exposes its exact byte length.
+        async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
+            try:
+                response = await client.head(f"{self.base_url}{media_path}")
+                response.raise_for_status()
+            except httpx.HTTPStatusError:
+                async with client.stream("GET", f"{self.base_url}{media_path}") as response:
+                    response.raise_for_status()
+                    content_length = response.headers.get("content-length")
+                    return {
+                        "available": True,
+                        "url": media_path,
+                        "size_bytes": int(content_length) if content_length else None,
+                    }
+            content_length = response.headers.get("content-length")
+            return {
+                "available": True,
+                "url": media_path,
+                "size_bytes": int(content_length) if content_length else None,
+            }
+
     def media_url(self, relative_url):
         if not relative_url:
             return None

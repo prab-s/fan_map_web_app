@@ -57,6 +57,18 @@
     return 'text-body-secondary';
   }
 
+  function logUser(line) {
+    const message = String(line?.message || '');
+    if (!message.startsWith('public-access ')) return '';
+
+    try {
+      const payload = JSON.parse(message.slice('public-access '.length));
+      return String(payload?.username || '').trim();
+    } catch {
+      return '';
+    }
+  }
+
   onMount(() => {
     streamStatus = 'connecting';
     streamError = '';
@@ -129,7 +141,12 @@
         <div class="terminal-line">
           <span class={`terminal-level ${levelClass(line.level)}`}>[{line.level}]</span>
           <span class="terminal-timestamp">{line.timestamp}</span>
-          <span class="terminal-message">{line.message}</span>
+          <span class="terminal-message">
+            {#if logUser(line)}
+              <span class="terminal-user">User: {logUser(line)} · </span>
+            {/if}
+            {line.message}
+          </span>
         </div>
       {/each}
     {:else}
@@ -185,5 +202,10 @@
 
   .terminal-message {
     color: #f8fafc;
+  }
+
+  .terminal-user {
+    color: #93c5fd;
+    font-weight: 700;
   }
 </style>

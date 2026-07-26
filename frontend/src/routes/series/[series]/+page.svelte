@@ -63,11 +63,8 @@
         </div>
 
         <div class="d-flex flex-wrap gap-2">
-          {#if series?.series_printed_pdf_url}
-            <a class="btn btn-outline-secondary" href={series.series_printed_pdf_url} target="_blank" rel="noreferrer">Printed PDF</a>
-          {/if}
-          {#if series?.series_pdf_url}
-            <a class="btn btn-primary" href={series.series_pdf_url} target="_blank" rel="noreferrer">Open PDF</a>
+          {#if series?.series_printed_pdf_url || series?.series_pdf_url}
+            <a class="btn btn-outline-secondary" href={series.series_printed_pdf_url || series.series_pdf_url} target="_blank" rel="noreferrer">PDF</a>
           {/if}
         </div>
       </div>

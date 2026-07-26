@@ -26,6 +26,19 @@
     return parsed ? parsed.toLocaleString() : String(value || '—');
   }
 
+  function normalizeDeviceType(value, userAgent = '') {
+    const candidate = String(value || '').trim().toLowerCase();
+    if (candidate.includes('mobile')) return 'mobile';
+    if (candidate.includes('tablet') || candidate.includes('ipad')) return 'tablet';
+    if (candidate.includes('desktop')) return 'desktop';
+
+    const ua = String(userAgent || '').toLowerCase();
+    if (ua.includes('ipad') || ua.includes('tablet')) return 'tablet';
+    if (ua.includes('mobile')) return 'mobile';
+    if (ua) return 'desktop';
+    return '';
+  }
+
   function summarizePayload(entry) {
     const payload = entry?.payload || {};
     const telemetry = payload.telemetry || {};
@@ -36,7 +49,7 @@
       duration_ms: payload.duration_ms ?? '—',
       referer: payload.referer || telemetry.referrer || '',
       user_agent: payload.user_agent || telemetry.user_agent || '',
-      device_type: payload.device_type || telemetry.device_type || '',
+      device_type: normalizeDeviceType(payload.device_type || telemetry.device_type, payload.user_agent || telemetry.user_agent),
       accept_language: payload.accept_language || telemetry.language || '',
       screen: telemetry.screen_width && telemetry.screen_height ? `${telemetry.screen_width}x${telemetry.screen_height}` : '—',
       viewport: telemetry.viewport_width && telemetry.viewport_height ? `${telemetry.viewport_width}x${telemetry.viewport_height}` : '—',
@@ -126,14 +139,14 @@
     return true;
   }
 
-  function applyFilters(entries) {
-    const needle = searchQuery.trim().toLowerCase();
+  function applyFilters(entries, currentSearchQuery, currentTimeWindow, currentDeviceFilter, currentRouteFilter) {
+    const needle = currentSearchQuery.trim().toLowerCase();
     return entries.filter((entry) => {
-      if (!isWithinWindow(entry, timeWindow)) return false;
+      if (!isWithinWindow(entry, currentTimeWindow)) return false;
       const routeGroup = entry.route_group || '';
       const pageRouteGroup = entry.page_route_group || '';
-      if (deviceFilter !== 'all' && entry.device_type !== deviceFilter) return false;
-      if (routeFilter !== 'all' && routeGroup !== routeFilter && pageRouteGroup !== routeFilter) return false;
+      if (currentDeviceFilter !== 'all' && entry.device_type !== currentDeviceFilter) return false;
+      if (currentRouteFilter !== 'all' && routeGroup !== currentRouteFilter && pageRouteGroup !== currentRouteFilter) return false;
       if (needle) {
         const haystack = [
           entry.path,
@@ -170,8 +183,7 @@
     return source;
   }
 
-  $: filteredEntries = applyFilters(rawEntries);
-  $: devices = buildDeviceSummaries(filteredEntries);
+  $: devices = applyFilters(buildDeviceSummaries(rawEntries), searchQuery, timeWindow, deviceFilter, routeFilter);
   $: visibleDeviceCount = devices.length;
   $: totalEventCount = rawEntries.length;
 

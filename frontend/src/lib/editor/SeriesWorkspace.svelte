@@ -15,7 +15,8 @@
   import {
     createDescriptionFieldPayload,
     createDescriptionSectionDrafts,
-    getDescriptionFieldCount
+    getDescriptionFieldCount,
+    renumberDescriptionSections
   } from '$lib/descriptionSections.js';
   import SeriesMediaPanel from '$lib/editor/SeriesMediaPanel.svelte';
   import RichTextEditor from '$lib/editor/RichTextEditor.svelte';
@@ -116,22 +117,23 @@
   }
 
   function addSeriesDescriptionSection() {
-    seriesDescriptionSections = [
+    seriesDescriptionSections = renumberDescriptionSections([
       ...seriesDescriptionSections,
       {
-        key: `description${seriesDescriptionSections.length + 1}_html`,
-        title: `Description ${seriesDescriptionSections.length + 1}`,
+        key: '',
+        title: '',
         html: ''
       }
-    ];
+    ]);
   }
 
   function removeSeriesDescriptionSection(index) {
     const nextSections = seriesDescriptionSections.filter((_, sectionIndex) => sectionIndex !== index);
-    seriesDescriptionSections =
+    seriesDescriptionSections = renumberDescriptionSections(
       nextSections.length > 0
         ? nextSections
-        : [{ key: 'description1_html', title: 'Description 1', html: '' }];
+        : [{ key: '', title: '', html: '' }]
+    );
   }
 
   $: if (mode === 'edit' && String(selectedSeriesId) !== String(appliedSeriesEditorUrlId)) {

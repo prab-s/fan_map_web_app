@@ -91,16 +91,9 @@ function ProductMediaPanel($$renderer, $$props) {
       $$renderer2.push("<!--[-1-->");
     }
     $$renderer2.push(`<!--]--> <button class="btn btn-outline-secondary"${attr("disabled", productPdfJob?.status === "running" || !selectedProductId, true)}>${escape_html(productPdfJob?.status === "running" ? "Generating PDF..." : "Generate Product PDF")}</button> `);
-    if (currentProduct?.product_printed_pdf_url) {
+    if (currentProduct?.product_printed_pdf_url || currentProduct?.product_pdf_url) {
       $$renderer2.push("<!--[0-->");
-      $$renderer2.push(`<a${attr("href", currentProduct.product_printed_pdf_url)} download="" class="btn btn-outline-secondary">Download Printed PDF</a>`);
-    } else {
-      $$renderer2.push("<!--[-1-->");
-    }
-    $$renderer2.push(`<!--]--> `);
-    if (!currentProduct?.product_printed_pdf_url && currentProduct?.product_pdf_url) {
-      $$renderer2.push("<!--[0-->");
-      $$renderer2.push(`<a${attr("href", currentProduct.product_pdf_url)} download="" class="btn btn-outline-secondary">Download Existing PDF</a>`);
+      $$renderer2.push(`<a${attr("href", currentProduct.product_printed_pdf_url || currentProduct.product_pdf_url)} download="" class="btn btn-outline-secondary">Download PDF</a>`);
     } else {
       $$renderer2.push("<!--[-1-->");
     }
@@ -1283,7 +1276,7 @@ function ProductWorkspace($$renderer, $$props) {
         refreshingProductPdfJob = job;
         await loadProductData();
         products = await getProducts();
-        addSuccess(`Printed and online product PDFs generated for ${productLabel}.`);
+        addSuccess(`Printed product PDF generated for ${productLabel}.`);
       } catch (e) {
         e.message;
       } finally {
@@ -2635,7 +2628,7 @@ function ProductWorkspace($$renderer, $$props) {
               if (productSupportsGraphOverlays()) {
                 $$renderer4.push("<!--[0-->");
                 $$renderer4.push(`<div class="card shadow-sm"><div class="card-body"><h6 class="card-title mb-3">Efficiency / permissible points</h6> <div class="row g-2 mb-3"><div class="col-12 col-md-3"><label class="form-label form-label-sm" for="scale-efficiency-centre">Centre scale factor</label> <div class="input-group input-group-sm"><input class="form-control" id="scale-efficiency-centre" type="number" step="any"${attr("value", efficiencyScaleFactors.efficiency_centre)}/> <button class="btn btn-outline-secondary" type="button">Apply</button></div></div> <div class="col-12 col-md-3"><label class="form-label form-label-sm" for="scale-efficiency-lower">Lower scale factor</label> <div class="input-group input-group-sm"><input class="form-control" id="scale-efficiency-lower" type="number" step="any"${attr("value", efficiencyScaleFactors.efficiency_lower_end)}/> <button class="btn btn-outline-secondary" type="button">Apply</button></div></div> <div class="col-12 col-md-3"><label class="form-label form-label-sm" for="scale-efficiency-higher">Higher scale factor</label> <div class="input-group input-group-sm"><input class="form-control" id="scale-efficiency-higher" type="number" step="any"${attr("value", efficiencyScaleFactors.efficiency_higher_end)}/> <button class="btn btn-outline-secondary" type="button">Apply</button></div></div> <div class="col-12 col-md-3"><label class="form-label form-label-sm" for="scale-permissible-use">Permissible scale factor</label> <div class="input-group input-group-sm"><input class="form-control" id="scale-permissible-use" type="number" step="any"${attr("value", efficiencyScaleFactors.permissible_use)}/> <button class="btn btn-outline-secondary" type="button">Apply</button></div></div></div> <p class="text-body-secondary small mb-3">These scale the current draft values for each overlay
-                          column and round the result back to whole numbers.</p> <div class="d-flex flex-wrap align-items-center gap-2 mb-3"><span class="small text-body-secondary me-1">Switch efficiency lines:</span> <button class="btn btn-outline-secondary btn-sm" type="button">Centre ↔ Lower End</button> <button class="btn btn-outline-secondary btn-sm" type="button">Centre ↔ Higher End</button> <button class="btn btn-outline-secondary btn-sm" type="button">Lower End ↔ Higher End</button></div> <div class="table-responsive"><table class="table table-sm align-middle editable-table mb-0"><thead><tr><th>${escape_html(graphXAxisLabel())}</th><th>Efficiency Centre</th><th>Efficiency Lower End</th><th>Efficiency Higher End</th><th>Permissible Use</th><th>Actions</th></tr></thead><tbody><!--[-->`);
+                          column and round the result back to whole numbers.</p> <div class="d-flex flex-wrap align-items-center gap-2 mb-3"><button class="btn btn-outline-primary btn-sm" type="button"${attr("disabled", !rpmLines.length || !rpmPoints.length || !efficiencyPoints.length, true)}>Scale lines to highest RPM</button> <span class="small text-body-secondary">Aligns each overlay line with the highest RPM curve at its peak airflow.</span></div> <div class="d-flex flex-wrap align-items-center gap-2 mb-3"><span class="small text-body-secondary me-1">Switch efficiency lines:</span> <button class="btn btn-outline-secondary btn-sm" type="button">Centre ↔ Lower End</button> <button class="btn btn-outline-secondary btn-sm" type="button">Centre ↔ Higher End</button> <button class="btn btn-outline-secondary btn-sm" type="button">Lower End ↔ Higher End</button></div> <div class="table-responsive"><table class="table table-sm align-middle editable-table mb-0"><thead><tr><th>${escape_html(graphXAxisLabel())}</th><th>Efficiency Centre</th><th>Efficiency Lower End</th><th>Efficiency Higher End</th><th>Permissible Use</th><th>Actions</th></tr></thead><tbody><!--[-->`);
                 const each_array_31 = ensure_array_like(efficiencyPoints);
                 for (let $$index_31 = 0, $$length = each_array_31.length; $$index_31 < $$length; $$index_31++) {
                   let p = each_array_31[$$index_31];

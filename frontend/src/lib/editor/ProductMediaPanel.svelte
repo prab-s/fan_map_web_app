@@ -87,11 +87,8 @@
         <button class="btn btn-outline-secondary" on:click={generateProductPdf} disabled={productPdfJob?.status === 'running' || !selectedProductId}>
           {productPdfJob?.status === 'running' ? 'Generating PDF...' : 'Generate Product PDF'}
         </button>
-        {#if currentProduct?.product_printed_pdf_url}
-          <a href={currentProduct.product_printed_pdf_url} download class="btn btn-outline-secondary">Download Printed PDF</a>
-        {/if}
-        {#if !currentProduct?.product_printed_pdf_url && currentProduct?.product_pdf_url}
-          <a href={currentProduct.product_pdf_url} download class="btn btn-outline-secondary">Download Existing PDF</a>
+        {#if currentProduct?.product_printed_pdf_url || currentProduct?.product_pdf_url}
+          <a href={currentProduct.product_printed_pdf_url || currentProduct.product_pdf_url} download class="btn btn-outline-secondary">Download PDF</a>
         {/if}
       </div>
       <JobProgressPanel job={productPdfJob} label="Product PDF generation" />

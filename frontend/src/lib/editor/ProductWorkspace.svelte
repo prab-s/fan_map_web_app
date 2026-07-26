@@ -51,6 +51,7 @@
     createDescriptionFieldPayload,
     createDescriptionSectionDrafts,
     getDescriptionFieldCount,
+    renumberDescriptionSections,
   } from "$lib/descriptionSections.js";
   import {
     buildFullChartOption,
@@ -687,6 +688,35 @@
     addSuccess(`Scaled ${field.replaceAll("_", " ")} values locally.`);
   }
 
+  function scaleEfficiencyLinesToHighestRpm() {
+    if (!efficiencyPoints.length) {
+      addSuccess("There are no efficiency/permissible points to scale.");
+      return;
+    }
+
+    const scaledPoints = applyLineByLineOverlayScaling(
+      efficiencyPoints,
+      rpmLines,
+      rpmPoints,
+    );
+
+    const changed = scaledPoints.some((point, index) =>
+      [
+        "efficiency_centre",
+        "efficiency_lower_end",
+        "efficiency_higher_end",
+        "permissible_use",
+      ].some((field) => point?.[field] !== efficiencyPoints[index]?.[field]),
+    );
+
+    efficiencyPoints = scaledPoints;
+    addSuccess(
+      changed
+        ? "Efficiency/permissible lines scaled to the highest RPM line locally. Save Changes to persist them."
+        : "Efficiency/permissible lines could not be scaled with the current graph data.",
+    );
+  }
+
   function swapEfficiencyLineFields(firstField, secondField, firstLabel, secondLabel) {
     efficiencyPoints = efficiencyPoints.map((point) => ({
       ...point,
@@ -1132,24 +1162,25 @@
   }
 
   function addProductDescriptionSection() {
-    productDescriptionSections = [
+    productDescriptionSections = renumberDescriptionSections([
       ...productDescriptionSections,
       {
-        key: `description${productDescriptionSections.length + 1}_html`,
-        title: `Description ${productDescriptionSections.length + 1}`,
+        key: "",
+        title: "",
         html: "",
       },
-    ];
+    ]);
   }
 
   function removeProductDescriptionSection(index) {
     const nextSections = productDescriptionSections.filter(
       (_, sectionIndex) => sectionIndex !== index,
     );
-    productDescriptionSections =
+    productDescriptionSections = renumberDescriptionSections(
       nextSections.length > 0
         ? nextSections
-        : [{ key: "description1_html", title: "Description 1", html: "" }];
+        : [{ key: "", title: "", html: "" }],
+    );
   }
 
   function resetProductEditor(productTypeKey = "") {
@@ -4235,9 +4266,7 @@
       refreshingProductPdfJob = job;
       await loadProductData();
       products = await getProducts();
-      addSuccess(
-        `Printed and online product PDFs generated for ${productLabel}.`,
-      );
+      addSuccess(`Printed product PDF generated for ${productLabel}.`);
     } catch (e) {
       error = e.message;
     } finally {
@@ -6786,6 +6815,17 @@
                           These scale the current draft values for each overlay
                           column and round the result back to whole numbers.
                         </p>
+                        <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                          <button
+                            class="btn btn-outline-primary btn-sm"
+                            type="button"
+                            on:click={scaleEfficiencyLinesToHighestRpm}
+                            disabled={!rpmLines.length || !rpmPoints.length || !efficiencyPoints.length}
+                          >Scale lines to highest RPM</button>
+                          <span class="small text-body-secondary">
+                            Aligns each overlay line with the highest RPM curve at its peak airflow.
+                          </span>
+                        </div>
                         <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
                           <span class="small text-body-secondary me-1">
                             Switch efficiency lines:

@@ -215,6 +215,8 @@ async def not_found(request: Request, exc):
 EOF
 
 cat > "$ROOT_DIR/app/routes/pages.py" <<'EOF'
+import re
+
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.templating import Jinja2Templates
 
@@ -228,6 +230,54 @@ templates = Jinja2Templates(directory="app/templates")
 async def common_context():
     product_types = await api.product_types()
     return {"product_types": product_types}
+
+
+def build_description_sections(record: dict) -> list[dict]:
+    sections = []
+
+    def append_legacy_description_four():
+        has_description_four = any(
+            str(section.get("key") or "").casefold() == "description4_html"
+            for section in sections
+        )
+        legacy_html = str(record.get("comments_html") or "")
+        if not has_description_four and legacy_html.strip():
+            sections.append({
+                "key": "description4_html",
+                "title": "Description 4",
+                "order": 4,
+                "html": legacy_html,
+            })
+
+    explicit_sections = record.get("description_sections")
+    if isinstance(explicit_sections, list) and explicit_sections:
+        for index, section in enumerate(explicit_sections, start=1):
+            section = section if isinstance(section, dict) else {}
+            html_value = section.get("html") or section.get("content") or section.get("body") or ""
+            sections.append({
+                "key": section.get("key") or f"description{index}_html",
+                "title": section.get("title") or section.get("label") or f"Description {index}",
+                "html": html_value,
+            })
+        append_legacy_description_four()
+        return sections
+
+    pattern = re.compile(r"^description(\d+)_html$", re.IGNORECASE)
+    for key, value in record.items():
+        match = pattern.match(str(key))
+        if match:
+            sections.append({
+                "key": key,
+                "title": f"Description {int(match.group(1))}",
+                "order": int(match.group(1)),
+                "html": value or "",
+            })
+
+    append_legacy_description_four()
+    sections.sort(key=lambda item: item["order"])
+    for section in sections:
+        section.pop("order", None)
+    return sections
 
 
 def build_product_graph_payload(product: dict, product_type: dict | None) -> dict:
@@ -533,6 +583,8 @@ async def series_page(request: Request, series_slug: str):
         "series": series,
         "product_type": product_type,
         "series_products": series_products,
+        "series_sections": build_description_sections(series),
+        "series_performance_table_html": series.get("performance_table_html") or "",
         "series_graph": build_series_graph_payload(series, product_type, series_products),
     })
 
@@ -554,6 +606,7 @@ async def product_page(request: Request, product_slug: str):
             f"/products/{product_slug}",
         ),
         "product": product,
+        "product_sections": build_description_sections(product),
         "product_graph": build_product_graph_payload(product, product_type),
     })
 
@@ -1065,11 +1118,11 @@ cat > "$ROOT_DIR/app/templates/series.html" <<'EOF'
     <h1 class="h2">{{ series.name }}</h1>
     <p class="text-muted">{{ series.product_type_label }}</p>
 
-    {% if series.description1_html %}
+    {% for section in series_sections %}
       <div class="content-block">
-        {{ series.description1_html | safe }}
+        {{ section.html | safe }}
       </div>
-    {% endif %}
+    {% endfor %}
 
     {% if series_graph.hasGraphData %}
       <div class="card my-4 product-graph-card">
@@ -1095,6 +1148,15 @@ cat > "$ROOT_DIR/app/templates/series.html" <<'EOF'
           <img class="img-fluid" src="{{ media_url(series.series_graph_image_url) }}" alt="{{ series.name }} graph">
         </div>
       </div>
+    {% endif %}
+
+    {% if series_performance_table_html %}
+      <section class="card my-4">
+        <div class="card-header fw-semibold">Performance table</div>
+        <div class="card-body">
+          {{ series_performance_table_html | safe }}
+        </div>
+      </section>
     {% endif %}
 
     <h2 class="h4 mt-4">Products in this series</h2>
@@ -1147,11 +1209,11 @@ cat > "$ROOT_DIR/app/templates/product.html" <<'EOF'
       >
     {% endif %}
 
-    {% if product.description1_html %}
+    {% for section in product_sections %}
       <div class="content-block mb-4">
-        {{ product.description1_html | safe }}
+        {{ section.html | safe }}
       </div>
-    {% endif %}
+    {% endfor %}
 
     {% if product_graph.hasGraphData %}
       <div class="card my-4 product-graph-card">

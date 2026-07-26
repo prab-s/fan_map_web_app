@@ -49,16 +49,9 @@ function _page($$renderer, $$props) {
       $$renderer2.push("<!--[-1-->");
     }
     $$renderer2.push(`<!--]--></p></div> <div class="d-flex flex-wrap gap-2">`);
-    if (series?.series_printed_pdf_url) {
+    if (series?.series_printed_pdf_url || series?.series_pdf_url) {
       $$renderer2.push("<!--[0-->");
-      $$renderer2.push(`<a class="btn btn-outline-secondary"${attr("href", series.series_printed_pdf_url)} target="_blank" rel="noreferrer">Printed PDF</a>`);
-    } else {
-      $$renderer2.push("<!--[-1-->");
-    }
-    $$renderer2.push(`<!--]--> `);
-    if (series?.series_pdf_url) {
-      $$renderer2.push("<!--[0-->");
-      $$renderer2.push(`<a class="btn btn-primary"${attr("href", series.series_pdf_url)} target="_blank" rel="noreferrer">Open PDF</a>`);
+      $$renderer2.push(`<a class="btn btn-outline-secondary"${attr("href", series.series_printed_pdf_url || series.series_pdf_url)} target="_blank" rel="noreferrer">PDF</a>`);
     } else {
       $$renderer2.push("<!--[-1-->");
     }

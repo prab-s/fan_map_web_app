@@ -47,7 +47,7 @@ async def proxy_public_media(request: Request, media_path: str):
             raise HTTPException(status_code=502, detail="Unable to reach media backend.") from exc
 
     headers = {}
-    for header_name in ("content-type", "cache-control", "content-disposition", "etag", "last-modified"):
+    for header_name in ("content-type", "content-length", "cache-control", "content-disposition", "etag", "last-modified"):
         if upstream.headers.get(header_name):
             headers[header_name] = upstream.headers[header_name]
 

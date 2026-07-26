@@ -134,11 +134,11 @@ function _page($$renderer, $$props) {
       return `${baseUrl}${separator}v=${revision}`;
     }
     function productPdfPreviewUrl(product) {
-      const baseUrl = product?.product_printed_pdf_url || product?.product_pdf_url || product?.product_online_pdf_url;
+      const baseUrl = product?.product_printed_pdf_url || product?.product_pdf_url;
       return versionedPdfPreviewUrl(baseUrl, productPdfPreviewRevision);
     }
     function seriesPdfPreviewUrl(series) {
-      const baseUrl = series?.series_printed_pdf_url || series?.series_pdf_url || series?.series_online_pdf_url;
+      const baseUrl = series?.series_printed_pdf_url || series?.series_pdf_url;
       return versionedPdfPreviewUrl(baseUrl, seriesPdfPreviewRevision);
     }
     function getCurrentGraphConfig() {
@@ -517,9 +517,9 @@ function _page($$renderer, $$props) {
           $$renderer2.push("<!--[-1-->");
         }
         $$renderer2.push(`<!--]--> `);
-        if (currentProduct.product_printed_pdf_url || currentProduct.product_pdf_url || currentProduct.product_online_pdf_url) {
+        if (currentProduct.product_printed_pdf_url || currentProduct.product_pdf_url) {
           $$renderer2.push("<!--[0-->");
-          $$renderer2.push(`<a class="btn btn-outline-secondary btn-sm"${attr("href", currentProduct.product_printed_pdf_url || currentProduct.product_pdf_url || currentProduct.product_online_pdf_url)} target="_blank" rel="noreferrer">Open PDF</a>`);
+          $$renderer2.push(`<a class="btn btn-outline-secondary btn-sm"${attr("href", currentProduct.product_printed_pdf_url || currentProduct.product_pdf_url)} target="_blank" rel="noreferrer">Open PDF</a>`);
         } else {
           $$renderer2.push("<!--[-1-->");
         }
@@ -621,7 +621,7 @@ function _page($$renderer, $$props) {
           $$renderer2.push(`<!----></div>`);
         }
         $$renderer2.push(`<!--]--></div></div> <div class="card shadow-sm"><div class="card-body"><h3 class="h5">Product PDF</h3> `);
-        if (currentProduct.product_printed_pdf_url || currentProduct.product_pdf_url || currentProduct.product_online_pdf_url) {
+        if (currentProduct.product_printed_pdf_url || currentProduct.product_pdf_url) {
           $$renderer2.push("<!--[0-->");
           $$renderer2.push(`<div class="vstack gap-3 mt-3"><div class="ratio ratio-16x9"><iframe${attr("src", productPdfPreviewUrl(currentProduct))}${attr("title", `${currentProduct.model} PDF preview`)}></iframe></div></div>`);
         } else {
@@ -828,9 +828,9 @@ function _page($$renderer, $$props) {
       if (selectedSeriesRecord) {
         $$renderer2.push("<!--[0-->");
         $$renderer2.push(`<div class="card shadow-sm"><div class="card-body"><h3 class="h5">Series Data</h3> <div class="text-body-secondary small mb-3">${escape_html(selectedSeriesRecord.name)} · ${escape_html(selectedSeriesRecord.product_count)} products</div> <div class="d-flex flex-wrap align-items-start gap-2 mb-3"><div class="me-auto"></div> <a class="btn btn-outline-primary btn-sm"${attr("href", seriesEditorUrl(selectedSeriesRecord.id))}>Open in Editor</a> <button class="btn btn-outline-secondary btn-sm"${attr("disabled", refreshingSeriesGraphId === selectedSeriesRecord.id, true)}>${escape_html(refreshingSeriesGraphId === selectedSeriesRecord.id ? "Generating Graph..." : "Generate Series Graph")}</button> <button class="btn btn-outline-secondary btn-sm"${attr("disabled", refreshingSeriesPdfJob?.status === "running", true)}>${escape_html("Generate Series PDF")}</button> `);
-        if (selectedSeriesRecord.series_printed_pdf_url || selectedSeriesRecord.series_pdf_url || selectedSeriesRecord.series_online_pdf_url) {
+        if (selectedSeriesRecord.series_printed_pdf_url || selectedSeriesRecord.series_pdf_url) {
           $$renderer2.push("<!--[0-->");
-          $$renderer2.push(`<a class="btn btn-outline-secondary btn-sm"${attr("href", selectedSeriesRecord.series_printed_pdf_url || selectedSeriesRecord.series_pdf_url || selectedSeriesRecord.series_online_pdf_url)} target="_blank" rel="noreferrer">Open PDF</a>`);
+          $$renderer2.push(`<a class="btn btn-outline-secondary btn-sm"${attr("href", selectedSeriesRecord.series_printed_pdf_url || selectedSeriesRecord.series_pdf_url)} target="_blank" rel="noreferrer">Open PDF</a>`);
         } else {
           $$renderer2.push("<!--[-1-->");
         }
@@ -882,7 +882,7 @@ function _page($$renderer, $$props) {
           $$renderer2.push(`<p class="text-body-secondary mb-0">No series images yet.</p>`);
         }
         $$renderer2.push(`<!--]--></div></div> <div class="card shadow-sm"><div class="card-body"><h3 class="h5">Series PDF</h3> `);
-        if (selectedSeriesRecord.series_printed_pdf_url || selectedSeriesRecord.series_pdf_url || selectedSeriesRecord.series_online_pdf_url) {
+        if (selectedSeriesRecord.series_printed_pdf_url || selectedSeriesRecord.series_pdf_url) {
           $$renderer2.push("<!--[0-->");
           $$renderer2.push(`<div class="vstack gap-3 mt-3"><div class="ratio ratio-16x9"><iframe${attr("src", seriesPdfPreviewUrl(selectedSeriesRecord))}${attr("title", `${selectedSeriesRecord.name} PDF preview`)}></iframe></div></div>`);
         } else {

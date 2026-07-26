@@ -205,12 +205,12 @@
   }
 
   function productPdfPreviewUrl(product) {
-    const baseUrl = product?.product_printed_pdf_url || product?.product_pdf_url || product?.product_online_pdf_url;
+    const baseUrl = product?.product_printed_pdf_url || product?.product_pdf_url;
     return versionedPdfPreviewUrl(baseUrl, productPdfPreviewRevision);
   }
 
   function seriesPdfPreviewUrl(series) {
-    const baseUrl = series?.series_printed_pdf_url || series?.series_pdf_url || series?.series_online_pdf_url;
+    const baseUrl = series?.series_printed_pdf_url || series?.series_pdf_url;
     return versionedPdfPreviewUrl(baseUrl, seriesPdfPreviewRevision);
   }
 
@@ -1018,8 +1018,8 @@
             {#if currentProduct.graph_image_url}
               <a class="btn btn-outline-secondary btn-sm" href={currentProduct.graph_image_url} target="_blank" rel="noreferrer">Open Graph</a>
             {/if}
-            {#if currentProduct.product_printed_pdf_url || currentProduct.product_pdf_url || currentProduct.product_online_pdf_url}
-              <a class="btn btn-outline-secondary btn-sm" href={currentProduct.product_printed_pdf_url || currentProduct.product_pdf_url || currentProduct.product_online_pdf_url} target="_blank" rel="noreferrer">Open PDF</a>
+            {#if currentProduct.product_printed_pdf_url || currentProduct.product_pdf_url}
+              <a class="btn btn-outline-secondary btn-sm" href={currentProduct.product_printed_pdf_url || currentProduct.product_pdf_url} target="_blank" rel="noreferrer">Open PDF</a>
             {/if}
           </div>
           <JobProgressPanel job={refreshingProductPdfJob} label="Product PDF generation" />
@@ -1186,7 +1186,7 @@
         <div class="card shadow-sm">
           <div class="card-body">
             <h3 class="h5">Product PDF</h3>
-          {#if currentProduct.product_printed_pdf_url || currentProduct.product_pdf_url || currentProduct.product_online_pdf_url}
+          {#if currentProduct.product_printed_pdf_url || currentProduct.product_pdf_url}
             <div class="vstack gap-3 mt-3">
               <div class="ratio ratio-16x9">
                 <iframe src={productPdfPreviewUrl(currentProduct)} title={`${currentProduct.model} PDF preview`}></iframe>
@@ -1416,8 +1416,8 @@
               <button class="btn btn-outline-secondary btn-sm" on:click={() => regenerateSeriesPdfAsset(selectedSeriesRecord)} disabled={refreshingSeriesPdfJob?.status === 'running'}>
                 {refreshingSeriesPdfJob?.status === 'running' ? 'Generating PDF...' : 'Generate Series PDF'}
               </button>
-              {#if selectedSeriesRecord.series_printed_pdf_url || selectedSeriesRecord.series_pdf_url || selectedSeriesRecord.series_online_pdf_url}
-                <a class="btn btn-outline-secondary btn-sm" href={selectedSeriesRecord.series_printed_pdf_url || selectedSeriesRecord.series_pdf_url || selectedSeriesRecord.series_online_pdf_url} target="_blank" rel="noreferrer">Open PDF</a>
+              {#if selectedSeriesRecord.series_printed_pdf_url || selectedSeriesRecord.series_pdf_url}
+                <a class="btn btn-outline-secondary btn-sm" href={selectedSeriesRecord.series_printed_pdf_url || selectedSeriesRecord.series_pdf_url} target="_blank" rel="noreferrer">Open PDF</a>
               {/if}
             </div>
             <JobProgressPanel job={refreshingSeriesPdfJob} label="Series PDF generation" />
@@ -1495,7 +1495,7 @@
         <div class="card shadow-sm">
           <div class="card-body">
             <h3 class="h5">Series PDF</h3>
-            {#if selectedSeriesRecord.series_printed_pdf_url || selectedSeriesRecord.series_pdf_url || selectedSeriesRecord.series_online_pdf_url}
+            {#if selectedSeriesRecord.series_printed_pdf_url || selectedSeriesRecord.series_pdf_url}
             <div class="vstack gap-3 mt-3">
               <div class="ratio ratio-16x9">
                 <iframe src={seriesPdfPreviewUrl(selectedSeriesRecord)} title={`${selectedSeriesRecord.name} PDF preview`}></iframe>

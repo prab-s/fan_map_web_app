@@ -26,6 +26,19 @@
     return parsed ? parsed.toLocaleString() : String(value || '—');
   }
 
+  function normalizeDeviceType(value, userAgent = '') {
+    const candidate = String(value || '').trim().toLowerCase();
+    if (candidate.includes('mobile')) return 'mobile';
+    if (candidate.includes('tablet') || candidate.includes('ipad')) return 'tablet';
+    if (candidate.includes('desktop')) return 'desktop';
+
+    const ua = String(userAgent || '').toLowerCase();
+    if (ua.includes('ipad') || ua.includes('tablet')) return 'tablet';
+    if (ua.includes('mobile')) return 'mobile';
+    if (ua) return 'desktop';
+    return '';
+  }
+
   function summarizeTelemetry(entry) {
     const telemetry = entry?.payload?.telemetry || {};
     return {
@@ -43,7 +56,7 @@
       languages: Array.isArray(telemetry.languages) ? telemetry.languages : [],
       platform: telemetry.platform || '',
       user_agent: telemetry.user_agent || '',
-      device_type: telemetry.device_type || '',
+      device_type: normalizeDeviceType(telemetry.device_type, telemetry.user_agent),
       touch_points: telemetry.touch_points ?? null
     };
   }
@@ -114,26 +127,25 @@
     return true;
   }
 
-  function applyFilters(entries) {
-    const needle = searchQuery.trim().toLowerCase();
+  function applyFilters(entries, currentSearchQuery, currentTimeWindow, currentDeviceFilter, currentRouteFilter) {
+    const needle = currentSearchQuery.trim().toLowerCase();
     return entries.filter((entry) => {
-      if (!isWithinWindow(entry, timeWindow)) return false;
-      const telemetry = summarizeTelemetry(entry);
-      const routeGroup = entry?.payload?.page_route_group || entry?.payload?.route_group || '';
-      if (deviceFilter !== 'all' && telemetry.device_type !== deviceFilter) return false;
-      if (routeFilter !== 'all' && routeGroup !== routeFilter) return false;
+      if (!isWithinWindow(entry, currentTimeWindow)) return false;
+      const routeGroup = entry.route_group || '';
+      if (currentDeviceFilter !== 'all' && entry.device_type !== currentDeviceFilter) return false;
+      if (currentRouteFilter !== 'all' && routeGroup !== currentRouteFilter) return false;
       if (needle) {
         const haystack = [
-          telemetry.page_url,
-          telemetry.referrer,
-          telemetry.user_agent,
-          telemetry.platform,
-          telemetry.language,
-          telemetry.languages.join(' '),
-          entry?.payload?.public_host,
-          entry?.payload?.public_ipv4,
-          entry?.payload?.public_ipv6,
-          entry?.payload?.public_source,
+          entry.page_url,
+          entry.referrer,
+          entry.user_agent,
+          entry.platform,
+          entry.language,
+          entry.languages.join(' '),
+          entry.public_host,
+          entry.public_ipv4,
+          entry.public_ipv6,
+          entry.public_source,
           routeGroup
         ]
           .filter(Boolean)
@@ -145,8 +157,7 @@
     });
   }
 
-  $: filteredEntries = applyFilters(rawEntries);
-  $: devices = buildDeviceSummaries(filteredEntries);
+  $: devices = applyFilters(buildDeviceSummaries(rawEntries), searchQuery, timeWindow, deviceFilter, routeFilter);
   $: visibleDeviceCount = devices.length;
   $: totalTelemetryCount = rawEntries.filter((entry) => entry?.payload?.event === 'browser-telemetry').length;
 

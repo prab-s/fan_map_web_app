@@ -68,6 +68,14 @@ export function createDescriptionSectionDrafts(record = {}) {
   return sections.length > 0 ? sections : [{ key: 'description1_html', title: 'Description 1', html: '' }];
 }
 
+export function renumberDescriptionSections(sections = []) {
+  return (Array.isArray(sections) ? sections : []).map((section, index) => ({
+    ...section,
+    key: `description${index + 1}_html`,
+    title: `Description ${index + 1}`
+  }));
+}
+
 export function createDescriptionFieldPayload(sections = [], previousFieldCount = 0) {
   const payload = {};
   const normalizedSections = Array.isArray(sections) ? sections : [];

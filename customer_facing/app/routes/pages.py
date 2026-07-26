@@ -124,6 +124,21 @@ def format_file_size(size_bytes) -> str:
 
 def build_description_sections(record: dict) -> list[dict]:
     sections: list[dict] = []
+
+    def append_legacy_description_four() -> None:
+        has_description_four = any(
+            str(section.get("key") or "").casefold() == "description4_html"
+            for section in sections
+        )
+        legacy_html = str(record.get("comments_html") or "")
+        if not has_description_four and legacy_html.strip():
+            sections.append({
+                "key": "description4_html",
+                "title": "Description 4",
+                "html": legacy_html,
+                "order": 4,
+            })
+
     explicit_sections = record.get("description_sections")
     if isinstance(explicit_sections, list) and explicit_sections:
         for index, section in enumerate(explicit_sections, start=1):
@@ -137,6 +152,7 @@ def build_description_sections(record: dict) -> list[dict]:
                 or f"Description {index}",
                 "html": html_value or "",
             })
+        append_legacy_description_four()
         return sections
 
     pattern = re.compile(r"^description(\d+)_html$", re.IGNORECASE)
@@ -151,19 +167,10 @@ def build_description_sections(record: dict) -> list[dict]:
             "html": value or "",
         })
 
+    append_legacy_description_four()
     sections.sort(key=lambda item: item.get("order", 0))
     for section in sections:
         section.pop("order", None)
-
-    has_explicit_comments = bool(str(record.get("comments_html") or "").strip())
-    max_description_index = 0
-    for section in sections:
-        match = re.search(r"(\d+)", str(section.get("key") or ""))
-        if match:
-            max_description_index = max(max_description_index, int(match.group(1)))
-
-    if not has_explicit_comments and max_description_index <= 4:
-        sections = [section for section in sections if section.get("key") != "description4_html"]
 
     return sections
 
@@ -494,6 +501,11 @@ async def products_page(request: Request):
             products = []
 
     context = await common_context()
+    try:
+        all_product_types_pdf = await api.all_product_types_pdf()
+    except Exception:
+        all_product_types_pdf = {"available": False}
+    all_product_types_pdf["size"] = format_file_size(all_product_types_pdf.get("size_bytes"))
     context.update({
         "request": request,
         "seo": seo_meta(
@@ -504,6 +516,7 @@ async def products_page(request: Request):
         "series": catalogue_cache.series_list(),
         "products": products,
         "search": search,
+        "all_product_types_pdf": all_product_types_pdf,
     })
 
     return templates.TemplateResponse(request, "products.html", context)
@@ -584,6 +597,7 @@ async def series_page(request: Request, series_slug: str):
         "product_type": product_type,
         "series_products": series_products,
         "series_sections": build_description_sections(series),
+        "series_performance_table_html": series.get("performance_table_html") or "",
         "series_graph": build_series_graph_payload(series, product_type, series_products),
         "product_type_downloads": build_downloads(
             product_type,

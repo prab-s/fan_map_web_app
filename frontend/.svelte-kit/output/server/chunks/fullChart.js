@@ -471,43 +471,53 @@ function buildCursorTooltipFormatter(graphConfig) {
     const formatted = formatTooltipCoordinateValue(value);
     return unit ? `${formatted} ${unit}` : formatted;
   }
-  return () => {
+  return (params) => {
     const cursorCoords = typeof window !== "undefined" ? window.__ECHARTS_HOVER_COORDS__ : null;
-    const cursorX = cursorCoords?.x ?? null;
-    const cursorY = cursorCoords?.y ?? null;
+    const items = Array.isArray(params) ? params : [params];
+    const firstItem = items.find((item) => item) ?? null;
+    const fallbackX = Array.isArray(firstItem?.value) ? firstItem.value[0] : firstItem?.axisValue;
+    const fallbackY = Array.isArray(firstItem?.value) ? firstItem.value[1] : null;
+    const cursorX = cursorCoords?.x ?? fallbackX;
+    const cursorY = cursorCoords?.y ?? fallbackY;
     return `{cursor|Cursor}
 Airflow: ${formatReading(cursorX, airflowUnit)}
 Pressure: ${formatReading(cursorY, pressureUnit)}`;
   };
 }
-function buildFullChartTooltipFormatter(graphConfig, lineDefinitions) {
-  const airflowUnit = String(graphConfig?.graph_x_axis_unit ?? DEFAULT_GRAPH_CONFIG.graph_x_axis_unit).trim();
-  const pressureUnit = String(graphConfig?.graph_y_axis_unit ?? DEFAULT_GRAPH_CONFIG.graph_y_axis_unit).trim();
-  function formatReading(value, unit) {
-    const formatted = formatTooltipCoordinateValue(value);
-    return unit ? `${formatted} ${unit}` : formatted;
-  }
-  return (params) => {
-    const items = Array.isArray(params) ? params : [params];
-    const visibleItems = items.filter((item) => {
-      const name = String(item.seriesName ?? "");
-      return !name.endsWith(" band") && !name.endsWith(" band faded") && !name.endsWith(" area");
-    });
-    if (!visibleItems.length) return "";
-    const cursorCoords = typeof window !== "undefined" ? window.__ECHARTS_HOVER_COORDS__ : null;
-    const cursorX = cursorCoords?.x ?? (Array.isArray(visibleItems[0]?.value) ? visibleItems[0].value[0] : visibleItems[0]?.axisValue);
-    const cursorY = cursorCoords?.y ?? (Array.isArray(visibleItems[0]?.value) ? visibleItems[0].value[1] : null);
-    const lines = [`<div style="margin-bottom:6px;font-weight:600;">Cursor</div><div>Airflow: ${formatReading(cursorX, airflowUnit)}</div><div>Pressure: ${formatReading(cursorY, pressureUnit)}</div>`];
-    for (const item of visibleItems) {
-      const name = String(item.seriesName ?? "");
-      const markerColor = item.color ?? "#2563eb";
-      const pointValue = Array.isArray(item.value) ? item.value[1] : item.value;
-      const xPointValue = Array.isArray(item.value) ? item.value[0] : item.axisValue;
-      lines.push(
-        `<div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;background:${markerColor};"></span>${name}: ${formatReading(xPointValue, airflowUnit)} - ${formatReading(pointValue, pressureUnit)}</div>`
-      );
-    }
-    return `<div>${lines.join("")}</div>`;
+function buildCursorTooltipOption(chartTheme, graphConfig = null) {
+  const chartFontFamily = chartTheme.fontFamily ?? "sans-serif";
+  return {
+    trigger: "axis",
+    renderMode: "richText",
+    z: 9999999,
+    axisPointer: {
+      type: "cross",
+      snap: false,
+      lineStyle: {
+        type: "dashed",
+        lineDash: [8, 8],
+        color: chartTheme.grid,
+        width: 2
+      },
+      label: {
+        show: false
+      }
+    },
+    backgroundColor: chartTheme.background,
+    borderColor: chartTheme.grid,
+    borderWidth: 1,
+    textStyle: {
+      color: chartTheme.text,
+      fontFamily: chartFontFamily,
+      rich: {
+        cursor: {
+          fontWeight: "bold"
+        }
+      }
+    },
+    padding: [8, 10],
+    confine: true,
+    formatter: buildCursorTooltipFormatter(graphConfig)
   };
 }
 function buildCursorPointGraphic(chartTheme, chartFontFamily, labelTextScale = 1) {
@@ -1559,47 +1569,20 @@ function buildFullChartOption({
         lineHeight: chartTitleFontSize
       }
     },
-    tooltip: tooltip ?? (graphMode === "product" ? {
-      trigger: "axis",
-      renderMode: "richText",
-      z: 9999999,
-      axisPointer: {
-        type: "cross",
-        snap: false,
-        lineStyle: {
-          type: "dashed",
-          color: chartTheme.grid,
-          width: 1
-        },
-        label: {
-          show: false
-        }
-      },
-      backgroundColor: chartTheme.background,
-      borderColor: chartTheme.grid,
-      borderWidth: 1,
-      textStyle: {
-        color: chartTheme.text,
-        fontFamily: chartFontFamily,
-        rich: {
-          cursor: {
-            fontWeight: "bold"
-          }
-        }
-      },
-      padding: [8, 10],
-      confine: true,
-      formatter: buildCursorTooltipFormatter(resolvedGraphConfig)
-    } : {
-      trigger: "axis",
-      axisPointer: { type: "line", snap: false },
-      formatter: buildFullChartTooltipFormatter(resolvedGraphConfig)
-    }),
+    tooltip: tooltip ?? buildCursorTooltipOption(chartTheme, resolvedGraphConfig),
     graphic: [buildCursorPointGraphic(chartTheme, chartFontFamily, resolvedLabelTextScale)],
     grid: { left: "7%", right: "5%", top: "6%", bottom: "8%", z: -1 },
     xAxis: {
       type: "value",
-      axisPointer: { snap: false },
+      axisPointer: {
+        snap: false,
+        lineStyle: {
+          type: "dashed",
+          lineDash: [8, 8],
+          color: chartTheme.grid,
+          width: 2
+        }
+      },
       name: xAxisName,
       nameLocation: "middle",
       nameGap: 32,
@@ -1623,7 +1606,15 @@ function buildFullChartOption({
     },
     yAxis: {
       type: "value",
-      axisPointer: { snap: false },
+      axisPointer: {
+        snap: false,
+        lineStyle: {
+          type: "dashed",
+          lineDash: [8, 8],
+          color: chartTheme.grid,
+          width: 2
+        }
+      },
       name: yAxisName,
       nameTextStyle: {
         color: chartTheme.text,

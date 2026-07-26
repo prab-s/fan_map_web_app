@@ -14,12 +14,6 @@ const PUBLIC_BROWSER_GRAPH_RENDER_OPTIONS = {
 
 const CURSOR_GRAPHIC_ID = 'cursor-point-marker';
 
-function formatIntegerCoordinate(value) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return '';
-  return String(Math.round(numeric));
-}
-
 function normalizeOption(_chart, nextOption) {
   return nextOption;
 }
@@ -31,28 +25,6 @@ function optionHasCursorGraphic(nextOption) {
       Array.isArray(nextOption.graphic) &&
       nextOption.graphic.some((element) => String(element?.id ?? '') === CURSOR_GRAPHIC_ID)
   );
-}
-
-function buildPublicTooltipFormatter(graphConfig) {
-  const airflowUnit = String(graphConfig?.graph_x_axis_unit || 'L/s').trim();
-  const pressureUnit = String(graphConfig?.graph_y_axis_unit || 'Pa').trim();
-
-  return (params) => {
-    const cursorCoords = typeof window !== 'undefined' ? window.__ECHARTS_HOVER_COORDS__ : null;
-    const items = Array.isArray(params) ? params : [params];
-    const firstItem = items.find((item) => item) ?? null;
-    const fallbackX = Array.isArray(firstItem?.value)
-      ? firstItem.value[0]
-      : firstItem?.axisValue;
-    const fallbackY = Array.isArray(firstItem?.value) ? firstItem.value[1] : null;
-    const cursorX = cursorCoords?.x ?? fallbackX;
-    const cursorY = cursorCoords?.y ?? fallbackY;
-    const xText = formatIntegerCoordinate(cursorX);
-    const yText = formatIntegerCoordinate(cursorY);
-
-    if (!xText && !yText) return '';
-    return `{cursor|Cursor}\nAirflow: ${xText}${airflowUnit ? ` ${airflowUnit}` : ''}\nPressure: ${yText}${pressureUnit ? ` ${pressureUnit}` : ''}`;
-  };
 }
 
 function flattenRpmPoints(rpmLines) {
@@ -95,38 +67,6 @@ export function buildPublicProductGraphOption(payload, themeName) {
     graphStyle: payload?.graphStyle ?? payload?.graphConfig ?? null,
     adaptGraphBackgroundToTheme: true,
     colorRpmLinesByBand: true,
-    tooltip: {
-      trigger: 'axis',
-      renderMode: 'richText',
-      z: 9999999,
-      axisPointer: {
-        type: 'cross',
-        snap: false,
-        lineStyle: {
-          type: 'dashed',
-          color: chartTheme.grid,
-          width: 1
-        },
-        label: {
-          show: false
-        }
-      },
-      backgroundColor: chartTheme.background,
-      borderColor: chartTheme.grid,
-      borderWidth: 1,
-      textStyle: {
-        color: chartTheme.text,
-        fontFamily: chartTheme.fontFamily,
-        rich: {
-          cursor: {
-            fontWeight: 'bold'
-          }
-        }
-      },
-      padding: [8, 10],
-      confine: true,
-      formatter: buildPublicTooltipFormatter(payload?.graphConfig || null)
-    },
     ...PUBLIC_BROWSER_GRAPH_RENDER_OPTIONS
   });
 }

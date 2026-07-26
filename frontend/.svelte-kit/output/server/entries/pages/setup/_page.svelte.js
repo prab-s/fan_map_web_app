@@ -549,6 +549,10 @@ function _page($$renderer, $$props) {
       {
         $$renderer2.push("<!--[-1-->");
       }
+      $$renderer2.push(`<!--]--></div></div> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">All Product Types PDF</h3> <p class="mb-0 text-body-secondary">Build one combined catalogue with shared front matter and a contents page for each product type.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Generate Combined PDF</button> <a class="btn btn-outline-secondary btn-sm" href="/api/public/media/all-product-types-pdf" target="_blank" rel="noreferrer">Open PDF</a></div></div> `);
+      {
+        $$renderer2.push("<!--[-1-->");
+      }
       $$renderer2.push(`<!--]--></div></div> <div class="card border"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-2"><div><h3 class="h6 mb-1">Type Presets</h3> <p class="mb-0 text-body-secondary">Edit the grouped specification presets, RPM line presets, and efficiency/permissible presets that
                     flow into the product editor.</p></div> <button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", loadingProductTypes, true)}>${escape_html(loadingProductTypes ? "Refreshing..." : "Reload types")}</button></div> `);
       if (typePresetError) {

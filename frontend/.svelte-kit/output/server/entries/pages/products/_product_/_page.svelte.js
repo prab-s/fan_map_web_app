@@ -56,16 +56,9 @@ function _page($$renderer, $$props) {
       $$renderer2.push("<!--[-1-->");
     }
     $$renderer2.push(`<!--]--></p></div> <div class="d-flex flex-wrap gap-2">`);
-    if (product?.product_printed_pdf_url) {
+    if (product?.product_printed_pdf_url || product?.product_pdf_url) {
       $$renderer2.push("<!--[0-->");
-      $$renderer2.push(`<a class="btn btn-outline-secondary"${attr("href", product.product_printed_pdf_url)} target="_blank" rel="noreferrer">Printed PDF</a>`);
-    } else {
-      $$renderer2.push("<!--[-1-->");
-    }
-    $$renderer2.push(`<!--]--> `);
-    if (product?.product_pdf_url) {
-      $$renderer2.push("<!--[0-->");
-      $$renderer2.push(`<a class="btn btn-primary"${attr("href", product.product_pdf_url)} target="_blank" rel="noreferrer">Open PDF</a>`);
+      $$renderer2.push(`<a class="btn btn-outline-secondary"${attr("href", product.product_printed_pdf_url || product.product_pdf_url)} target="_blank" rel="noreferrer">PDF</a>`);
     } else {
       $$renderer2.push("<!--[-1-->");
     }
