@@ -78,6 +78,11 @@ services:
       CATALOGUE_CACHE_PATH: ${PUBLIC_CATALOGUE_CACHE_PATH:-/tmp/vent-tech-catalogue-cache.json}
       CATALOGUE_REFRESH_INTERVAL_SECONDS: ${PUBLIC_CATALOGUE_REFRESH_INTERVAL_SECONDS:-300}
       CMS_API_TOKEN: ${CMS_API_TOKEN}
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8004/', timeout=3).read()\""]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
 volumes:
   fan_graphs_app_data:

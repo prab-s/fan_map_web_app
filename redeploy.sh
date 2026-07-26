@@ -58,6 +58,14 @@ if [[ -n "${COMPOSE_PROFILES:-}" ]]; then
   done
 fi
 
+catalogue_profile_enabled=false
+for profile in "${_compose_profiles[@]:-}"; do
+  if [[ "${profile// /}" == "catalogue" ]]; then
+    catalogue_profile_enabled=true
+    break
+  fi
+done
+
 fail_if_placeholder() {
   local name="$1"
   local value="$2"
@@ -471,28 +479,47 @@ log_step "Preparing the deployment database schema"
 ./migrate_db.sh --deploy
 log_step_done
 
-log_step "Starting the new stack"
+log_step "Starting the internal application service"
 start_compose_monitor
-if ${COMPOSE_BIN} "${COMPOSE_ARGS[@]}" "${COMPOSE_VERBOSE_ARGS[@]}" up -d --force-recreate; then
+if ${COMPOSE_BIN} "${COMPOSE_ARGS[@]}" "${COMPOSE_VERBOSE_ARGS[@]}" up -d --force-recreate app; then
   compose_up_exit_code=0
 else
   compose_up_exit_code=$?
 fi
-stop_compose_monitor
 if [[ "${compose_up_exit_code:-0}" -ne 0 ]]; then
-  echo "[$(timestamp)] Compose up failed with exit code ${compose_up_exit_code}."
+  stop_compose_monitor
+  echo "[$(timestamp)] Starting the internal application service failed with exit code ${compose_up_exit_code}."
   exit "${compose_up_exit_code}"
 fi
 log_step_done
-log_container_snapshot "Container snapshot after compose up"
 
 log_step "Waiting for the internal API to become healthy"
 wait_for_url "${HEALTH_URL}" "Internal Facing API" "${HEALTH_TIMEOUT_SECONDS}"
 log_step_done
 
-log_step "Waiting for the customer-facing site to become healthy"
-wait_for_url "${PUBLIC_HEALTH_URL}" "Customer-facing site" "${HEALTH_TIMEOUT_SECONDS}"
-log_step_done
+if [[ "$catalogue_profile_enabled" == true ]]; then
+  log_step "Starting the customer-facing service after the internal API is healthy"
+  if ${COMPOSE_BIN} "${COMPOSE_ARGS[@]}" "${COMPOSE_VERBOSE_ARGS[@]}" up -d --force-recreate customer_facing; then
+    compose_up_exit_code=0
+  else
+    compose_up_exit_code=$?
+  fi
+  if [[ "${compose_up_exit_code:-0}" -ne 0 ]]; then
+    stop_compose_monitor
+    echo "[$(timestamp)] Starting the customer-facing service failed with exit code ${compose_up_exit_code}."
+    exit "${compose_up_exit_code}"
+  fi
+  log_step_done
+
+  log_step "Waiting for the customer-facing site to become healthy"
+  wait_for_url "${PUBLIC_HEALTH_URL}" "Customer-facing site" "${HEALTH_TIMEOUT_SECONDS}"
+  log_step_done
+else
+  echo "[$(timestamp)] Customer-facing service is disabled because the catalogue compose profile is not enabled."
+fi
+
+stop_compose_monitor
+log_container_snapshot "Container snapshot after compose up"
 
 echo
 echo "internal-facing is up:"
