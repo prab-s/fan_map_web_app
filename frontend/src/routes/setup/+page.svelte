@@ -1437,7 +1437,7 @@
                     on:click={() => runMaintenanceJob(startRegenerateAllGraphImagesJob, { successMessage: 'Graph images regenerated.' })}
                     disabled={maintenanceLoading}
                   >
-                    Generate Product Graphs
+                    Regenerate Product Graphs
                   </button>
                   <button
                     class="btn btn-outline-danger btn-sm"

@@ -31,6 +31,8 @@
         title: `${product.product_type_label || product.product_type_key || 'Product'} | ${product.series_name ? `${product.series_name} - ` : ''}${product.model} performance graph`,
         graphConfig: productType || null,
         graphMode: 'product',
+        permissibleUseMode: product?.permissible_use_mode || 'both',
+        clipRpmAreaToPermissibleUse: true,
         showRpmBandShading: Boolean(
           product?.show_rpm_band_shading ?? productType?.supports_band_graph_style ?? true
         ),

@@ -297,6 +297,7 @@
     "isEntry": true,
     "imports": [
       "_index2.js",
+      "_config.js",
       "_auth.js",
       "_index-server.js",
       "_exports.js",

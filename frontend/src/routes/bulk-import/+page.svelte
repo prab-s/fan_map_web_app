@@ -10,6 +10,7 @@
   import { auth } from '$lib/auth.js';
   import { afterNavigate } from '$app/navigation';
   import { onDestroy, onMount } from 'svelte';
+  import { PERMISSIBLE_USE_MODE_OPTIONS } from '$lib/config.js';
 
   const DEFAULT_PRODUCT_TYPE_KEY = 'fan';
   const DEFAULT_SERIES_SELECTION = 'default';
@@ -25,6 +26,15 @@
   let workbookMappings = [];
   let downsampleImportedCurves = true;
   let downsamplePointCount = 5;
+  let permissibleUseMode = 'both';
+  let generateMissingPermissibleUseFromLower = false;
+
+  $: bulkBothModeDisabled = Boolean(
+    workbookReport?.sheet_normalizations?.some(
+      (item) => item.include_in_import !== false &&
+        (!item.has_efficiency_upper || !item.has_efficiency_lower)
+    )
+  );
   let productTypes = [];
   let selectedProductTypeKey = DEFAULT_PRODUCT_TYPE_KEY;
   let selectedWorkbookSeriesId = '';
@@ -312,7 +322,9 @@
     const defaults = {
       downsample_imported_curves: downsampleImportedCurves,
       downsample_point_count: Number(downsamplePointCount) || 5,
-      product_type_key: DEFAULT_PRODUCT_TYPE_KEY
+      product_type_key: DEFAULT_PRODUCT_TYPE_KEY,
+      permissible_use_mode: permissibleUseMode,
+      generate_missing_permissible_use_from_lower: generateMissingPermissibleUseFromLower
     };
     if (defaultSeries) {
       defaults.series_id = Number(defaultSeries.id);
@@ -671,6 +683,26 @@
                     <label class="form-check-label" for="bulk-downsample">Downsample imported curves</label>
                   </div>
                 </div>
+                <div class="col-12 col-lg-6">
+                  <label class="form-label form-label-sm" for="bulk-permissible-use-mode">Permissible-use shading mode</label>
+                  <select id="bulk-permissible-use-mode" class="form-select" bind:value={permissibleUseMode}>
+                    {#each PERMISSIBLE_USE_MODE_OPTIONS as option}
+                      <option value={option.value} disabled={option.value === 'both' && bulkBothModeDisabled}>{option.label}</option>
+                    {/each}
+                  </select>
+                  <div class="form-text">Mode 4 is the default. Mode 1 uses supplied dedicated permissible-use data and can generate missing values from the selected efficiency line.</div>
+                  {#if bulkBothModeDisabled}
+                    <div class="form-text text-warning">Both efficiency lines are required for mode 4; at least one included sheet is missing an upper or lower efficiency line.</div>
+                  {/if}
+                </div>
+                {#if permissibleUseMode === 'dedicated'}
+                  <div class="col-12">
+                    <div class="form-check form-switch">
+                      <input class="form-check-input" id="bulk-permissible-source-lower" type="checkbox" bind:checked={generateMissingPermissibleUseFromLower} />
+                      <label class="form-check-label" for="bulk-permissible-source-lower">Generate missing permissible use from lower efficiency line</label>
+                    </div>
+                  </div>
+                {/if}
               </div>
               <div class="row g-3 mt-2 text-start">
                 <div class="col-12 col-lg-4">

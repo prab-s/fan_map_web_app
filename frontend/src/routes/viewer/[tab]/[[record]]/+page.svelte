@@ -331,6 +331,7 @@
       title: chartTitle || (currentProduct ? currentProduct.model : 'Product Graph'),
       graphConfig: getCurrentGraphConfig(),
       graphMode: 'product',
+      permissibleUseMode: currentProduct?.permissible_use_mode || 'both',
       clipRpmAreaToPermissibleUse: true,
       showRpmBandShading: supportsBandGraphStyle() ? (currentProduct?.show_rpm_band_shading ?? true) : false,
       showSecondaryAxis: supportsGraphOverlays(),

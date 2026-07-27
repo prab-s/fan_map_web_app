@@ -625,17 +625,23 @@ function buildBoundarySegmentPoints(boundaryData, startFlow, endFlow) {
   }
   return normalizeFlowValues(Array.from(segmentFlows)).map((airflow) => [airflow, interpolateYAtX(boundaryData, airflow)]).filter(([, value]) => value != null);
 }
-function buildBandSampleFlows(rpmCurveEntries, permissibleBoundaryData) {
-  if (!permissibleBoundaryData.length) {
+function buildBandSampleFlows(rpmCurveEntries, permissibleBoundaryData, secondaryBoundaryData = []) {
+  if (!permissibleBoundaryData.length && !secondaryBoundaryData.length) {
     return collectUniqueSortedFlows(rpmCurveEntries, permissibleBoundaryData);
   }
   const intersectionFlows = rpmCurveEntries.flatMap(
-    ([, lineData]) => findCurveBoundaryCrossings(lineData, permissibleBoundaryData)
+    ([, lineData]) => [
+      ...findCurveBoundaryCrossings(lineData, permissibleBoundaryData),
+      ...findCurveBoundaryCrossings(lineData, secondaryBoundaryData)
+    ]
   );
-  const boundaryToAxisCrossings = findBoundaryLevelCrossings(permissibleBoundaryData, 0);
+  const boundaryToAxisCrossings = [
+    ...findBoundaryLevelCrossings(permissibleBoundaryData, 0),
+    ...findBoundaryLevelCrossings(secondaryBoundaryData, 0)
+  ];
   return collectUniqueSortedFlows(
     rpmCurveEntries,
-    permissibleBoundaryData,
+    [...permissibleBoundaryData, ...secondaryBoundaryData],
     [...intersectionFlows, ...boundaryToAxisCrossings]
   );
 }
@@ -837,6 +843,27 @@ function alignPolygonToPermissibleBoundary(polygon, permissibleBoundaryData, upp
     lowerStartFlow
   );
 }
+function buildCurveSegmentPoints(lineData, startFlow, endFlow) {
+  if (!lineData?.length || startFlow == null || endFlow == null || endFlow < startFlow) {
+    return [];
+  }
+  const segmentPoints = [];
+  const startValue = interpolateYAtX(lineData, startFlow);
+  const endValue = interpolateYAtX(lineData, endFlow);
+  if (startValue == null || endValue == null) {
+    return [];
+  }
+  segmentPoints.push([startFlow, startValue]);
+  for (const [airflow, pressure] of lineData) {
+    if (airflow > startFlow && airflow < endFlow) {
+      segmentPoints.push([airflow, pressure]);
+    }
+  }
+  if (segmentPoints[segmentPoints.length - 1]?.[0] !== endFlow || segmentPoints[segmentPoints.length - 1]?.[1] !== endValue) {
+    segmentPoints.push([endFlow, endValue]);
+  }
+  return segmentPoints;
+}
 function alignPolygonToBandStartPoints(polygon, upperLineData, lowerLineData) {
   if (!polygon || !upperLineData?.length) return polygon;
   const upperStartPoint = upperLineData[0];
@@ -855,11 +882,46 @@ function alignPolygonToBandStartPoints(polygon, upperLineData, lowerLineData) {
     bottomPoints
   };
 }
-function buildRpmBandPolygonSeries(rpmCurveEntries, rpmLines, chartTheme, permissibleBoundaryData, clipRpmAreaToPermissibleUse, maximumVisibleFlow = null, pressureAxisMax = null, fadedBandOpacity = CHART_STYLE.rpmBandFadedOpacity, graphConfig = DEFAULT_GRAPH_CONFIG) {
+function buildRpmBandPolygonSeries(rpmCurveEntries, rpmLines, chartTheme, permissibleBoundaryData, lowerPermissibleBoundaryData = [], permissibleUseMode = "dedicated", clipRpmAreaToPermissibleUse, maximumVisibleFlow = null, pressureAxisMax = null, fadedBandOpacity = CHART_STYLE.rpmBandFadedOpacity, graphConfig = DEFAULT_GRAPH_CONFIG) {
   if (!rpmCurveEntries.length) return [];
   const shouldClipToPermissibleUse = clipRpmAreaToPermissibleUse && permissibleBoundaryData.length > 0;
-  const flows = buildBandSampleFlows(rpmCurveEntries, permissibleBoundaryData);
+  const shouldShadeLowerPermissibleUse = clipRpmAreaToPermissibleUse && lowerPermissibleBoundaryData.length > 0 && (permissibleUseMode === "lower" || permissibleUseMode === "both");
+  const flows = buildBandSampleFlows(
+    rpmCurveEntries,
+    permissibleBoundaryData,
+    lowerPermissibleBoundaryData
+  );
   if (!flows.length) return [];
+  const highestRpmLineData = rpmCurveEntries[rpmCurveEntries.length - 1]?.[1] ?? [];
+  let lowerPermissibleClipData = lowerPermissibleBoundaryData;
+  if (lowerPermissibleBoundaryData.length && highestRpmLineData.length) {
+    const lowerStartFlow = lowerPermissibleBoundaryData[0][0];
+    const lowerEndFlow = lowerPermissibleBoundaryData.at(-1)[0];
+    const highestRpmEndFlow = highestRpmLineData.at(-1)[0];
+    const crossingFlow = findCurveBoundaryCrossings(
+      highestRpmLineData,
+      lowerPermissibleBoundaryData
+    ).find(
+      (flow) => flow >= lowerStartFlow - FLOW_EPSILON && flow <= lowerEndFlow + FLOW_EPSILON
+    );
+    const transitionFlow = crossingFlow ?? Math.min(lowerEndFlow, highestRpmEndFlow);
+    const lowerSegment = buildCurveSegmentPoints(
+      lowerPermissibleBoundaryData,
+      lowerStartFlow,
+      transitionFlow
+    );
+    const highestRpmSegment = buildCurveSegmentPoints(
+      highestRpmLineData,
+      transitionFlow,
+      highestRpmEndFlow
+    );
+    if (lowerSegment.length && highestRpmSegment.length) {
+      lowerPermissibleClipData = [
+        ...lowerSegment,
+        ...highestRpmSegment.slice(1)
+      ];
+    }
+  }
   const lineByRpm = new Map(
     rpmLines.map((line) => [Number(line?.rpm), line]).filter(([rpm]) => Number.isFinite(rpm))
   );
@@ -883,6 +945,21 @@ function buildRpmBandPolygonSeries(rpmCurveEntries, rpmLines, chartTheme, permis
       maximumVisibleFlow
     );
     let fullPolygons = buildBandPolygonsBetweenCurves(flows, fullCurrentCurve, fullLowerBoundary);
+    let lowerNoGoPolygons = [];
+    if (shouldShadeLowerPermissibleUse) {
+      const fullBandTopCurve = fullCurrentCurve;
+      const lowerNoGoTop = flows.map((airflow, flowIndex) => {
+        const currentValue = fullBandTopCurve[flowIndex];
+        const lowerBoundaryValue = interpolateYAtX(lowerPermissibleClipData, airflow);
+        if (currentValue == null || lowerBoundaryValue == null) return null;
+        return Math.min(currentValue, lowerBoundaryValue);
+      });
+      lowerNoGoPolygons = buildBandPolygonsBetweenCurves(
+        flows,
+        lowerNoGoTop,
+        fullLowerBoundary
+      );
+    }
     const currentCurve = buildBandTopValues(
       lineData,
       flows,
@@ -898,7 +975,17 @@ function buildRpmBandPolygonSeries(rpmCurveEntries, rpmLines, chartTheme, permis
       shouldClipToPermissibleUse,
       maximumVisibleFlow
     );
-    let polygons = buildBandPolygonsBetweenCurves(flows, currentCurve, lowerBoundary);
+    let normalLowerBoundary = lowerBoundary;
+    if (shouldShadeLowerPermissibleUse) {
+      normalLowerBoundary = flows.map((airflow, flowIndex) => {
+        const bandLowerValue = lowerBoundary[flowIndex];
+        const permissibleLowerValue = interpolateYAtX(lowerPermissibleClipData, airflow);
+        if (bandLowerValue == null) return null;
+        if (permissibleLowerValue == null) return bandLowerValue;
+        return Math.max(bandLowerValue, permissibleLowerValue);
+      });
+    }
+    let polygons = buildBandPolygonsBetweenCurves(flows, currentCurve, normalLowerBoundary);
     if (fullPolygons.length) {
       fullPolygons = [
         alignPolygonToBandStartPoints(fullPolygons[0], lineData, previousLineData),
@@ -951,12 +1038,12 @@ function buildRpmBandPolygonSeries(rpmCurveEntries, rpmLines, chartTheme, permis
                 })()
               }
             },
-            style: api.style({
+            style: {
               fill: bandColor,
               opacity: fadedBandOpacity,
               stroke: bandColor,
               lineWidth: 3
-            }),
+            },
             silent: true
           };
         },
@@ -967,12 +1054,47 @@ function buildRpmBandPolygonSeries(rpmCurveEntries, rpmLines, chartTheme, permis
         z: -20 - index
       });
     }
+    if (shouldShadeLowerPermissibleUse && lowerNoGoPolygons.length) {
+      series.push({
+        name: `${formatGraphLineValue(rpm, graphConfig)} lower permissible band faded`,
+        type: "custom",
+        coordinateSystem: "cartesian2d",
+        renderItem(params, api) {
+          const polygon = lowerNoGoPolygons[params.dataIndex];
+          if (!polygon) return null;
+          const polygonPoints = [
+            ...polygon.topPoints,
+            ...polygon.bottomPoints.slice().reverse()
+          ];
+          if (!polygonPoints.length) return null;
+          const points = polygonPoints.map(([x, y]) => api.coord([x, y]));
+          return {
+            type: "polygon",
+            shape: { points },
+            style: {
+              fill: bandColor,
+              opacity: fadedBandOpacity,
+              stroke: bandColor,
+              lineWidth: 3
+            },
+            silent: true
+          };
+        },
+        data: lowerNoGoPolygons.map((_, polygonIndex) => polygonIndex),
+        emphasis: { disabled: true },
+        tooltip: { show: false },
+        silent: true,
+        // Keep the lower shaded bands above the opaque normal bands, just as
+        // the upper shaded bands are kept above their normal counterparts.
+        z: 50 - index
+      });
+    }
     series.push({
       name: `${formatGraphLineValue(rpm, graphConfig)} band`,
       type: "custom",
       coordinateSystem: "cartesian2d",
       renderItem(params, api) {
-        const polygon = fullPolygons[params.dataIndex];
+        const polygon = polygons[params.dataIndex];
         if (!polygon) return null;
         const polygonPoints = [
           ...polygon.topPoints,
@@ -1000,10 +1122,10 @@ function buildRpmBandPolygonSeries(rpmCurveEntries, rpmLines, chartTheme, permis
               shape: { points: clipPoints }
             }
           } : {},
-          style: api.style({
+          style: {
             fill: bandColor,
             stroke: "none"
-          }),
+          },
           silent: true
         };
       },
@@ -1016,7 +1138,7 @@ function buildRpmBandPolygonSeries(rpmCurveEntries, rpmLines, chartTheme, permis
     return series;
   });
 }
-function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, permissibleBoundaryData, clipRpmAreaToPermissibleUse, showRpmBandShading, maximumVisibleFlow = null, pressureAxisMax = null, rpmBandLabelColor = null, fadedBandOpacity = CHART_STYLE.rpmBandFadedOpacity, graphConfig = DEFAULT_GRAPH_CONFIG, labelTextScale = 1, graphMode = "product", colorRpmLinesByBand = false) {
+function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, permissibleBoundaryData, lowerPermissibleBoundaryData, permissibleUseMode, clipRpmAreaToPermissibleUse, showRpmBandShading, maximumVisibleFlow = null, pressureAxisMax = null, rpmBandLabelColor = null, fadedBandOpacity = CHART_STYLE.rpmBandFadedOpacity, graphConfig = DEFAULT_GRAPH_CONFIG, labelTextScale = 1, graphMode = "product", colorRpmLinesByBand = false) {
   const resolvedLabelTextScale = Number.isFinite(Number(labelTextScale)) && Number(labelTextScale) > 0 ? Number(labelTextScale) : 1;
   const normalizedGraphMode = String(graphMode || "").trim().toLowerCase();
   function buildBandLabelAnchorData(lineData) {
@@ -1299,6 +1421,8 @@ function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, per
         rpmLines,
         chartTheme,
         permissibleBoundaryData,
+        lowerPermissibleBoundaryData,
+        permissibleUseMode,
         clipRpmAreaToPermissibleUse,
         maximumVisibleFlow,
         pressureAxisMax,
@@ -1489,6 +1613,7 @@ function buildFullChartOption({
   graphConfig = null,
   includeDragHandles = false,
   clipRpmAreaToPermissibleUse = false,
+  permissibleUseMode = "both",
   showRpmBandShading = true,
   showSecondaryAxis = true,
   flowAxisMaxOverride = null,
@@ -1503,7 +1628,8 @@ function buildFullChartOption({
 }) {
   const resolvedLabelTextScale = Number.isFinite(Number(labelTextScale)) && Number(labelTextScale) > 0 ? Number(labelTextScale) : 1;
   const resolvedGraphConfig = resolveGraphConfig(graphConfig);
-  const lineDefinitions = resolvedGraphConfig.supports_graph_overlays ? FULL_CHART_LINE_DEFINITIONS : [];
+  const normalizedPermissibleUseMode = ["dedicated", "upper", "lower", "both", "none"].includes(permissibleUseMode) ? permissibleUseMode : "both";
+  const lineDefinitions = resolvedGraphConfig.supports_graph_overlays ? normalizedPermissibleUseMode === "dedicated" ? FULL_CHART_LINE_DEFINITIONS : FULL_CHART_LINE_DEFINITIONS.filter((definition) => definition.key !== "permissible_use") : [];
   const xAxisName = formatAxisLabel(
     resolvedGraphConfig.graph_x_axis_label,
     resolvedGraphConfig.graph_x_axis_unit
@@ -1525,7 +1651,23 @@ function buildFullChartOption({
   const pressureAxisMax = pressureAxisMaxOverride ?? (rawPressureMax > 0 ? rawPressureMax * 1.05 : 100);
   const flowAxisTickInterval = getNiceAxisTickInterval(flowAxisMax);
   const pressureAxisTickInterval = getNiceAxisTickInterval(pressureAxisMax);
-  const permissibleBoundaryData = efficiencyPoints.filter((point) => point.permissible_use != null).map((point) => [point.airflow ?? 0, Number(point.permissible_use)]).filter((point) => !Number.isNaN(point[0]) && !Number.isNaN(point[1])).sort((a, b) => a[0] - b[0]);
+  const dedicatedPermissibleBoundaryData = efficiencyPoints.filter((point) => point.permissible_use != null).map((point) => [point.airflow ?? 0, Number(point.permissible_use)]).filter((point) => !Number.isNaN(point[0]) && !Number.isNaN(point[1])).sort((a, b) => a[0] - b[0]);
+  const upperEfficiencyBoundaryData = efficiencyPoints.filter((point) => point.efficiency_higher_end != null).map((point) => [point.airflow ?? 0, Number(point.efficiency_higher_end)]).filter((point) => !Number.isNaN(point[0]) && !Number.isNaN(point[1])).sort((a, b) => a[0] - b[0]);
+  const lowerEfficiencyBoundaryData = efficiencyPoints.filter((point) => point.efficiency_lower_end != null).map((point) => [point.airflow ?? 0, Number(point.efficiency_lower_end)]).filter((point) => !Number.isNaN(point[0]) && !Number.isNaN(point[1])).sort((a, b) => a[0] - b[0]);
+  let permissibleBoundaryData = [];
+  let lowerPermissibleBoundaryData = [];
+  if (normalizedPermissibleUseMode === "dedicated") {
+    permissibleBoundaryData = dedicatedPermissibleBoundaryData;
+  } else if (normalizedPermissibleUseMode === "upper") {
+    permissibleBoundaryData = upperEfficiencyBoundaryData;
+  } else if (normalizedPermissibleUseMode === "lower") {
+    lowerPermissibleBoundaryData = lowerEfficiencyBoundaryData;
+  } else if (normalizedPermissibleUseMode === "both") {
+    if (upperEfficiencyBoundaryData.length && lowerEfficiencyBoundaryData.length) {
+      permissibleBoundaryData = upperEfficiencyBoundaryData;
+      lowerPermissibleBoundaryData = lowerEfficiencyBoundaryData;
+    }
+  }
   const bandGraphBackgroundColor = showRpmBandShading && resolvedGraphConfig.supports_band_graph_style ? normalizeOptionalColor(graphStyle?.band_graph_background_color) : null;
   const resolvedBandGraphBackgroundColor = adaptGraphBackgroundToTheme && bandGraphBackgroundColor && isDarkColor(chartTheme.background) ? invertHexColor(bandGraphBackgroundColor) : bandGraphBackgroundColor;
   const bandGraphLabelTextColor = showRpmBandShading && resolvedGraphConfig.supports_band_graph_style ? normalizeOptionalColor(graphStyle?.band_graph_label_text_color) : null;
@@ -1537,6 +1679,8 @@ function buildFullChartOption({
     chartTheme,
     includeDragHandles,
     permissibleBoundaryData,
+    lowerPermissibleBoundaryData,
+    normalizedPermissibleUseMode,
     clipRpmAreaToPermissibleUse,
     showRpmBandShading && resolvedGraphConfig.supports_band_graph_style,
     rawRpmFlowMax || rawFlowMax,

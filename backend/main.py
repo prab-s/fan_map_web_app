@@ -77,6 +77,13 @@ from backend.models import (
 )
 from backend.models import AppSettings
 from backend.timezone import APP_TIMEZONE, backend_now, backend_now_iso
+
+PERMISSIBLE_USE_MODES = {"dedicated", "upper", "lower", "both", "none"}
+
+
+def normalize_permissible_use_mode(value, default="both"):
+    normalized = str(value or "").strip().lower()
+    return normalized if normalized in PERMISSIBLE_USE_MODES else default
 from backend.schemas import (
     BandGraphStyleSettings,
     ProductCreate,
@@ -1178,9 +1185,10 @@ def normalize_bulk_import_row(row: dict) -> dict:
     return normalized
 
 
-def normalize_bulk_import_rows(rows: list[dict]) -> list[dict]:
+def normalize_bulk_import_rows(rows: list[dict], copy_permissible_use: bool = True) -> list[dict]:
     copied_rows = bulk_import_copy_zero_airflow_values(rows)
-    copied_rows = bulk_import_copy_permissible_use_from_highest_efficiency_line(copied_rows)
+    if copy_permissible_use:
+        copied_rows = bulk_import_copy_permissible_use_from_highest_efficiency_line(copied_rows)
     return [normalize_bulk_import_row(row) for row in copied_rows]
 
 
@@ -1196,7 +1204,7 @@ def load_bulk_import_csv(file_name: str, content: bytes) -> list[dict]:
     text = content.decode("utf-8-sig")
     reader = csv.DictReader(io.StringIO(text))
     rows = [row for row in reader if any(str(value or "").strip() for value in row.values())]
-    return normalize_bulk_import_rows(rows)
+    return normalize_bulk_import_rows(rows, copy_permissible_use=not bulk_import_is_graph_sheet(rows))
 
 
 def load_bulk_import_workbook(file_name: str, content: bytes) -> tuple[dict[str, list[dict]], dict[str, dict]]:
@@ -1241,7 +1249,10 @@ def load_bulk_import_workbook(file_name: str, content: bytes) -> tuple[dict[str,
                 row_data[header] = value
             if any(value is not None for value in row_data.values()):
                 raw_table_rows.append(row_data)
-        table_rows = normalize_bulk_import_rows(raw_table_rows)
+        table_rows = normalize_bulk_import_rows(
+            raw_table_rows,
+            copy_permissible_use=not bulk_import_is_graph_sheet(raw_table_rows),
+        )
         tables[sheet_name] = table_rows
         sheet_meta[sheet_name] = {
             "sheet_name": sheet_name,
@@ -1952,6 +1963,8 @@ def bulk_import_build_graph_state(
     rows: list[dict],
     downsample_imported_curves: bool = True,
     downsample_point_count: int = 5,
+    permissible_use_mode: str = "both",
+    permissible_use_source_key: str = "efficiency_higher_end",
 ):
     if not rows:
         return {"rpmLines": [], "rpmPoints": [], "efficiencyPoints": []}
@@ -2036,8 +2049,11 @@ def bulk_import_build_graph_state(
         if has_overlay:
             next_efficiency_points.append(efficiency_point)
 
-    source_overlay_key = bulk_import_find_highest_efficiency_overlay_key(next_efficiency_points)
-    if source_overlay_key:
+    source_overlay_key = permissible_use_source_key if permissible_use_source_key in {
+        "efficiency_higher_end",
+        "efficiency_lower_end",
+    } else "efficiency_higher_end"
+    if normalize_permissible_use_mode(permissible_use_mode) == "dedicated":
         for point in next_efficiency_points:
             permissible_use = point.get("permissible_use")
             if permissible_use is not None and permissible_use != "":
@@ -2178,6 +2194,7 @@ def bulk_import_describe_sheet_normalization(
         except Exception as exc:
             error = str(exc)
 
+    efficiency_points = graph_state["efficiencyPoints"] if graph_state else []
     return {
         "sheet_name": sheet_name,
         "row_count": int(meta.get("row_count") or len(rows) or 0),
@@ -2188,6 +2205,8 @@ def bulk_import_describe_sheet_normalization(
         "rpm_line_count": len(graph_state["rpmLines"]) if graph_state else 0,
         "rpm_point_count": len(graph_state["rpmPoints"]) if graph_state else 0,
         "efficiency_point_count": len(graph_state["efficiencyPoints"]) if graph_state else 0,
+        "has_efficiency_upper": any(point.get("efficiency_higher_end") is not None for point in efficiency_points),
+        "has_efficiency_lower": any(point.get("efficiency_lower_end") is not None for point in efficiency_points),
         "error": error,
     }
 
@@ -2282,11 +2301,21 @@ def bulk_import_process_payloads(
         downsample_point_count = parse_int_or_none(
             sheet_config.get("downsample_point_count", defaults.get("downsample_point_count", 5))
         ) or 5
+        permissible_use_mode = normalize_permissible_use_mode(
+            sheet_config.get("permissible_use_mode", defaults.get("permissible_use_mode", "both"))
+        )
+        permissible_use_source_key = (
+            "efficiency_lower_end"
+            if bool(sheet_config.get("generate_missing_permissible_use_from_lower", defaults.get("generate_missing_permissible_use_from_lower", False)))
+            else "efficiency_higher_end"
+        )
         try:
             graph_state = bulk_import_build_graph_state(
                 rows,
                 downsample_imported_curves=downsample_imported_curves,
                 downsample_point_count=downsample_point_count,
+                permissible_use_mode=permissible_use_mode,
+                permissible_use_source_key=permissible_use_source_key,
             )
             graph_rpm_lines = bulk_import_attach_rpm_points_to_lines(graph_state["rpmLines"], graph_state["rpmPoints"])
             for entry in report.sheet_normalizations:
@@ -2310,6 +2339,7 @@ def bulk_import_process_payloads(
                 "description3_html": sheet_config.get("description3_html"),
                 "comments_html": sheet_config.get("comments_html"),
                 "show_rpm_band_shading": sheet_config.get("show_rpm_band_shading", True),
+                "permissible_use_mode": permissible_use_mode,
                 "band_graph_background_color": sheet_config.get("band_graph_background_color"),
                 "band_graph_label_text_color": sheet_config.get("band_graph_label_text_color"),
                 "band_graph_faded_opacity": sheet_config.get("band_graph_faded_opacity"),
@@ -2551,6 +2581,7 @@ def bulk_import_process_payloads(
 
     if not dry_run:
         for product in touched_products.values():
+            sync_graph_image(product, list(product.rpm_lines), list(product.efficiency_points))
             sync_product_image_files(product)
         for series in touched_series.values():
             sync_series_image_files(series)
@@ -6217,6 +6248,7 @@ def sync_graph_image(product: Product, rpm_lines: list[RpmLine], efficiency_poin
         "title": f"{product.product_type_label} | {product.series_name} - {product.model} Performance Graph",
         "graphMode": "product",
         "showRpmBandShading": product.show_rpm_band_shading,
+        "permissibleUseMode": normalize_permissible_use_mode(product.permissible_use_mode),
         "graphConfig": build_graph_config(product.product_type),
         "graphStyle": {
             "band_graph_background_color": product.band_graph_background_color,
@@ -8211,6 +8243,15 @@ def update_series(series_id: int, body: SeriesUpdate, db: Session = Depends(get_
     ensure_series_tab_color(db, series)
     db.commit()
     db.refresh(series)
+
+    # A series name/type change affects the graph payload and title for every
+    # linked product. Refresh those product graph images, and the series graph
+    # image when the series has graph-capable data.
+    for product in list(series.products):
+        sync_graph_image(product, list(product.rpm_lines), list(product.efficiency_points))
+    if series.product_type and series.product_type.supports_graph and series_has_graph_capable_line_data(series):
+        generate_series_graph(series)
+    db.commit()
     assign_series_product_counts([series], load_series_product_counts(db, [series.id]))
     notify_public_catalogue_cache_refresh()
     return series
@@ -8856,6 +8897,7 @@ def list_products(
 @app.post("/api/products", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Products"], summary="Create a product")
 def create_product(body: ProductCreate, db: Session = Depends(get_db)):
     product_data = body.model_dump()
+    product_data["permissible_use_mode"] = normalize_permissible_use_mode(product_data.get("permissible_use_mode"))
     product_type = get_product_type_by_key(db, product_data.pop("product_type_key", "fan"))
     series = get_series_by_id(db, product_data.pop("series_id", None))
     parameter_groups = product_data.pop("parameter_groups", [])
@@ -9004,6 +9046,9 @@ def update_product(product_id: int, body: ProductUpdate, db: Session = Depends(g
             product.online_template_id = online_template_id
         product.template_id = product.online_template_id or product.printed_template_id
     for k, v in updates.items():
+        if k == "permissible_use_mode":
+            setattr(product, k, normalize_permissible_use_mode(v))
+            continue
         if k in {"band_graph_background_color", "band_graph_label_text_color", "band_graph_permissible_label_color"}:
             setattr(product, k, normalize_color_value(v))
         elif k == "band_graph_faded_opacity":
@@ -9020,6 +9065,12 @@ def update_product(product_id: int, body: ProductUpdate, db: Session = Depends(g
     else:
         product.fan_acoustic_table = None
     sync_product_image_files(product)
+    db.commit()
+    db.refresh(product)
+    # Product metadata (including the series name, graph mode, and graph
+    # styling) is part of the rendered graph payload, so every product save
+    # must refresh the stored graph image rather than only graph-style saves.
+    sync_graph_image(product, list(product.rpm_lines), list(product.efficiency_points))
     db.commit()
     db.refresh(product)
     notify_public_catalogue_cache_refresh()

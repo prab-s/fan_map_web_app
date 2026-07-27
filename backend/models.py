@@ -514,6 +514,7 @@ class Product(Base):
     comments_html = Column(Text, nullable=True)
     graph_image_path = Column(String(512), nullable=True)
     show_rpm_band_shading = Column(Boolean, nullable=False, default=True)
+    permissible_use_mode = Column(String(32), nullable=False, default="both")
     band_graph_background_color = Column(String(32), nullable=True)
     band_graph_label_text_color = Column(String(32), nullable=True)
     band_graph_faded_opacity = Column(Float, nullable=True)

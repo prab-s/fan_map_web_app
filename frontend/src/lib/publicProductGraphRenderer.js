@@ -62,6 +62,7 @@ export function buildPublicProductGraphOption(payload, themeName) {
     title: String(payload?.graphTitle || payload?.productModel || 'Performance graph').trim(),
     graphConfig: payload?.graphConfig || null,
     graphMode,
+    permissibleUseMode: payload?.permissibleUseMode || 'both',
     showRpmBandShading,
     clipRpmAreaToPermissibleUse: true,
     graphStyle: payload?.graphStyle ?? payload?.graphConfig ?? null,

@@ -105,6 +105,7 @@ def _ensure_fan_columns(target_engine):
     missing_columns = {
         "graph_image_path": "VARCHAR(512)",
         "show_rpm_band_shading": f"BOOLEAN NOT NULL DEFAULT {boolean_true_sql}",
+        "permissible_use_mode": "VARCHAR(32) NOT NULL DEFAULT 'both'",
         "band_graph_background_color": "VARCHAR(32)",
         "band_graph_label_text_color": "VARCHAR(32)",
         "band_graph_faded_opacity": "FLOAT",
@@ -119,6 +120,12 @@ def _ensure_fan_columns(target_engine):
             text(
                 f"UPDATE {product_table_name} SET show_rpm_band_shading = {boolean_true_sql} "
                 "WHERE show_rpm_band_shading IS NULL"
+            )
+        )
+        connection.execute(
+            text(
+                f"UPDATE {product_table_name} SET permissible_use_mode = 'both' "
+                "WHERE permissible_use_mode IS NULL OR permissible_use_mode = ''"
             )
         )
 

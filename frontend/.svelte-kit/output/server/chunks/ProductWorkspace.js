@@ -12,7 +12,7 @@ import { g as getChartTheme, b as buildFullChartOption, E as ECharts, R as RPM_B
 import { J as JobProgressPanel, S as SeriesNamesBadgeList, r as runMaintenanceJob } from "./SeriesNamesBadgeList.js";
 import { A as AssociatedDocumentsPanel } from "./AssociatedDocumentsPanel.js";
 import { R as RichTextEditor } from "./RichTextEditor.js";
-import { F as FAN_ACOUSTIC_DEFAULT_SOUND_POWER_COLUMNS, t as theme, e as emptyProductForm, G as GLOBAL_UNIT_OPTIONS } from "./config.js";
+import { F as FAN_ACOUSTIC_DEFAULT_SOUND_POWER_COLUMNS, t as theme, e as emptyProductForm, P as PERMISSIBLE_USE_MODE_OPTIONS, G as GLOBAL_UNIT_OPTIONS } from "./config.js";
 import { c as createDescriptionSectionDrafts, g as getDescriptionFieldCount } from "./descriptionSections.js";
 function AccordionCard($$renderer, $$props) {
   let title = fallback($$props["title"], "");
@@ -142,6 +142,8 @@ function ProductWorkspace($$renderer, $$props) {
     let rpmLines = [];
     let rpmPoints = [];
     let efficiencyPoints = [];
+    let efficiencyLineDataLoaded = false;
+    let hasBothEfficiencyLines = true;
     let originalRpmLineSnapshots = /* @__PURE__ */ new Map();
     let originalRpmPointSnapshots = /* @__PURE__ */ new Map();
     let mapChartOption = {};
@@ -226,6 +228,7 @@ function ProductWorkspace($$renderer, $$props) {
     let graphCsvDownsampleImportedCurves = true;
     let graphCsvDownsamplePointCount = 5;
     let graphCsvUseLowerEfficiencyLine = false;
+    let editorUseLowerEfficiencyLine = false;
     let graphCsvImportSource = { rows: [], fileName: "", productId: null };
     let graphCsvImportSignature = "";
     let graphCsvPreview = null;
@@ -566,6 +569,12 @@ function ProductWorkspace($$renderer, $$props) {
     }
     function productSupportsBandGraphStyle() {
       return getCurrentProductType()?.supports_band_graph_style ?? true;
+    }
+    function permissibleUseModeDisabled(modeValue) {
+      return modeValue === "both" && efficiencyLineDataLoaded && !hasBothEfficiencyLines;
+    }
+    function permissibleUseModeHelp(modeValue) {
+      return modeValue === "both" && permissibleUseModeDisabled(modeValue) ? "Both efficiency lines are required for this mode." : "";
     }
     function getCurrentGraphConfig() {
       const productType = getCurrentProductType();
@@ -959,7 +968,8 @@ function ProductWorkspace($$renderer, $$props) {
     function buildImportedGraphState(rows, {
       downsampleImportedCurves = true,
       downsamplePointCount = 5,
-      permissibleUseSourceKey = "efficiency_higher_end"
+      permissibleUseSourceKey = "efficiency_higher_end",
+      permissibleUseMode = productForm.permissible_use_mode || "both"
     } = {}) {
       const [headerRow, ...dataRows] = rows;
       const normalizedHeaders = headerRow.map((header) => String(header ?? "").trim());
@@ -1061,7 +1071,7 @@ function ProductWorkspace($$renderer, $$props) {
           }
         }
       }
-      if (permissibleUseSourceKey === "efficiency_higher_end" || permissibleUseSourceKey === "efficiency_lower_end") {
+      if (permissibleUseMode === "dedicated" && (permissibleUseSourceKey === "efficiency_higher_end" || permissibleUseSourceKey === "efficiency_lower_end")) {
         for (const point of nextEfficiencyPoints) {
           if (point.permissible_use != null && point.permissible_use !== "") continue;
           const sourceValue = point?.[permissibleUseSourceKey];
@@ -1166,6 +1176,7 @@ function ProductWorkspace($$renderer, $$props) {
     }
     async function loadProductData() {
       if (!selectedProductId) return;
+      efficiencyLineDataLoaded = false;
       try {
         if (graphCsvImportSource.productId != null && graphCsvImportSource.productId !== selectedProductId) {
           clearGraphCsvImportSource();
@@ -1191,6 +1202,8 @@ function ProductWorkspace($$renderer, $$props) {
         originalRpmPointSnapshots = new Map(nextRpmPoints.map((point) => [Number(point.id), Number(point.rpm_line_id)]));
         rpmPoints = applyRpmPointSort(hydrateRpmPointsWithLineValues(nextRpmPoints, rpmLines).map((point) => normalizeGraphPointDraft(point)));
         efficiencyPoints = nextEfficiencyPoints.map((point) => normalizeGraphEfficiencyPointDraft(point));
+        hasBothEfficiencyLines = nextEfficiencyPoints.some((point) => point?.efficiency_higher_end !== "" && point?.efficiency_higher_end != null) && nextEfficiencyPoints.some((point) => point?.efficiency_lower_end !== "" && point?.efficiency_lower_end != null);
+        efficiencyLineDataLoaded = true;
         originalRpmPointIds = nextRpmPoints.map((point) => point.id);
         originalEfficiencyPointIds = nextEfficiencyPoints.map((point) => point.id);
         fanAcousticTable = nextProductType?.key === "fan" ? createFanAcousticTableDraft(nextProduct?.fan_acoustic_table || {}, nextRpmLines) : null;
@@ -1337,7 +1350,9 @@ function ProductWorkspace($$renderer, $$props) {
         title: `${graphXAxisLabel()} vs ${graphYAxisLabel()} (drag points to edit)`,
         graphConfig: getCurrentGraphConfig(),
         graphMode: "product",
+        permissibleUseMode: productForm.permissible_use_mode || "both",
         includeDragHandles: true,
+        clipRpmAreaToPermissibleUse: true,
         showRpmBandShading: productSupportsBandGraphStyle() ? productForm.show_rpm_band_shading ?? true : false,
         showSecondaryAxis: productSupportsGraphOverlays(),
         flowAxisMaxOverride: dragAxisLock?.flowMax ?? null,
@@ -1561,7 +1576,7 @@ function ProductWorkspace($$renderer, $$props) {
         }
       }
     }
-    if (graphCsvImportSource.rows.length && graphCsvImportSource.productId === selectedProductId && `${selectedProductId ?? ""}|${"1"}|${String(graphCsvDownsamplePointCount)}|${"upper"}` !== graphCsvImportSignature) {
+    if (graphCsvImportSource.rows.length && graphCsvImportSource.productId === selectedProductId && `${selectedProductId ?? ""}|${"1"}|${String(graphCsvDownsamplePointCount)}|${"upper"}|${productForm.permissible_use_mode || "both"}` !== graphCsvImportSignature) {
       applyImportedGraphCsvSource({
         rows: graphCsvImportSource.rows,
         fileName: graphCsvImportSource.fileName || "graph-data.csv",
@@ -1757,14 +1772,53 @@ function ProductWorkspace($$renderer, $$props) {
             $$renderer4.push(`<div class="row g-3">`);
             if (productSupportsBandGraphStyle()) {
               $$renderer4.push("<!--[0-->");
-              $$renderer4.push(`<div class="col-12"><div class="form-check form-switch mt-2"><input class="form-check-input" id="create-show-rpm-band-shading" type="checkbox"${attr("checked", productForm.show_rpm_band_shading, true)}/> <label class="form-check-label" for="create-show-rpm-band-shading">Show band shading on generated product graphs</label></div></div>`);
+              $$renderer4.push(`<div class="col-12"><div class="form-check form-switch mt-2"><input class="form-check-input" id="create-show-rpm-band-shading" type="checkbox"${attr("checked", productForm.show_rpm_band_shading, true)}/> <label class="form-check-label" for="create-show-rpm-band-shading">Show band shading on generated product graphs</label></div></div> `);
+              if (productSupportsGraphOverlays()) {
+                $$renderer4.push("<!--[0-->");
+                $$renderer4.push(`<div class="col-12"><label class="form-label" for="create-permissible-use-mode">Permissible-use shading mode</label> `);
+                $$renderer4.select(
+                  {
+                    class: "form-select",
+                    id: "create-permissible-use-mode",
+                    value: productForm.permissible_use_mode
+                  },
+                  ($$renderer5) => {
+                    $$renderer5.push(`<!--[-->`);
+                    const each_array_4 = ensure_array_like(PERMISSIBLE_USE_MODE_OPTIONS);
+                    for (let $$index_4 = 0, $$length = each_array_4.length; $$index_4 < $$length; $$index_4++) {
+                      let option = each_array_4[$$index_4];
+                      $$renderer5.option(
+                        {
+                          value: option.value,
+                          disabled: permissibleUseModeDisabled(option.value)
+                        },
+                        ($$renderer6) => {
+                          $$renderer6.push(`${escape_html(option.label)}`);
+                        }
+                      );
+                    }
+                    $$renderer5.push(`<!--]-->`);
+                  }
+                );
+                $$renderer4.push(` `);
+                if (permissibleUseModeHelp(productForm.permissible_use_mode)) {
+                  $$renderer4.push("<!--[0-->");
+                  $$renderer4.push(`<div class="form-text text-warning">${escape_html(permissibleUseModeHelp(productForm.permissible_use_mode))}</div>`);
+                } else {
+                  $$renderer4.push("<!--[-1-->");
+                }
+                $$renderer4.push(`<!--]--></div>`);
+              } else {
+                $$renderer4.push("<!--[-1-->");
+              }
+              $$renderer4.push(`<!--]-->`);
             } else {
               $$renderer4.push("<!--[-1-->");
             }
             $$renderer4.push(`<!--]--> <div class="col-12"><div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2"><div><div class="form-label mb-0">Description sections</div> <div class="form-text">Add or remove as many HTML blocks as this product needs.</div></div> <button class="btn btn-outline-primary btn-sm" type="button">Add section</button></div> <div class="vstack gap-3"><!--[-->`);
-            const each_array_4 = ensure_array_like(productDescriptionSections);
-            for (let sectionIndex = 0, $$length = each_array_4.length; sectionIndex < $$length; sectionIndex++) {
-              let section = each_array_4[sectionIndex];
+            const each_array_5 = ensure_array_like(productDescriptionSections);
+            for (let sectionIndex = 0, $$length = each_array_5.length; sectionIndex < $$length; sectionIndex++) {
+              let section = each_array_5[sectionIndex];
               $$renderer4.push(`<div class="border rounded p-3 bg-body-tertiary"><div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2"><label class="form-label mb-0"${attr("for", `create-description-${sectionIndex + 1}`)}>${escape_html(section.title)}</label> <button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", productDescriptionSections.length === 1, true)}>Remove</button></div> `);
               RichTextEditor($$renderer4, {
                 id: `create-description-${sectionIndex + 1}`,
@@ -1799,9 +1853,9 @@ function ProductWorkspace($$renderer, $$props) {
             if (parameterGroups.length > 0) {
               $$renderer4.push("<!--[0-->");
               $$renderer4.push(`<div class="vstack gap-3 mt-3"><!--[-->`);
-              const each_array_5 = ensure_array_like(parameterGroups);
-              for (let groupIndex = 0, $$length = each_array_5.length; groupIndex < $$length; groupIndex++) {
-                let group = each_array_5[groupIndex];
+              const each_array_6 = ensure_array_like(parameterGroups);
+              for (let groupIndex = 0, $$length = each_array_6.length; groupIndex < $$length; groupIndex++) {
+                let group = each_array_6[groupIndex];
                 $$renderer4.push(`<div${attr_class(
                   `border rounded p-3 ${group._pending_delete ? "bg-danger-subtle border-danger-subtle opacity-75" : ""}`,
                   "svelte-py4xdp"
@@ -1818,9 +1872,9 @@ function ProductWorkspace($$renderer, $$props) {
                 if (specificationGroupOpenState[groupIndex] ?? true) {
                   $$renderer4.push("<!--[0-->");
                   $$renderer4.push(`<div class="vstack gap-3"><input class="form-control" style="max-width: 22rem;" type="text" placeholder="Group name"${attr("value", group.group_name)}/> <!--[-->`);
-                  const each_array_6 = ensure_array_like(group.parameters);
-                  for (let parameterIndex = 0, $$length2 = each_array_6.length; parameterIndex < $$length2; parameterIndex++) {
-                    let parameter = each_array_6[parameterIndex];
+                  const each_array_7 = ensure_array_like(group.parameters);
+                  for (let parameterIndex = 0, $$length2 = each_array_7.length; parameterIndex < $$length2; parameterIndex++) {
+                    let parameter = each_array_7[parameterIndex];
                     $$renderer4.push(`<div${attr_class(
                       `border rounded p-3 ${parameter._pending_delete ? "border-danger-subtle bg-danger-subtle opacity-75" : ""}`,
                       "svelte-py4xdp"
@@ -1851,9 +1905,9 @@ function ProductWorkspace($$renderer, $$props) {
                           $$renderer5.push(`Choose prior value`);
                         });
                         $$renderer4.push(`<!--[-->`);
-                        const each_array_7 = ensure_array_like(parameterValueHistory(group.group_name, parameter.parameter_name, "string"));
-                        for (let suggestionIndex = 0, $$length3 = each_array_7.length; suggestionIndex < $$length3; suggestionIndex++) {
-                          let suggestion = each_array_7[suggestionIndex];
+                        const each_array_8 = ensure_array_like(parameterValueHistory(group.group_name, parameter.parameter_name, "string"));
+                        for (let suggestionIndex = 0, $$length3 = each_array_8.length; suggestionIndex < $$length3; suggestionIndex++) {
+                          let suggestion = each_array_8[suggestionIndex];
                           $$renderer4.option({ value: suggestionIndex }, ($$renderer5) => {
                             $$renderer5.push(`${escape_html(suggestion.value_string)} (${escape_html(suggestion.count)})`);
                           });
@@ -1873,9 +1927,9 @@ function ProductWorkspace($$renderer, $$props) {
                           $$renderer5.push(`Choose prior value`);
                         });
                         $$renderer4.push(`<!--[-->`);
-                        const each_array_8 = ensure_array_like(parameterValueHistory(group.group_name, parameter.parameter_name, "number"));
-                        for (let suggestionIndex = 0, $$length3 = each_array_8.length; suggestionIndex < $$length3; suggestionIndex++) {
-                          let suggestion = each_array_8[suggestionIndex];
+                        const each_array_9 = ensure_array_like(parameterValueHistory(group.group_name, parameter.parameter_name, "number"));
+                        for (let suggestionIndex = 0, $$length3 = each_array_9.length; suggestionIndex < $$length3; suggestionIndex++) {
+                          let suggestion = each_array_9[suggestionIndex];
                           $$renderer4.option({ value: suggestionIndex }, ($$renderer5) => {
                             $$renderer5.push(`${escape_html(suggestion.value_number)}${escape_html(suggestion.unit ? ` ${suggestion.unit}` : "")} (${escape_html(suggestion.count)})`);
                           });
@@ -1896,9 +1950,9 @@ function ProductWorkspace($$renderer, $$props) {
                             $$renderer6.push(`No unit`);
                           });
                           $$renderer5.push(`<!--[-->`);
-                          const each_array_9 = ensure_array_like(GLOBAL_UNIT_OPTIONS);
-                          for (let $$index_7 = 0, $$length3 = each_array_9.length; $$index_7 < $$length3; $$index_7++) {
-                            let unitOption = each_array_9[$$index_7];
+                          const each_array_10 = ensure_array_like(GLOBAL_UNIT_OPTIONS);
+                          for (let $$index_8 = 0, $$length3 = each_array_10.length; $$index_8 < $$length3; $$index_8++) {
+                            let unitOption = each_array_10[$$index_8];
                             $$renderer5.option({ value: unitOption }, ($$renderer6) => {
                               $$renderer6.push(`${escape_html(unitOption)}`);
                             });
@@ -1976,19 +2030,19 @@ function ProductWorkspace($$renderer, $$props) {
                   $$renderer4.push("<!--[-1-->");
                 }
                 $$renderer4.push(`<!--]--> <div class="table-responsive fan-acoustic-table-wrap"><table class="table table-sm align-middle editable-table fan-acoustic-table mb-0"><thead><tr><th>Speed (rpm)</th><th>Peak Pressure (Pa)</th><th>Peak Power (kW)</th><th>Running Frequency</th><th>Sound Pressure Level dB @ 3 meters</th><!--[-->`);
-                const each_array_10 = ensure_array_like(fanAcousticTable.sound_power_columns);
-                for (let columnIndex = 0, $$length = each_array_10.length; columnIndex < $$length; columnIndex++) {
-                  each_array_10[columnIndex];
+                const each_array_11 = ensure_array_like(fanAcousticTable.sound_power_columns);
+                for (let columnIndex = 0, $$length = each_array_11.length; columnIndex < $$length; columnIndex++) {
+                  each_array_11[columnIndex];
                   $$renderer4.push(`<th><div class="d-grid gap-1"><input class="form-control form-control-sm" type="text"${attr("value", fanAcousticTable.sound_power_columns[columnIndex])}/> <button class="btn btn-outline-secondary btn-sm" type="button">Rename</button> <button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", fanAcousticTable.sound_power_columns.length <= 1, true)}>Delete</button></div></th>`);
                 }
                 $$renderer4.push(`<!--]--></tr></thead><tbody><!--[-->`);
-                const each_array_11 = ensure_array_like(fanAcousticTable.rows);
-                for (let rowIndex = 0, $$length = each_array_11.length; rowIndex < $$length; rowIndex++) {
-                  let row = each_array_11[rowIndex];
+                const each_array_12 = ensure_array_like(fanAcousticTable.rows);
+                for (let rowIndex = 0, $$length = each_array_12.length; rowIndex < $$length; rowIndex++) {
+                  let row = each_array_12[rowIndex];
                   $$renderer4.push(`<tr><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(row.speed_rpm)}`, "svelte-py4xdp")} type="number" step="any"${attr("value", row.speed_rpm)} disabled=""/></td><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(row.peak_pressure_pa)}`, "svelte-py4xdp")} type="number" step="any"${attr("value", row.peak_pressure_pa)}/></td><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(row.peak_power_kw)}`, "svelte-py4xdp")} type="number" step="any"${attr("value", row.peak_power_kw)}/></td><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(row.running_frequency_hz)}`, "svelte-py4xdp")} type="number" step="any"${attr("value", row.running_frequency_hz)}/></td><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(row.sound_pressure_db_3m)}`, "svelte-py4xdp")} type="number" step="any"${attr("value", row.sound_pressure_db_3m)}/></td><!--[-->`);
-                  const each_array_12 = ensure_array_like(fanAcousticTable.sound_power_columns);
-                  for (let $$index_11 = 0, $$length2 = each_array_12.length; $$index_11 < $$length2; $$index_11++) {
-                    let column = each_array_12[$$index_11];
+                  const each_array_13 = ensure_array_like(fanAcousticTable.sound_power_columns);
+                  for (let $$index_12 = 0, $$length2 = each_array_13.length; $$index_12 < $$length2; $$index_12++) {
+                    let column = each_array_13[$$index_12];
                     $$renderer4.push(`<td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(row.sound_power_levels[column])}`, "svelte-py4xdp")} type="number" step="any"${attr("value", row.sound_power_levels[column])}/></td>`);
                   }
                   $$renderer4.push(`<!--]--></tr>`);
@@ -2024,9 +2078,9 @@ function ProductWorkspace($$renderer, $$props) {
               if (rpmLines.length > 0) {
                 $$renderer4.push("<!--[0-->");
                 $$renderer4.push(`<div class="card shadow-sm"><div class="card-body"><h6 class="card-title mb-3">${escape_html(graphLineValueLabel())} lines</h6> <div class="table-responsive"><table class="table table-sm align-middle editable-table mb-0"><thead><tr><th>${escape_html(graphLineValueLabel())}</th><th>Band colour</th></tr></thead><tbody><!--[-->`);
-                const each_array_13 = ensure_array_like(rpmLines);
-                for (let $$index_13 = 0, $$length = each_array_13.length; $$index_13 < $$length; $$index_13++) {
-                  let line = each_array_13[$$index_13];
+                const each_array_14 = ensure_array_like(rpmLines);
+                for (let $$index_14 = 0, $$length = each_array_14.length; $$index_14 < $$length; $$index_14++) {
+                  let line = each_array_14[$$index_14];
                   $$renderer4.push(`<tr><td>${escape_html(formatGraphLineValue(line.rpm))}</td><td><code>${escape_html(line.band_color || "None")}</code></td></tr>`);
                 }
                 $$renderer4.push(`<!--]--></tbody></table></div></div></div>`);
@@ -2037,9 +2091,9 @@ function ProductWorkspace($$renderer, $$props) {
               if (rpmPoints.length > 0) {
                 $$renderer4.push("<!--[0-->");
                 $$renderer4.push(`<div class="card shadow-sm"><div class="card-body"><h6 class="card-title mb-3">${escape_html(graphLineValueLabel())} points</h6> <div class="table-responsive"><table class="table table-sm align-middle editable-table mb-0"><thead><tr><th>${escape_html(graphLineValueLabel())}</th><th>${escape_html(graphXAxisLabel())}</th><th>${escape_html(graphYAxisLabel())}</th></tr></thead><tbody><!--[-->`);
-                const each_array_14 = ensure_array_like(rpmPoints);
-                for (let $$index_14 = 0, $$length = each_array_14.length; $$index_14 < $$length; $$index_14++) {
-                  let p = each_array_14[$$index_14];
+                const each_array_15 = ensure_array_like(rpmPoints);
+                for (let $$index_15 = 0, $$length = each_array_15.length; $$index_15 < $$length; $$index_15++) {
+                  let p = each_array_15[$$index_15];
                   $$renderer4.push(`<tr><td>${escape_html(formatGraphLineValue(p.rpm))}</td><td>${escape_html(p.airflow)}</td><td>${escape_html(p.pressure)}</td></tr>`);
                 }
                 $$renderer4.push(`<!--]--></tbody></table></div></div></div>`);
@@ -2050,9 +2104,9 @@ function ProductWorkspace($$renderer, $$props) {
               if (productSupportsGraphOverlays() && efficiencyPoints.length > 0) {
                 $$renderer4.push("<!--[0-->");
                 $$renderer4.push(`<div class="card shadow-sm"><div class="card-body"><h6 class="card-title mb-3">Efficiency / permissible points</h6> <div class="table-responsive"><table class="table table-sm align-middle editable-table mb-0"><thead><tr><th>${escape_html(graphXAxisLabel())}</th><th>Efficiency Centre</th><th>Efficiency Lower End</th><th>Efficiency Higher End</th><th>Permissible Use</th></tr></thead><tbody><!--[-->`);
-                const each_array_15 = ensure_array_like(efficiencyPoints);
-                for (let $$index_15 = 0, $$length = each_array_15.length; $$index_15 < $$length; $$index_15++) {
-                  let p = each_array_15[$$index_15];
+                const each_array_16 = ensure_array_like(efficiencyPoints);
+                for (let $$index_16 = 0, $$length = each_array_16.length; $$index_16 < $$length; $$index_16++) {
+                  let p = each_array_16[$$index_16];
                   $$renderer4.push(`<tr><td>${escape_html(p.airflow)}</td><td>${escape_html(p.efficiency_centre ?? "")}</td><td>${escape_html(p.efficiency_lower_end ?? "")}</td><td>${escape_html(p.efficiency_higher_end ?? "")}</td><td>${escape_html(p.permissible_use ?? "")}</td></tr>`);
                 }
                 $$renderer4.push(`<!--]--></tbody></table></div></div></div>`);
@@ -2102,9 +2156,9 @@ function ProductWorkspace($$renderer, $$props) {
               $$renderer5.push(`— Select product type —`);
             });
             $$renderer4.push(`<!--[-->`);
-            const each_array_16 = ensure_array_like(productTypes);
-            for (let $$index_16 = 0, $$length = each_array_16.length; $$index_16 < $$length; $$index_16++) {
-              let productType = each_array_16[$$index_16];
+            const each_array_17 = ensure_array_like(productTypes);
+            for (let $$index_17 = 0, $$length = each_array_17.length; $$index_17 < $$length; $$index_17++) {
+              let productType = each_array_17[$$index_17];
               $$renderer4.option({ value: productType.key }, ($$renderer5) => {
                 $$renderer5.push(`${escape_html(productType.label)}`);
               });
@@ -2125,9 +2179,9 @@ function ProductWorkspace($$renderer, $$props) {
               $$renderer5.push(`All series`);
             });
             $$renderer4.push(`<!--[-->`);
-            const each_array_17 = ensure_array_like(seriesForType(editExistingProductTypeKey));
-            for (let $$index_17 = 0, $$length = each_array_17.length; $$index_17 < $$length; $$index_17++) {
-              let series = each_array_17[$$index_17];
+            const each_array_18 = ensure_array_like(seriesForType(editExistingProductTypeKey));
+            for (let $$index_18 = 0, $$length = each_array_18.length; $$index_18 < $$length; $$index_18++) {
+              let series = each_array_18[$$index_18];
               $$renderer4.option({ value: series.id }, ($$renderer5) => {
                 $$renderer5.push(`${escape_html(series.name)}`);
               });
@@ -2148,9 +2202,9 @@ function ProductWorkspace($$renderer, $$props) {
               $$renderer5.push(`— Select product —`);
             });
             $$renderer4.push(`<!--[-->`);
-            const each_array_18 = ensure_array_like(editableProductsForSelection());
-            for (let $$index_18 = 0, $$length = each_array_18.length; $$index_18 < $$length; $$index_18++) {
-              let product = each_array_18[$$index_18];
+            const each_array_19 = ensure_array_like(editableProductsForSelection());
+            for (let $$index_19 = 0, $$length = each_array_19.length; $$index_19 < $$length; $$index_19++) {
+              let product = each_array_19[$$index_19];
               $$renderer4.option({ value: product.id }, ($$renderer5) => {
                 $$renderer5.push(`${escape_html(product.model)}`);
               });
@@ -2189,9 +2243,9 @@ function ProductWorkspace($$renderer, $$props) {
                   $$renderer6.push(`-- Choose option --`);
                 });
                 $$renderer5.push(`<!--[-->`);
-                const each_array_19 = ensure_array_like(productTypes);
-                for (let $$index_19 = 0, $$length = each_array_19.length; $$index_19 < $$length; $$index_19++) {
-                  let productType = each_array_19[$$index_19];
+                const each_array_20 = ensure_array_like(productTypes);
+                for (let $$index_20 = 0, $$length = each_array_20.length; $$index_20 < $$length; $$index_20++) {
+                  let productType = each_array_20[$$index_20];
                   $$renderer5.option({ value: productType.key }, ($$renderer6) => {
                     $$renderer6.push(`${escape_html(productType.label)}`);
                   });
@@ -2225,9 +2279,9 @@ function ProductWorkspace($$renderer, $$props) {
                   $$renderer6.push(`No series`);
                 });
                 $$renderer5.push(`<!--[-->`);
-                const each_array_20 = ensure_array_like(seriesForType(productForm.product_type_key));
-                for (let $$index_20 = 0, $$length = each_array_20.length; $$index_20 < $$length; $$index_20++) {
-                  let series = each_array_20[$$index_20];
+                const each_array_21 = ensure_array_like(seriesForType(productForm.product_type_key));
+                for (let $$index_21 = 0, $$length = each_array_21.length; $$index_21 < $$length; $$index_21++) {
+                  let series = each_array_21[$$index_21];
                   $$renderer5.option({ value: series.id }, ($$renderer6) => {
                     $$renderer6.push(`${escape_html(series.name)}`);
                   });
@@ -2247,9 +2301,9 @@ function ProductWorkspace($$renderer, $$props) {
                   $$renderer6.push(`-- Choose option --`);
                 });
                 $$renderer5.push(`<!--[-->`);
-                const each_array_21 = ensure_array_like(productTemplateOptions);
-                for (let $$index_21 = 0, $$length = each_array_21.length; $$index_21 < $$length; $$index_21++) {
-                  let template = each_array_21[$$index_21];
+                const each_array_22 = ensure_array_like(productTemplateOptions);
+                for (let $$index_22 = 0, $$length = each_array_22.length; $$index_22 < $$length; $$index_22++) {
+                  let template = each_array_22[$$index_22];
                   $$renderer5.option({ value: template.id }, ($$renderer6) => {
                     $$renderer6.push(`${escape_html(template.label)}`);
                   });
@@ -2258,9 +2312,9 @@ function ProductWorkspace($$renderer, $$props) {
               }
             );
             $$renderer4.push(`</div> <div class="col-12"><div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2"><div><div class="form-label mb-0">Description sections</div> <div class="form-text">Add or remove as many HTML blocks as this product needs.</div></div> <button class="btn btn-outline-primary btn-sm" type="button">Add section</button></div> <div class="vstack gap-3"><!--[-->`);
-            const each_array_22 = ensure_array_like(productDescriptionSections);
-            for (let sectionIndex = 0, $$length = each_array_22.length; sectionIndex < $$length; sectionIndex++) {
-              let section = each_array_22[sectionIndex];
+            const each_array_23 = ensure_array_like(productDescriptionSections);
+            for (let sectionIndex = 0, $$length = each_array_23.length; sectionIndex < $$length; sectionIndex++) {
+              let section = each_array_23[sectionIndex];
               $$renderer4.push(`<div class="border rounded p-3 bg-body-tertiary"><div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2"><label class="form-label mb-0"${attr("for", `edit-description-${sectionIndex + 1}`)}>${escape_html(section.title)}</label> <button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", productDescriptionSections.length === 1, true)}>Remove</button></div> `);
               RichTextEditor($$renderer4, {
                 id: `edit-description-${sectionIndex + 1}`,
@@ -2303,9 +2357,9 @@ function ProductWorkspace($$renderer, $$props) {
             if (parameterGroups.length > 0) {
               $$renderer4.push("<!--[0-->");
               $$renderer4.push(`<div class="vstack gap-3 mt-3"><!--[-->`);
-              const each_array_23 = ensure_array_like(parameterGroups);
-              for (let groupIndex = 0, $$length = each_array_23.length; groupIndex < $$length; groupIndex++) {
-                let group = each_array_23[groupIndex];
+              const each_array_24 = ensure_array_like(parameterGroups);
+              for (let groupIndex = 0, $$length = each_array_24.length; groupIndex < $$length; groupIndex++) {
+                let group = each_array_24[groupIndex];
                 $$renderer4.push(`<div${attr_class(
                   `border rounded p-3 ${group._pending_delete ? "bg-danger-subtle border-danger-subtle opacity-75" : ""}`,
                   "svelte-py4xdp"
@@ -2322,9 +2376,9 @@ function ProductWorkspace($$renderer, $$props) {
                 if (specificationGroupOpenState[groupIndex] ?? true) {
                   $$renderer4.push("<!--[0-->");
                   $$renderer4.push(`<div class="vstack gap-3"><input class="form-control" style="max-width: 22rem;" type="text" placeholder="Group name"${attr("value", group.group_name)}/> <!--[-->`);
-                  const each_array_24 = ensure_array_like(group.parameters);
-                  for (let parameterIndex = 0, $$length2 = each_array_24.length; parameterIndex < $$length2; parameterIndex++) {
-                    let parameter = each_array_24[parameterIndex];
+                  const each_array_25 = ensure_array_like(group.parameters);
+                  for (let parameterIndex = 0, $$length2 = each_array_25.length; parameterIndex < $$length2; parameterIndex++) {
+                    let parameter = each_array_25[parameterIndex];
                     $$renderer4.push(`<div${attr_class(
                       `border rounded p-3 ${parameter._pending_delete ? "border-danger-subtle bg-danger-subtle opacity-75" : ""}`,
                       "svelte-py4xdp"
@@ -2355,9 +2409,9 @@ function ProductWorkspace($$renderer, $$props) {
                           $$renderer5.push(`Choose prior value`);
                         });
                         $$renderer4.push(`<!--[-->`);
-                        const each_array_25 = ensure_array_like(parameterValueHistory(group.group_name, parameter.parameter_name, "string"));
-                        for (let suggestionIndex = 0, $$length3 = each_array_25.length; suggestionIndex < $$length3; suggestionIndex++) {
-                          let suggestion = each_array_25[suggestionIndex];
+                        const each_array_26 = ensure_array_like(parameterValueHistory(group.group_name, parameter.parameter_name, "string"));
+                        for (let suggestionIndex = 0, $$length3 = each_array_26.length; suggestionIndex < $$length3; suggestionIndex++) {
+                          let suggestion = each_array_26[suggestionIndex];
                           $$renderer4.option({ value: suggestionIndex }, ($$renderer5) => {
                             $$renderer5.push(`${escape_html(suggestion.value_string)} (${escape_html(suggestion.count)})`);
                           });
@@ -2377,9 +2431,9 @@ function ProductWorkspace($$renderer, $$props) {
                           $$renderer5.push(`Choose prior value`);
                         });
                         $$renderer4.push(`<!--[-->`);
-                        const each_array_26 = ensure_array_like(parameterValueHistory(group.group_name, parameter.parameter_name, "number"));
-                        for (let suggestionIndex = 0, $$length3 = each_array_26.length; suggestionIndex < $$length3; suggestionIndex++) {
-                          let suggestion = each_array_26[suggestionIndex];
+                        const each_array_27 = ensure_array_like(parameterValueHistory(group.group_name, parameter.parameter_name, "number"));
+                        for (let suggestionIndex = 0, $$length3 = each_array_27.length; suggestionIndex < $$length3; suggestionIndex++) {
+                          let suggestion = each_array_27[suggestionIndex];
                           $$renderer4.option({ value: suggestionIndex }, ($$renderer5) => {
                             $$renderer5.push(`${escape_html(suggestion.value_number)}${escape_html(suggestion.unit ? ` ${suggestion.unit}` : "")} (${escape_html(suggestion.count)})`);
                           });
@@ -2400,9 +2454,9 @@ function ProductWorkspace($$renderer, $$props) {
                             $$renderer6.push(`No unit`);
                           });
                           $$renderer5.push(`<!--[-->`);
-                          const each_array_27 = ensure_array_like(GLOBAL_UNIT_OPTIONS);
-                          for (let $$index_25 = 0, $$length3 = each_array_27.length; $$index_25 < $$length3; $$index_25++) {
-                            let unitOption = each_array_27[$$index_25];
+                          const each_array_28 = ensure_array_like(GLOBAL_UNIT_OPTIONS);
+                          for (let $$index_26 = 0, $$length3 = each_array_28.length; $$index_26 < $$length3; $$index_26++) {
+                            let unitOption = each_array_28[$$index_26];
                             $$renderer5.option({ value: unitOption }, ($$renderer6) => {
                               $$renderer6.push(`${escape_html(unitOption)}`);
                             });
@@ -2503,9 +2557,9 @@ function ProductWorkspace($$renderer, $$props) {
             if (rpmLines.length > 0) {
               $$renderer4.push("<!--[0-->");
               $$renderer4.push(`<div class="vstack gap-2 mt-3"><!--[-->`);
-              const each_array_28 = ensure_array_like(rpmLines);
-              for (let $$index_28 = 0, $$length = each_array_28.length; $$index_28 < $$length; $$index_28++) {
-                let line = each_array_28[$$index_28];
+              const each_array_29 = ensure_array_like(rpmLines);
+              for (let $$index_29 = 0, $$length = each_array_29.length; $$index_29 < $$length; $$index_29++) {
+                let line = each_array_29[$$index_29];
                 $$renderer4.push(`<div class="border rounded p-2"><div class="row g-2 align-items-end"><div class="col-12 col-md-3"><label class="form-label form-label-sm"${attr("for", `rpm-line-value-${line.id}`)}>${escape_html(graphLineValueLabel())}</label> <input class="form-control form-control-sm"${attr("id", `rpm-line-value-${line.id}`)} type="text" inputmode="numeric" pattern="[0-9]*"${attr("value", line.rpm)}/></div> <div class="col-12 col-md-5"><label class="form-label form-label-sm"${attr("for", `rpm-line-band-color-${line.id}`)}>Band colour</label> <div class="input-group input-group-sm"><input class="form-control form-control-color"${attr("id", `rpm-line-band-color-${line.id}`)} type="color"${attr("value", line.band_color)}/> <input class="form-control" type="text"${attr("value", line.band_color)} placeholder="#60a5fa"/></div></div> <div class="col-12 col-md-4"><div class="d-flex flex-wrap gap-2"><button class="btn btn-outline-primary btn-sm">Save</button> <button class="btn btn-outline-secondary btn-sm">Delete</button></div></div></div></div>`);
               }
               $$renderer4.push(`<!--]--></div>`);
@@ -2531,7 +2585,46 @@ function ProductWorkspace($$renderer, $$props) {
               $$settled = false;
             },
             children: ($$renderer4) => {
-              $$renderer4.push(`<div class="vstack gap-3"><div class="card shadow-sm"><div class="card-body"><h3 class="h6 mb-2">Graph Data</h3> <p class="text-body-secondary mb-2">Use one wide CSV or XLSX workbook per graph. Required
+              $$renderer4.push(`<div class="vstack gap-3">`);
+              if (productSupportsGraphOverlays()) {
+                $$renderer4.push("<!--[0-->");
+                $$renderer4.push(`<div class="card shadow-sm"><div class="card-body"><label class="form-label" for="edit-permissible-use-mode">Permissible-use shading mode</label> `);
+                $$renderer4.select(
+                  {
+                    class: "form-select",
+                    id: "edit-permissible-use-mode",
+                    value: productForm.permissible_use_mode
+                  },
+                  ($$renderer5) => {
+                    $$renderer5.push(`<!--[-->`);
+                    const each_array_30 = ensure_array_like(PERMISSIBLE_USE_MODE_OPTIONS);
+                    for (let $$index_30 = 0, $$length = each_array_30.length; $$index_30 < $$length; $$index_30++) {
+                      let option = each_array_30[$$index_30];
+                      $$renderer5.option(
+                        {
+                          value: option.value,
+                          disabled: permissibleUseModeDisabled(option.value)
+                        },
+                        ($$renderer6) => {
+                          $$renderer6.push(`${escape_html(option.label)}`);
+                        }
+                      );
+                    }
+                    $$renderer5.push(`<!--]-->`);
+                  }
+                );
+                $$renderer4.push(` `);
+                if (permissibleUseModeHelp(productForm.permissible_use_mode)) {
+                  $$renderer4.push("<!--[0-->");
+                  $$renderer4.push(`<div class="form-text text-warning">${escape_html(permissibleUseModeHelp(productForm.permissible_use_mode))}</div>`);
+                } else {
+                  $$renderer4.push("<!--[-1-->");
+                }
+                $$renderer4.push(`<!--]--></div></div>`);
+              } else {
+                $$renderer4.push("<!--[-1-->");
+              }
+              $$renderer4.push(`<!--]--> <div class="card shadow-sm"><div class="card-body"><h3 class="h6 mb-2">Graph Data</h3> <p class="text-body-secondary mb-2">Use one wide CSV or XLSX workbook per graph. Required
                         first column: <code>airflow_l_s</code>. Supported
                         dynamic columns: <code>pressure_650rpm</code>, <code>pressure_813rpm</code>, etc. `);
               if (productSupportsGraphOverlays()) {
@@ -2541,7 +2634,7 @@ function ProductWorkspace($$renderer, $$props) {
                 $$renderer4.push("<!--[-1-->");
               }
               $$renderer4.push(`<!--]--></p> <label class="form-label" for="graph-csv-file">Import Graph CSV or XLSX file</label> <div class="d-flex flex-wrap align-items-end gap-3 mb-2"><div class="form-check form-switch mb-0"><input class="form-check-input" id="graph-csv-downsample-enabled" type="checkbox"${attr("checked", graphCsvDownsampleImportedCurves, true)}/> <label class="form-check-label" for="graph-csv-downsample-enabled">Downsample imported curves</label></div> `);
-              if (productSupportsGraphOverlays()) {
+              if (productSupportsGraphOverlays() && productForm.permissible_use_mode === "dedicated") {
                 $$renderer4.push("<!--[0-->");
                 $$renderer4.push(`<div class="form-check form-switch mb-0"><input class="form-check-input" id="graph-csv-permissible-source-lower" type="checkbox"${attr("checked", graphCsvUseLowerEfficiencyLine, true)}/> <label class="form-check-label" for="graph-csv-permissible-source-lower">Generate missing permissible use from lower efficiency line</label></div>`);
               } else {
@@ -2555,7 +2648,7 @@ function ProductWorkspace($$renderer, $$props) {
                           draft.`);
               }
               $$renderer4.push(`<!--]--></p> `);
-              if (productSupportsGraphOverlays()) {
+              if (productSupportsGraphOverlays() && productForm.permissible_use_mode === "dedicated") {
                 $$renderer4.push("<!--[0-->");
                 $$renderer4.push(`<p class="text-body-secondary small mb-2">Missing permissible-use values are copied from the
                           ${escape_html(" upper")}
@@ -2585,9 +2678,9 @@ function ProductWorkspace($$renderer, $$props) {
                 }
                 $$renderer4.push(`<!--]--></div> <p class="text-body-secondary small mb-2"><code>#N/A</code> replacements:
                             ${escape_html(graphCsvPreview.replacedNaNCount)}</p> <div class="small overflow-auto"><table class="table table-sm table-borderless align-middle mb-0"><thead><tr><th scope="col" class="text-body-secondary">Original</th><th scope="col" class="text-body-secondary">Normalized</th></tr></thead><tbody><!--[-->`);
-                const each_array_29 = ensure_array_like(graphCsvPreview.headerPairs);
-                for (let $$index_29 = 0, $$length = each_array_29.length; $$index_29 < $$length; $$index_29++) {
-                  let pair = each_array_29[$$index_29];
+                const each_array_31 = ensure_array_like(graphCsvPreview.headerPairs);
+                for (let $$index_31 = 0, $$length = each_array_31.length; $$index_31 < $$length; $$index_31++) {
+                  let pair = each_array_31[$$index_31];
                   $$renderer4.push(`<tr><td><code>${escape_html(pair.original || " ")}</code></td><td><code>${escape_html(pair.normalized || " ")}</code></td></tr>`);
                 }
                 $$renderer4.push(`<!--]--></tbody></table></div></div>`);
@@ -2612,9 +2705,9 @@ function ProductWorkspace($$renderer, $$props) {
                         page immediately. Review the tables and chart, then
                         press <strong>Save Changes</strong> to commit the imported
                         changes to the database.</p></div></div> <div class="card shadow-sm"><div class="card-body"><h6 class="card-title mb-3">${escape_html(graphLineValueLabel())} points</h6> <div class="table-responsive"><table class="table table-sm align-middle editable-table mb-0"><thead><tr><th>${escape_html(graphLineValueLabel())}</th><th><button type="button" class="btn btn-outline-secondary btn-sm">${escape_html(graphXAxisLabel())} (${escape_html(sortIndicator("airflow"))})</button></th><th><button type="button" class="btn btn-outline-secondary btn-sm">${escape_html(graphYAxisLabel())} (${escape_html(sortIndicator("pressure"))})</button></th><th>Actions</th></tr></thead><tbody><!--[-->`);
-              const each_array_30 = ensure_array_like(rpmPoints);
-              for (let $$index_30 = 0, $$length = each_array_30.length; $$index_30 < $$length; $$index_30++) {
-                let p = each_array_30[$$index_30];
+              const each_array_32 = ensure_array_like(rpmPoints);
+              for (let $$index_32 = 0, $$length = each_array_32.length; $$index_32 < $$length; $$index_32++) {
+                let p = each_array_32[$$index_32];
                 $$renderer4.push(`<tr><td>${escape_html(formatGraphLineValue(p.rpm))}</td><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(p.airflow)}`, "svelte-py4xdp")} style="min-width: 90px;" type="text" inputmode="numeric" pattern="[0-9]*"${attr("value", p.airflow)}/></td><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(p.pressure)}`, "svelte-py4xdp")} style="min-width: 90px;" type="text" inputmode="numeric" pattern="[0-9]*"${attr("value", p.pressure)}/></td><td><button class="btn btn-danger btn-sm">Delete</button></td></tr>`);
               }
               $$renderer4.push(`<!--]--></tbody></table></div> `);
@@ -2627,11 +2720,18 @@ function ProductWorkspace($$renderer, $$props) {
               $$renderer4.push(`<!--]--></div></div> `);
               if (productSupportsGraphOverlays()) {
                 $$renderer4.push("<!--[0-->");
-                $$renderer4.push(`<div class="card shadow-sm"><div class="card-body"><h6 class="card-title mb-3">Efficiency / permissible points</h6> <div class="row g-2 mb-3"><div class="col-12 col-md-3"><label class="form-label form-label-sm" for="scale-efficiency-centre">Centre scale factor</label> <div class="input-group input-group-sm"><input class="form-control" id="scale-efficiency-centre" type="number" step="any"${attr("value", efficiencyScaleFactors.efficiency_centre)}/> <button class="btn btn-outline-secondary" type="button">Apply</button></div></div> <div class="col-12 col-md-3"><label class="form-label form-label-sm" for="scale-efficiency-lower">Lower scale factor</label> <div class="input-group input-group-sm"><input class="form-control" id="scale-efficiency-lower" type="number" step="any"${attr("value", efficiencyScaleFactors.efficiency_lower_end)}/> <button class="btn btn-outline-secondary" type="button">Apply</button></div></div> <div class="col-12 col-md-3"><label class="form-label form-label-sm" for="scale-efficiency-higher">Higher scale factor</label> <div class="input-group input-group-sm"><input class="form-control" id="scale-efficiency-higher" type="number" step="any"${attr("value", efficiencyScaleFactors.efficiency_higher_end)}/> <button class="btn btn-outline-secondary" type="button">Apply</button></div></div> <div class="col-12 col-md-3"><label class="form-label form-label-sm" for="scale-permissible-use">Permissible scale factor</label> <div class="input-group input-group-sm"><input class="form-control" id="scale-permissible-use" type="number" step="any"${attr("value", efficiencyScaleFactors.permissible_use)}/> <button class="btn btn-outline-secondary" type="button">Apply</button></div></div></div> <p class="text-body-secondary small mb-3">These scale the current draft values for each overlay
+                $$renderer4.push(`<div class="card shadow-sm"><div class="card-body"><h6 class="card-title mb-3">Efficiency / permissible points</h6> `);
+                if (productForm.permissible_use_mode === "dedicated") {
+                  $$renderer4.push("<!--[0-->");
+                  $$renderer4.push(`<div class="d-flex flex-wrap align-items-end gap-2 mb-3"><div class="form-check form-switch mb-1"><input class="form-check-input" id="editor-permissible-source-lower" type="checkbox"${attr("checked", editorUseLowerEfficiencyLine, true)}/> <label class="form-check-label" for="editor-permissible-source-lower">Generate missing permissible use from lower efficiency line</label></div> <button class="btn btn-outline-secondary btn-sm" type="button">Generate missing permissible use</button></div>`);
+                } else {
+                  $$renderer4.push("<!--[-1-->");
+                }
+                $$renderer4.push(`<!--]--> <div class="row g-2 mb-3"><div class="col-12 col-md-3"><label class="form-label form-label-sm" for="scale-efficiency-centre">Centre scale factor</label> <div class="input-group input-group-sm"><input class="form-control" id="scale-efficiency-centre" type="number" step="any"${attr("value", efficiencyScaleFactors.efficiency_centre)}/> <button class="btn btn-outline-secondary" type="button">Apply</button></div></div> <div class="col-12 col-md-3"><label class="form-label form-label-sm" for="scale-efficiency-lower">Lower scale factor</label> <div class="input-group input-group-sm"><input class="form-control" id="scale-efficiency-lower" type="number" step="any"${attr("value", efficiencyScaleFactors.efficiency_lower_end)}/> <button class="btn btn-outline-secondary" type="button">Apply</button></div></div> <div class="col-12 col-md-3"><label class="form-label form-label-sm" for="scale-efficiency-higher">Higher scale factor</label> <div class="input-group input-group-sm"><input class="form-control" id="scale-efficiency-higher" type="number" step="any"${attr("value", efficiencyScaleFactors.efficiency_higher_end)}/> <button class="btn btn-outline-secondary" type="button">Apply</button></div></div> <div class="col-12 col-md-3"><label class="form-label form-label-sm" for="scale-permissible-use">Permissible scale factor</label> <div class="input-group input-group-sm"><input class="form-control" id="scale-permissible-use" type="number" step="any"${attr("value", efficiencyScaleFactors.permissible_use)}/> <button class="btn btn-outline-secondary" type="button">Apply</button></div></div></div> <p class="text-body-secondary small mb-3">These scale the current draft values for each overlay
                           column and round the result back to whole numbers.</p> <div class="d-flex flex-wrap align-items-center gap-2 mb-3"><button class="btn btn-outline-primary btn-sm" type="button"${attr("disabled", !rpmLines.length || !rpmPoints.length || !efficiencyPoints.length, true)}>Scale lines to highest RPM</button> <span class="small text-body-secondary">Aligns each overlay line with the highest RPM curve at its peak airflow.</span></div> <div class="d-flex flex-wrap align-items-center gap-2 mb-3"><span class="small text-body-secondary me-1">Switch efficiency lines:</span> <button class="btn btn-outline-secondary btn-sm" type="button">Centre ↔ Lower End</button> <button class="btn btn-outline-secondary btn-sm" type="button">Centre ↔ Higher End</button> <button class="btn btn-outline-secondary btn-sm" type="button">Lower End ↔ Higher End</button></div> <div class="table-responsive"><table class="table table-sm align-middle editable-table mb-0"><thead><tr><th>${escape_html(graphXAxisLabel())}</th><th>Efficiency Centre</th><th>Efficiency Lower End</th><th>Efficiency Higher End</th><th>Permissible Use</th><th>Actions</th></tr></thead><tbody><!--[-->`);
-                const each_array_31 = ensure_array_like(efficiencyPoints);
-                for (let $$index_31 = 0, $$length = each_array_31.length; $$index_31 < $$length; $$index_31++) {
-                  let p = each_array_31[$$index_31];
+                const each_array_33 = ensure_array_like(efficiencyPoints);
+                for (let $$index_33 = 0, $$length = each_array_33.length; $$index_33 < $$length; $$index_33++) {
+                  let p = each_array_33[$$index_33];
                   $$renderer4.push(`<tr><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(p.airflow)}`, "svelte-py4xdp")} style="min-width: 90px;" type="text" inputmode="numeric" pattern="[0-9]*"${attr("value", p.airflow)}/></td><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(p.efficiency_centre)}`, "svelte-py4xdp")} style="min-width: 90px;" type="text" inputmode="numeric" pattern="[0-9]*"${attr("value", p.efficiency_centre)}/></td><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(p.efficiency_lower_end)}`, "svelte-py4xdp")} style="min-width: 90px;" type="text" inputmode="numeric" pattern="[0-9]*"${attr("value", p.efficiency_lower_end)}/></td><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(p.efficiency_higher_end)}`, "svelte-py4xdp")} style="min-width: 90px;" type="text" inputmode="numeric" pattern="[0-9]*"${attr("value", p.efficiency_higher_end)}/></td><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(p.permissible_use)}`, "svelte-py4xdp")} style="min-width: 90px;" type="text" inputmode="numeric" pattern="[0-9]*"${attr("value", p.permissible_use)}/></td><td><button class="btn btn-danger btn-sm">Delete</button></td></tr>`);
                 }
                 $$renderer4.push(`<!--]--></tbody></table></div> `);
@@ -2660,17 +2760,17 @@ function ProductWorkspace($$renderer, $$props) {
                       $$renderer6.push(`-Off-`);
                     });
                     $$renderer5.push(`<!--[-->`);
-                    const each_array_32 = ensure_array_like(rpmLines);
-                    for (let $$index_32 = 0, $$length = each_array_32.length; $$index_32 < $$length; $$index_32++) {
-                      let line = each_array_32[$$index_32];
+                    const each_array_34 = ensure_array_like(rpmLines);
+                    for (let $$index_34 = 0, $$length = each_array_34.length; $$index_34 < $$length; $$index_34++) {
+                      let line = each_array_34[$$index_34];
                       $$renderer5.option({ value: `rpm:${line.id}` }, ($$renderer6) => {
                         $$renderer6.push(`${escape_html(formatGraphLineValue(line.rpm))} line`);
                       });
                     }
                     $$renderer5.push(`<!--]--><!--[-->`);
-                    const each_array_33 = ensure_array_like(currentOverlayLineDefinitions());
-                    for (let $$index_33 = 0, $$length = each_array_33.length; $$index_33 < $$length; $$index_33++) {
-                      let definition = each_array_33[$$index_33];
+                    const each_array_35 = ensure_array_like(currentOverlayLineDefinitions());
+                    for (let $$index_35 = 0, $$length = each_array_35.length; $$index_35 < $$length; $$index_35++) {
+                      let definition = each_array_35[$$index_35];
                       $$renderer5.option({ value: `efficiency:${definition.key}` }, ($$renderer6) => {
                         $$renderer6.push(`${escape_html(definition.label)}`);
                       });
@@ -2736,19 +2836,19 @@ function ProductWorkspace($$renderer, $$props) {
                   $$renderer4.push("<!--[-1-->");
                 }
                 $$renderer4.push(`<!--]--> <div class="table-responsive fan-acoustic-table-wrap"><table class="table table-sm align-middle editable-table fan-acoustic-table mb-0"><thead><tr><th>Speed (rpm)</th><th>Peak Pressure (Pa)</th><th>Peak Power (kW)</th><th>Running Frequency</th><th>Sound Pressure Level dB @ 3 meters</th><!--[-->`);
-                const each_array_34 = ensure_array_like(fanAcousticTable.sound_power_columns);
-                for (let columnIndex = 0, $$length = each_array_34.length; columnIndex < $$length; columnIndex++) {
-                  each_array_34[columnIndex];
+                const each_array_36 = ensure_array_like(fanAcousticTable.sound_power_columns);
+                for (let columnIndex = 0, $$length = each_array_36.length; columnIndex < $$length; columnIndex++) {
+                  each_array_36[columnIndex];
                   $$renderer4.push(`<th><div class="d-grid gap-1"><input class="form-control form-control-sm" type="text"${attr("value", fanAcousticTable.sound_power_columns[columnIndex])}/> <button class="btn btn-outline-secondary btn-sm" type="button">Rename</button> <button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", fanAcousticTable.sound_power_columns.length <= 1, true)}>Delete</button></div></th>`);
                 }
                 $$renderer4.push(`<!--]--></tr></thead><tbody><!--[-->`);
-                const each_array_35 = ensure_array_like(fanAcousticTable.rows);
-                for (let rowIndex = 0, $$length = each_array_35.length; rowIndex < $$length; rowIndex++) {
-                  let row = each_array_35[rowIndex];
+                const each_array_37 = ensure_array_like(fanAcousticTable.rows);
+                for (let rowIndex = 0, $$length = each_array_37.length; rowIndex < $$length; rowIndex++) {
+                  let row = each_array_37[rowIndex];
                   $$renderer4.push(`<tr><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(row.speed_rpm)}`, "svelte-py4xdp")} type="number" step="any"${attr("value", row.speed_rpm)} disabled=""/></td><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(row.peak_pressure_pa)}`, "svelte-py4xdp")} type="number" step="any"${attr("value", row.peak_pressure_pa)}/></td><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(row.peak_power_kw)}`, "svelte-py4xdp")} type="number" step="any"${attr("value", row.peak_power_kw)}/></td><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(row.running_frequency_hz)}`, "svelte-py4xdp")} type="number" step="any"${attr("value", row.running_frequency_hz)}/></td><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(row.sound_pressure_db_3m)}`, "svelte-py4xdp")} type="number" step="any"${attr("value", row.sound_pressure_db_3m)}/></td><!--[-->`);
-                  const each_array_36 = ensure_array_like(fanAcousticTable.sound_power_columns);
-                  for (let $$index_35 = 0, $$length2 = each_array_36.length; $$index_35 < $$length2; $$index_35++) {
-                    let column = each_array_36[$$index_35];
+                  const each_array_38 = ensure_array_like(fanAcousticTable.sound_power_columns);
+                  for (let $$index_37 = 0, $$length2 = each_array_38.length; $$index_37 < $$length2; $$index_37++) {
+                    let column = each_array_38[$$index_37];
                     $$renderer4.push(`<td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(row.sound_power_levels[column])}`, "svelte-py4xdp")} type="number" step="any"${attr("value", row.sound_power_levels[column])}/></td>`);
                   }
                   $$renderer4.push(`<!--]--></tr>`);

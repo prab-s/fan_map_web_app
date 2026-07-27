@@ -330,6 +330,8 @@ class BulkImportSheetNormalizationResponse(BaseModel):
     rpm_line_count: int = 0
     rpm_point_count: int = 0
     efficiency_point_count: int = 0
+    has_efficiency_upper: bool = False
+    has_efficiency_lower: bool = False
     error: Optional[str] = None
 
 
@@ -497,6 +499,7 @@ class ProductBase(_RichTextAliasMixin):
     description3_html: Optional[str] = None
     comments_html: Optional[str] = None
     show_rpm_band_shading: bool = True
+    permissible_use_mode: str = "both"
     band_graph_background_color: Optional[str] = None
     band_graph_label_text_color: Optional[str] = None
     band_graph_faded_opacity: Optional[float] = None
@@ -523,6 +526,7 @@ class ProductUpdate(_RichTextAliasMixin):
     description3_html: Optional[str] = None
     comments_html: Optional[str] = None
     show_rpm_band_shading: Optional[bool] = None
+    permissible_use_mode: Optional[str] = None
     band_graph_background_color: Optional[str] = None
     band_graph_label_text_color: Optional[str] = None
     band_graph_faded_opacity: Optional[float] = None

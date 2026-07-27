@@ -43,6 +43,7 @@
   import {
     FAN_ACOUSTIC_DEFAULT_SOUND_POWER_COLUMNS,
     GLOBAL_UNIT_OPTIONS,
+    PERMISSIBLE_USE_MODE_OPTIONS,
     emptyProductForm,
     getChartTheme,
     theme,
@@ -71,6 +72,8 @@
   let rpmLines = [];
   let rpmPoints = [];
   let efficiencyPoints = [];
+  let efficiencyLineDataLoaded = false;
+  let hasBothEfficiencyLines = true;
   let originalRpmLineSnapshots = new Map();
   let originalRpmPointSnapshots = new Map();
   let mapChartOption = {};
@@ -221,6 +224,7 @@
   let graphCsvDownsampleImportedCurves = true;
   let graphCsvDownsamplePointCount = 5;
   let graphCsvUseLowerEfficiencyLine = false;
+  let editorUseLowerEfficiencyLine = false;
   let graphCsvImportSource = {
     rows: [],
     fileName: "",
@@ -256,7 +260,7 @@
     graphCsvImportSource.productId === selectedProductId &&
     `${selectedProductId ?? ""}|${graphCsvDownsampleImportedCurves ? "1" : "0"}|${String(
       graphCsvDownsamplePointCount ?? "",
-    )}|${graphCsvUseLowerEfficiencyLine ? "lower" : "upper"}` !== graphCsvImportSignature
+    )}|${graphCsvUseLowerEfficiencyLine ? "lower" : "upper"}|${productForm.permissible_use_mode || "both"}` !== graphCsvImportSignature
   ) {
     applyImportedGraphCsvSource({
       rows: graphCsvImportSource.rows,
@@ -686,6 +690,25 @@
     });
 
     addSuccess(`Scaled ${field.replaceAll("_", " ")} values locally.`);
+  }
+
+  function generateMissingPermissibleUseLocally() {
+    const sourceField = editorUseLowerEfficiencyLine
+      ? "efficiency_lower_end"
+      : "efficiency_higher_end";
+    let generatedCount = 0;
+    efficiencyPoints = efficiencyPoints.map((point) => {
+      if (!isBlankEditorNumericValue(point?.permissible_use)) return point;
+      const sourceValue = Number(point?.[sourceField]);
+      if (!Number.isFinite(sourceValue)) return point;
+      generatedCount += 1;
+      return { ...point, permissible_use: Math.round(sourceValue) };
+    });
+    addSuccess(
+      generatedCount
+        ? `Generated ${generatedCount} missing permissible-use value${generatedCount === 1 ? "" : "s"} locally. Save Changes to persist them.`
+        : "No missing permissible-use values could be generated from the selected efficiency line.",
+    );
   }
 
   function scaleEfficiencyLinesToHighestRpm() {
@@ -1244,6 +1267,27 @@
 
   function productSupportsBandGraphStyle() {
     return getCurrentProductType()?.supports_band_graph_style ?? true;
+  }
+
+  function hasEfficiencyLineValues(field) {
+    const points = [
+      ...(efficiencyPoints ?? []),
+      ...(currentProduct?.efficiency_points ?? []),
+    ];
+    return points.some((point) => {
+      const value = point?.[field];
+      return value !== "" && value != null && Number.isFinite(Number(value));
+    });
+  }
+
+  function permissibleUseModeDisabled(modeValue) {
+    return modeValue === "both" && efficiencyLineDataLoaded && !hasBothEfficiencyLines;
+  }
+
+  function permissibleUseModeHelp(modeValue) {
+    return modeValue === "both" && permissibleUseModeDisabled(modeValue)
+      ? "Both efficiency lines are required for this mode."
+      : "";
   }
 
   function productGraphKindLabel() {
@@ -3094,6 +3138,7 @@
       downsampleImportedCurves = true,
       downsamplePointCount = 5,
       permissibleUseSourceKey = "efficiency_higher_end",
+      permissibleUseMode = productForm.permissible_use_mode || "both",
     } = {},
   ) {
     const [headerRow, ...dataRows] = rows;
@@ -3239,8 +3284,9 @@
     }
 
     if (
-      permissibleUseSourceKey === "efficiency_higher_end" ||
-      permissibleUseSourceKey === "efficiency_lower_end"
+      permissibleUseMode === "dedicated" &&
+      (permissibleUseSourceKey === "efficiency_higher_end" ||
+        permissibleUseSourceKey === "efficiency_lower_end")
     ) {
       for (const point of nextEfficiencyPoints) {
         if (point.permissible_use != null && point.permissible_use !== "") continue;
@@ -3615,6 +3661,7 @@
 
   async function loadProductData() {
     if (!selectedProductId) return;
+    efficiencyLineDataLoaded = false;
     try {
       if (
         graphCsvImportSource.productId != null &&
@@ -3672,6 +3719,10 @@
       efficiencyPoints = nextEfficiencyPoints.map((point) =>
         normalizeGraphEfficiencyPointDraft(point),
       );
+      hasBothEfficiencyLines =
+        nextEfficiencyPoints.some((point) => point?.efficiency_higher_end !== "" && point?.efficiency_higher_end != null) &&
+        nextEfficiencyPoints.some((point) => point?.efficiency_lower_end !== "" && point?.efficiency_lower_end != null);
+      efficiencyLineDataLoaded = true;
       originalRpmPointIds = nextRpmPoints.map((point) => point.id);
       originalEfficiencyPointIds = nextEfficiencyPoints.map(
         (point) => point.id,
@@ -3836,6 +3887,7 @@
         productDescriptionFieldCount,
       ),
       show_rpm_band_shading: !!productForm.show_rpm_band_shading,
+      permissible_use_mode: productForm.permissible_use_mode || "both",
       band_graph_background_color:
         normalizeOptionalColor(graphStyleForm.band_graph_background_color) ||
         null,
@@ -3929,6 +3981,7 @@
       online_template_id:
         product.online_template_id || product.template_id || "",
       show_rpm_band_shading: product.show_rpm_band_shading ?? true,
+      permissible_use_mode: product.permissible_use_mode || "both",
     };
     fanAcousticTable =
       product.product_type_key === "fan"
@@ -4336,7 +4389,9 @@
       title: `${graphXAxisLabel()} vs ${graphYAxisLabel()} (drag points to edit)`,
       graphConfig: getCurrentGraphConfig(),
       graphMode: "product",
+      permissibleUseMode: productForm.permissible_use_mode || "both",
       includeDragHandles: true,
+      clipRpmAreaToPermissibleUse: true,
       showRpmBandShading: productSupportsBandGraphStyle()
         ? (productForm.show_rpm_band_shading ?? true)
         : false,
@@ -4977,6 +5032,19 @@
                     >
                   </div>
                 </div>
+                {#if productSupportsGraphOverlays()}
+                  <div class="col-12">
+                    <label class="form-label" for="create-permissible-use-mode">Permissible-use shading mode</label>
+                    <select class="form-select" id="create-permissible-use-mode" bind:value={productForm.permissible_use_mode}>
+                      {#each PERMISSIBLE_USE_MODE_OPTIONS as option}
+                        <option value={option.value} disabled={permissibleUseModeDisabled(option.value)}>{option.label}</option>
+                      {/each}
+                    </select>
+                    {#if permissibleUseModeHelp(productForm.permissible_use_mode)}
+                      <div class="form-text text-warning">{permissibleUseModeHelp(productForm.permissible_use_mode)}</div>
+                    {/if}
+                  </div>
+                {/if}
               {/if}
               <div class="col-12">
                 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
@@ -6418,6 +6486,21 @@
                 bind:open={editGraphDataOpen}
               >
                 <div class="vstack gap-3">
+                  {#if productSupportsGraphOverlays()}
+                    <div class="card shadow-sm">
+                      <div class="card-body">
+                        <label class="form-label" for="edit-permissible-use-mode">Permissible-use shading mode</label>
+                        <select class="form-select" id="edit-permissible-use-mode" bind:value={productForm.permissible_use_mode}>
+                          {#each PERMISSIBLE_USE_MODE_OPTIONS as option}
+                            <option value={option.value} disabled={permissibleUseModeDisabled(option.value)}>{option.label}</option>
+                          {/each}
+                        </select>
+                        {#if permissibleUseModeHelp(productForm.permissible_use_mode)}
+                          <div class="form-text text-warning">{permissibleUseModeHelp(productForm.permissible_use_mode)}</div>
+                        {/if}
+                      </div>
+                    </div>
+                  {/if}
                   <div class="card shadow-sm">
                     <div class="card-body">
                       <h3 class="h6 mb-2">Graph Data</h3>
@@ -6453,7 +6536,7 @@
                             Downsample imported curves
                           </label>
                         </div>
-                        {#if productSupportsGraphOverlays()}
+                        {#if productSupportsGraphOverlays() && productForm.permissible_use_mode === "dedicated"}
                           <div class="form-check form-switch mb-0">
                             <input
                               class="form-check-input"
@@ -6504,7 +6587,7 @@
                           Imported curves are injected at full resolution.
                         {/if}
                       </p>
-                      {#if productSupportsGraphOverlays()}
+                      {#if productSupportsGraphOverlays() && productForm.permissible_use_mode === "dedicated"}
                         <p class="text-body-secondary small mb-2">
                           Missing permissible-use values are copied from the
                           {graphCsvUseLowerEfficiencyLine ? " lower" : " upper"}
@@ -6701,6 +6784,24 @@
                         <h6 class="card-title mb-3">
                           Efficiency / permissible points
                         </h6>
+                        {#if productForm.permissible_use_mode === "dedicated"}
+                          <div class="d-flex flex-wrap align-items-end gap-2 mb-3">
+                            <div class="form-check form-switch mb-1">
+                              <input
+                                class="form-check-input"
+                                id="editor-permissible-source-lower"
+                                type="checkbox"
+                                bind:checked={editorUseLowerEfficiencyLine}
+                              />
+                              <label class="form-check-label" for="editor-permissible-source-lower">
+                                Generate missing permissible use from lower efficiency line
+                              </label>
+                            </div>
+                            <button class="btn btn-outline-secondary btn-sm" type="button" on:click={generateMissingPermissibleUseLocally}>
+                              Generate missing permissible use
+                            </button>
+                          </div>
+                        {/if}
                         <div class="row g-2 mb-3">
                           <div class="col-12 col-md-3">
                             <label

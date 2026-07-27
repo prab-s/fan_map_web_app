@@ -533,7 +533,7 @@ function _page($$renderer, $$props) {
         title: "Template File Manager",
         description: "Browse and manage template folders and files in the deployment volume. This covers the live template tree used for PDF generation."
       });
-      $$renderer2.push(`<!----></div> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Product Graph Images</h3> <p class="mb-0 text-body-secondary">Generate all product graph images in one pass, or clear them so they can be regenerated later.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Generate Product Graphs</button> <button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Clear Graph Images</button></div></div> `);
+      $$renderer2.push(`<!----></div> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Product Graph Images</h3> <p class="mb-0 text-body-secondary">Generate all product graph images in one pass, or clear them so they can be regenerated later.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Regenerate Product Graphs</button> <button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Clear Graph Images</button></div></div> `);
       {
         $$renderer2.push("<!--[-1-->");
       }

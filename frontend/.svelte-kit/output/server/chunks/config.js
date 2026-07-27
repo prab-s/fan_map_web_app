@@ -14,6 +14,13 @@ const GLOBAL_UNIT_OPTIONS = [
   "°C"
 ];
 const FAN_ACOUSTIC_DEFAULT_SOUND_POWER_COLUMNS = ["63", "125", "250", "500", "1k", "2k", "4k", "8k"];
+const PERMISSIBLE_USE_MODE_OPTIONS = [
+  { value: "dedicated", label: "1) Dedicated grey permissible-use line" },
+  { value: "upper", label: "2) Upper efficiency line only" },
+  { value: "lower", label: "3) Lower efficiency line only" },
+  { value: "both", label: "4) Both efficiency lines" },
+  { value: "none", label: "5) No permissible-use shading" }
+];
 function emptyProductForm() {
   return {
     model: "",
@@ -24,6 +31,7 @@ function emptyProductForm() {
     online_template_id: "",
     descriptionSections: [{ key: "description1_html", title: "Description 1", html: "" }],
     show_rpm_band_shading: true,
+    permissible_use_mode: "both",
     band_graph_background_color: "#ffffff",
     band_graph_label_text_color: "#000000"
   };
@@ -33,6 +41,7 @@ export {
   API_BASE as A,
   FAN_ACOUSTIC_DEFAULT_SOUND_POWER_COLUMNS as F,
   GLOBAL_UNIT_OPTIONS as G,
+  PERMISSIBLE_USE_MODE_OPTIONS as P,
   emptyProductForm as e,
   theme as t
 };

@@ -1,4 +1,5 @@
 import { h as head, c as attr_class, b as attr, d as ensure_array_like, e as escape_html } from "../../../chunks/index2.js";
+import { P as PERMISSIBLE_USE_MODE_OPTIONS } from "../../../chunks/config.js";
 import "../../../chunks/auth.js";
 import { o as onDestroy } from "../../../chunks/index-server.js";
 import "@sveltejs/kit/internal";
@@ -9,12 +10,14 @@ import "../../../chunks/root.js";
 import "../../../chunks/state.svelte.js";
 function _page($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
-    let targetOptions;
+    let bulkBothModeDisabled, targetOptions;
     const DEFAULT_PRODUCT_TYPE_KEY = "fan";
     const NEW_SERIES_SELECTION = "new";
     let workbookFiles = [];
+    let workbookReport = null;
     let downsampleImportedCurves = true;
     let downsamplePointCount = 5;
+    let permissibleUseMode = "both";
     let productTypes = [];
     let selectedProductTypeKey = DEFAULT_PRODUCT_TYPE_KEY;
     let selectedWorkbookSeriesId = "";
@@ -98,6 +101,7 @@ function _page($$renderer, $$props) {
     }
     onDestroy(() => {
     });
+    bulkBothModeDisabled = Boolean(workbookReport?.sheet_normalizations?.some((item) => item.include_in_import !== false && (!item.has_efficiency_upper || !item.has_efficiency_lower)));
     filteredSeries = series.filter((item) => (item.product_type_key || DEFAULT_PRODUCT_TYPE_KEY) === selectedProductTypeKey);
     {
       const nextSeriesFilterId = resolveImageSeriesFilterId();
@@ -136,7 +140,43 @@ function _page($$renderer, $$props) {
     {
       $$renderer2.push("<!--[-1-->");
     }
-    $$renderer2.push(`<!--]--> <div class="bulk-shell svelte-u3860d"><section class="hero-panel card shadow-sm mb-4 svelte-u3860d"><div class="card-body p-4 p-lg-5"><p class="eyebrow mb-2 svelte-u3860d">Maintenance</p> <h1 class="display-title mb-2 svelte-u3860d">Bulk Import</h1> <p class="lead text-body-secondary mb-0">Use the workbook importer for graph points and the image importer for product or series media. You can set a workbook-wide default series before the dry run, then override individual sheets in the inline mapping panel. If a workbook sheet is named after a product that does not yet exist, importing it will create that product automatically and load the map points into it.</p></div></section> <div class="card shadow-sm mb-4 svelte-u3860d"><div class="card-body p-3 p-lg-3"><h2 class="h5 mb-2">Import Contract</h2> <ul class="text-body-secondary mb-0 ps-3"><li>The workbook flow only handles graph data files and keeps the sheet-to-product mapping inline on the page.</li> <li>You can assign a default series before analysing, then change any sheet's series in the dry-run panel.</li> <li>The image flow targets exactly one product or one series at a time.</li> <li>Image uploads overwrite any existing file with the same name in that target folder.</li> <li>Files are stored in dedicated \`product_&lt;id>\` and \`series_&lt;id>\` subfolders.</li></ul></div></div> <div class="row g-4"><div class="col-12 col-xl-7"><div class="card shadow-sm mb-4 svelte-u3860d"><div class="card-body p-2 p-lg-2"><div${attr_class(`dropzone rounded-4 p-4 p-lg-5 ${""}`, "svelte-u3860d")} role="button" tabindex="0" aria-label="Workbook import file drop zone"><div class="dropzone-inner text-center"><p class="section-label mb-2 svelte-u3860d">Graph Data Import</p> <h2 class="h4 mb-2">Drop workbook or CSV files here</h2> <p class="text-body-secondary mb-4">Upload \`.xlsx\`, \`.xlsm\`, or \`.csv\` files. Click Analyse to build an inline sheet-to-product mapping panel before you import.</p> <div class="d-flex justify-content-center flex-wrap gap-2"><label class="btn btn-primary" for="bulk-workbook-files">Choose Files</label> <button class="btn btn-outline-secondary" type="button"${attr("disabled", workbookFiles.length === 0, true)}>Clear Selection</button></div> <input id="bulk-workbook-files" class="visually-hidden" type="file" multiple="" accept=".xlsx,.xlsm,.csv"/> <div class="row g-3 mt-3 text-start"><div class="col-12 col-lg-6"><div class="form-check form-switch"><input class="form-check-input" id="bulk-downsample" type="checkbox"${attr("checked", downsampleImportedCurves, true)}/> <label class="form-check-label" for="bulk-downsample">Downsample imported curves</label></div></div></div> <div class="row g-3 mt-2 text-start"><div class="col-12 col-lg-4"><label class="form-label form-label-sm" for="bulk-downsample-count">Points per curve</label> <input id="bulk-downsample-count" class="form-control" type="number" min="1" step="1"${attr("value", downsamplePointCount)}${attr("disabled", !downsampleImportedCurves, true)}/></div> <div class="col-12 col-lg-8"><label class="form-label form-label-sm" for="bulk-series-default">Default series for new products</label> `);
+    $$renderer2.push(`<!--]--> <div class="bulk-shell svelte-u3860d"><section class="hero-panel card shadow-sm mb-4 svelte-u3860d"><div class="card-body p-4 p-lg-5"><p class="eyebrow mb-2 svelte-u3860d">Maintenance</p> <h1 class="display-title mb-2 svelte-u3860d">Bulk Import</h1> <p class="lead text-body-secondary mb-0">Use the workbook importer for graph points and the image importer for product or series media. You can set a workbook-wide default series before the dry run, then override individual sheets in the inline mapping panel. If a workbook sheet is named after a product that does not yet exist, importing it will create that product automatically and load the map points into it.</p></div></section> <div class="card shadow-sm mb-4 svelte-u3860d"><div class="card-body p-3 p-lg-3"><h2 class="h5 mb-2">Import Contract</h2> <ul class="text-body-secondary mb-0 ps-3"><li>The workbook flow only handles graph data files and keeps the sheet-to-product mapping inline on the page.</li> <li>You can assign a default series before analysing, then change any sheet's series in the dry-run panel.</li> <li>The image flow targets exactly one product or one series at a time.</li> <li>Image uploads overwrite any existing file with the same name in that target folder.</li> <li>Files are stored in dedicated \`product_&lt;id>\` and \`series_&lt;id>\` subfolders.</li></ul></div></div> <div class="row g-4"><div class="col-12 col-xl-7"><div class="card shadow-sm mb-4 svelte-u3860d"><div class="card-body p-2 p-lg-2"><div${attr_class(`dropzone rounded-4 p-4 p-lg-5 ${""}`, "svelte-u3860d")} role="button" tabindex="0" aria-label="Workbook import file drop zone"><div class="dropzone-inner text-center"><p class="section-label mb-2 svelte-u3860d">Graph Data Import</p> <h2 class="h4 mb-2">Drop workbook or CSV files here</h2> <p class="text-body-secondary mb-4">Upload \`.xlsx\`, \`.xlsm\`, or \`.csv\` files. Click Analyse to build an inline sheet-to-product mapping panel before you import.</p> <div class="d-flex justify-content-center flex-wrap gap-2"><label class="btn btn-primary" for="bulk-workbook-files">Choose Files</label> <button class="btn btn-outline-secondary" type="button"${attr("disabled", workbookFiles.length === 0, true)}>Clear Selection</button></div> <input id="bulk-workbook-files" class="visually-hidden" type="file" multiple="" accept=".xlsx,.xlsm,.csv"/> <div class="row g-3 mt-3 text-start"><div class="col-12 col-lg-6"><div class="form-check form-switch"><input class="form-check-input" id="bulk-downsample" type="checkbox"${attr("checked", downsampleImportedCurves, true)}/> <label class="form-check-label" for="bulk-downsample">Downsample imported curves</label></div></div> <div class="col-12 col-lg-6"><label class="form-label form-label-sm" for="bulk-permissible-use-mode">Permissible-use shading mode</label> `);
+    $$renderer2.select(
+      {
+        id: "bulk-permissible-use-mode",
+        class: "form-select",
+        value: permissibleUseMode
+      },
+      ($$renderer3) => {
+        $$renderer3.push(`<!--[-->`);
+        const each_array = ensure_array_like(PERMISSIBLE_USE_MODE_OPTIONS);
+        for (let $$index = 0, $$length = each_array.length; $$index < $$length; $$index++) {
+          let option = each_array[$$index];
+          $$renderer3.option(
+            {
+              value: option.value,
+              disabled: option.value === "both" && bulkBothModeDisabled
+            },
+            ($$renderer4) => {
+              $$renderer4.push(`${escape_html(option.label)}`);
+            }
+          );
+        }
+        $$renderer3.push(`<!--]-->`);
+      }
+    );
+    $$renderer2.push(` <div class="form-text">Mode 4 is the default. Mode 1 uses supplied dedicated permissible-use data and can generate missing values from the selected efficiency line.</div> `);
+    if (bulkBothModeDisabled) {
+      $$renderer2.push("<!--[0-->");
+      $$renderer2.push(`<div class="form-text text-warning">Both efficiency lines are required for mode 4; at least one included sheet is missing an upper or lower efficiency line.</div>`);
+    } else {
+      $$renderer2.push("<!--[-1-->");
+    }
+    $$renderer2.push(`<!--]--></div> `);
+    {
+      $$renderer2.push("<!--[-1-->");
+    }
+    $$renderer2.push(`<!--]--></div> <div class="row g-3 mt-2 text-start"><div class="col-12 col-lg-4"><label class="form-label form-label-sm" for="bulk-downsample-count">Points per curve</label> <input id="bulk-downsample-count" class="form-control" type="number" min="1" step="1"${attr("value", downsamplePointCount)}${attr("disabled", !downsampleImportedCurves, true)}/></div> <div class="col-12 col-lg-8"><label class="form-label form-label-sm" for="bulk-series-default">Default series for new products</label> `);
     $$renderer2.select(
       {
         id: "bulk-series-default",
@@ -151,9 +191,9 @@ function _page($$renderer, $$props) {
           $$renderer4.push(`Create a new series`);
         });
         $$renderer3.push(`<!--[-->`);
-        const each_array = ensure_array_like(filteredSeries);
-        for (let $$index = 0, $$length = each_array.length; $$index < $$length; $$index++) {
-          let item = each_array[$$index];
+        const each_array_1 = ensure_array_like(filteredSeries);
+        for (let $$index_1 = 0, $$length = each_array_1.length; $$index_1 < $$length; $$index_1++) {
+          let item = each_array_1[$$index_1];
           $$renderer3.option({ value: String(item.id) }, ($$renderer4) => {
             $$renderer4.push(`${escape_html(describeSeries(item))}`);
           });
@@ -180,9 +220,9 @@ function _page($$renderer, $$props) {
     if (workbookFiles.length) {
       $$renderer2.push("<!--[0-->");
       $$renderer2.push(`<div class="card shadow-sm mt-3 svelte-u3860d"><div class="card-body p-3"><div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2"><h3 class="h6 mb-0">Selected Files</h3> <span class="text-body-secondary small">${escape_html(workbookFiles.length)} files queued</span></div> <div class="list-group"><!--[-->`);
-      const each_array_7 = ensure_array_like(workbookFiles);
-      for (let index = 0, $$length = each_array_7.length; index < $$length; index++) {
-        let file = each_array_7[index];
+      const each_array_8 = ensure_array_like(workbookFiles);
+      for (let index = 0, $$length = each_array_8.length; index < $$length; index++) {
+        let file = each_array_8[index];
         $$renderer2.push(`<div class="list-group-item d-flex justify-content-between align-items-center gap-3"><div class="min-w-0"><div class="d-flex flex-wrap gap-2 align-items-center"><strong class="text-truncate">${escape_html(file.webkitRelativePath || file.name)}</strong> <span class="badge text-bg-secondary">${escape_html(summarizeKind(file))}</span></div> <div class="small text-body-secondary">${escape_html(formatBytes(file.size))}</div></div> <button class="btn btn-outline-danger btn-sm" type="button">Remove</button></div>`);
       }
       $$renderer2.push(`<!--]--></div></div></div>`);
@@ -207,9 +247,9 @@ function _page($$renderer, $$props) {
           $$renderer3.push("<!--[-1-->");
         }
         $$renderer3.push(`<!--]--><!--[-->`);
-        const each_array_8 = ensure_array_like(productTypes);
-        for (let $$index_8 = 0, $$length = each_array_8.length; $$index_8 < $$length; $$index_8++) {
-          let productType = each_array_8[$$index_8];
+        const each_array_9 = ensure_array_like(productTypes);
+        for (let $$index_9 = 0, $$length = each_array_9.length; $$index_9 < $$length; $$index_9++) {
+          let productType = each_array_9[$$index_9];
           $$renderer3.option({ value: productType.key }, ($$renderer4) => {
             $$renderer4.push(`${escape_html(productType.label)}`);
           });
@@ -253,9 +293,9 @@ function _page($$renderer, $$props) {
             $$renderer3.push("<!--[-1-->");
           }
           $$renderer3.push(`<!--]--><!--[-->`);
-          const each_array_9 = ensure_array_like(filteredSeries);
-          for (let $$index_9 = 0, $$length = each_array_9.length; $$index_9 < $$length; $$index_9++) {
-            let seriesItem = each_array_9[$$index_9];
+          const each_array_10 = ensure_array_like(filteredSeries);
+          for (let $$index_10 = 0, $$length = each_array_10.length; $$index_10 < $$length; $$index_10++) {
+            let seriesItem = each_array_10[$$index_10];
             $$renderer3.option({ value: String(seriesItem.id) }, ($$renderer4) => {
               $$renderer4.push(`${escape_html(seriesItem.name)} (${escape_html(seriesItem.product_count || 0)} products)`);
             });
@@ -282,9 +322,9 @@ function _page($$renderer, $$props) {
           $$renderer3.push("<!--[-1-->");
         }
         $$renderer3.push(`<!--]--><!--[-->`);
-        const each_array_10 = ensure_array_like(targetOptions);
-        for (let $$index_10 = 0, $$length = each_array_10.length; $$index_10 < $$length; $$index_10++) {
-          let option = each_array_10[$$index_10];
+        const each_array_11 = ensure_array_like(targetOptions);
+        for (let $$index_11 = 0, $$length = each_array_11.length; $$index_11 < $$length; $$index_11++) {
+          let option = each_array_11[$$index_11];
           $$renderer3.option({ value: option.value }, ($$renderer4) => {
             $$renderer4.push(`${escape_html(option.label)}`);
           });
@@ -296,9 +336,9 @@ function _page($$renderer, $$props) {
     if (imageFiles.length) {
       $$renderer2.push("<!--[0-->");
       $$renderer2.push(`<div class="mt-4"><div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2"><h3 class="h6 mb-0">Selected Images</h3> <span class="text-body-secondary small">${escape_html(imageFiles.length)} files queued</span></div> <div class="list-group"><!--[-->`);
-      const each_array_11 = ensure_array_like(imageFiles);
-      for (let index = 0, $$length = each_array_11.length; index < $$length; index++) {
-        let file = each_array_11[index];
+      const each_array_12 = ensure_array_like(imageFiles);
+      for (let index = 0, $$length = each_array_12.length; index < $$length; index++) {
+        let file = each_array_12[index];
         $$renderer2.push(`<div class="list-group-item d-flex justify-content-between align-items-center gap-3"><div class="min-w-0"><div class="d-flex flex-wrap gap-2 align-items-center"><strong class="text-truncate">${escape_html(file.name)}</strong> <span class="badge text-bg-secondary">${escape_html(summarizeKind(file))}</span></div> <div class="small text-body-secondary">${escape_html(formatBytes(file.size))}</div></div> <button class="btn btn-outline-danger btn-sm" type="button">Remove</button></div>`);
       }
       $$renderer2.push(`<!--]--></div></div>`);
