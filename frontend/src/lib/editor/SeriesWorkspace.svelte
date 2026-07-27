@@ -7,6 +7,7 @@
     deleteSeriesImage,
     getProductTypes,
     getSeries,
+    getSeriesById,
     getTemplates,
     reorderSeriesImages,
     updateSeries,
@@ -38,6 +39,8 @@
   let appliedInitialSeriesId = null;
   let appliedSeriesEditorUrlId = '';
   let hydratedSeriesId = '';
+  let seriesHydrating = false;
+  let seriesHydrationError = '';
   let seriesDescriptionSections = createDescriptionSectionDrafts();
   let seriesDescriptionFieldCount = getDescriptionFieldCount();
 
@@ -46,6 +49,7 @@
       id: series?.id ?? null,
       name: series?.name ?? '',
       product_type_key: series?.product_type_key ?? '',
+      contents_description: series?.contents_description ?? '',
       printed_template_id: series?.printed_template_id || series?.template_id || '',
       online_template_id: series?.online_template_id || series?.template_id || ''
     };
@@ -77,12 +81,33 @@
     }
 
     hydratedSeriesId = normalizedSeriesId;
+    seriesHydrationError = '';
     resetSeriesDescriptionSections(selected);
     seriesDraft = resetDraft(selected);
     seriesImages = selected.series_images || [];
     if (!seriesProductTypeFilter) {
       seriesProductTypeFilter = selected.product_type_key || '';
     }
+
+    // The list response is enough for the selector, but hydrate from the detail
+    // endpoint as well so all persisted description fields are loaded reliably.
+    seriesHydrating = true;
+    getSeriesById(normalizedSeriesId)
+      .then((detail) => {
+        if (String(selectedSeriesId) !== normalizedSeriesId) return;
+        resetSeriesDescriptionSections(detail);
+        seriesDraft = resetDraft(detail);
+        seriesImages = detail.series_images || [];
+      })
+      .catch((detailError) => {
+        if (String(selectedSeriesId) !== normalizedSeriesId) return;
+        seriesHydrationError = detailError?.message || 'Unable to load the complete series record.';
+      })
+      .finally(() => {
+        if (String(selectedSeriesId) === normalizedSeriesId) {
+          seriesHydrating = false;
+        }
+      });
   }
 
   function syncSeriesEditorUrl(seriesId) {
@@ -98,6 +123,8 @@
     seriesDraft = resetDraft();
     seriesImages = [];
     hydratedSeriesId = '';
+    seriesHydrating = false;
+    seriesHydrationError = '';
     resetSeriesDescriptionSections();
     performanceColumnGroups = [];
     pendingImageFiles = [];
@@ -182,6 +209,7 @@
     resetSeriesDescriptionSections();
     error = '';
     success = '';
+    seriesHydrationError = '';
   }
 
   function startEdit() {
@@ -195,6 +223,7 @@
     resetSeriesDescriptionSections();
     error = '';
     success = '';
+    seriesHydrationError = '';
   }
 
   function cancelEditing() {
@@ -209,6 +238,7 @@
     syncSeriesEditorUrl('');
     error = '';
     success = '';
+    seriesHydrationError = '';
   }
 
   async function loadData() {
@@ -234,6 +264,7 @@
       const body = {
         name: seriesDraft.name,
         product_type_key: seriesDraft.product_type_key,
+        contents_description: seriesDraft.contents_description,
         printed_template_id: seriesDraft.printed_template_id || null,
         online_template_id: seriesDraft.online_template_id || null,
         description_sections: seriesDescriptionSections.map((section) => ({
@@ -249,6 +280,11 @@
 
       if (!body.product_type_key) {
         error = 'Choose a product type for the series.';
+        return;
+      }
+
+      if (seriesDraft.id && (seriesHydrating || seriesHydrationError)) {
+        error = seriesHydrationError || 'The complete series record is still loading. Try again in a moment.';
         return;
       }
 
@@ -446,6 +482,17 @@
             </select>
           </div>
           <div class="col-12">
+            <label class="form-label" for="series-contents-description">Contents page description</label>
+            <input
+              class="form-control"
+              id="series-contents-description"
+              maxlength="500"
+              bind:value={seriesDraft.contents_description}
+              placeholder="Short description shown in the product type contents grid"
+            />
+            <div class="form-text">Short plain-text description used only on the product type PDF contents page.</div>
+          </div>
+          <div class="col-12">
             <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
               <div>
                 <div class="form-label mb-0">Description sections</div>
@@ -455,20 +502,22 @@
             </div>
             <div class="vstack gap-3">
               {#each seriesDescriptionSections as section, sectionIndex}
-                <div class="border rounded p-3 bg-body-tertiary">
-                  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
-                    <label class="form-label mb-0" for={`series-description-${sectionIndex + 1}`}>{section.title}</label>
-                    <button class="btn btn-outline-danger btn-sm" type="button" on:click={() => removeSeriesDescriptionSection(sectionIndex)} disabled={seriesDescriptionSections.length === 1}>Remove</button>
+                {#key `${seriesDraft.id || 'new'}-${section.key}-${sectionIndex}`}
+                  <div class="border rounded p-3 bg-body-tertiary">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                      <label class="form-label mb-0" for={`series-description-${sectionIndex + 1}`}>{section.title}</label>
+                      <button class="btn btn-outline-danger btn-sm" type="button" on:click={() => removeSeriesDescriptionSection(sectionIndex)} disabled={seriesDescriptionSections.length === 1}>Remove</button>
+                    </div>
+                    <RichTextEditor id={`series-description-${sectionIndex + 1}`} rows={3} bind:value={seriesDescriptionSections[sectionIndex].html} />
                   </div>
-                  <RichTextEditor id={`series-description-${sectionIndex + 1}`} rows={3} bind:value={seriesDescriptionSections[sectionIndex].html} />
-                </div>
+                {/key}
               {/each}
             </div>
           </div>
         </div>
 
         <div class="d-flex flex-wrap gap-2 mt-3">
-          <button class="btn btn-primary" on:click={saveSeries} disabled={saving}>{saving ? 'Saving...' : 'Save Series'}</button>
+          <button class="btn btn-primary" on:click={saveSeries} disabled={saving || seriesHydrating || Boolean(seriesHydrationError)}>{saving ? 'Saving...' : seriesHydrating ? 'Loading Series...' : 'Save Series'}</button>
           {#if seriesDraft.id}
             <a class="btn btn-outline-primary" href={seriesViewerUrl(seriesDraft.id)}>
               View in Viewer
@@ -479,6 +528,9 @@
           {/if}
           <button class="btn btn-outline-secondary" on:click={cancelEditing}>Cancel</button>
         </div>
+        {#if seriesHydrationError}
+          <div class="alert alert-danger mt-3 mb-0">{seriesHydrationError}. The series cannot be saved until all description fields have loaded.</div>
+        {/if}
 
         {#if mode === 'edit' && seriesDraft.id}
           <div class="mt-3">

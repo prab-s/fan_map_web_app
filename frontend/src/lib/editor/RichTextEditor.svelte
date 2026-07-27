@@ -20,7 +20,7 @@
   ];
 
   function syncEditor() {
-    if (!editor || document.activeElement === editor) return;
+    if (!editor) return;
     const nextHtml = value || '';
     if (nextHtml !== lastHtml) {
       editor.innerHTML = nextHtml;

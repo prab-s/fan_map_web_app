@@ -61,7 +61,6 @@ declare module '$env/static/private' {
 	export const npm_config_local_prefix: string;
 	export const BOOTSTRAP_ADMIN_PASSWORD: string;
 	export const DBUS_SESSION_BUS_ADDRESS: string;
-	export const COLORTERM: string;
 	export const COLOR: string;
 	export const DEBUGINFOD_URLS: string;
 	export const npm_config_metrics_registry: string;
@@ -79,6 +78,7 @@ declare module '$env/static/private' {
 	export const npm_package_name: string;
 	export const LC_ADDRESS: string;
 	export const XDG_RUNTIME_DIR: string;
+	export const DISPLAY: string;
 	export const LANG: string;
 	export const LC_TELEPHONE: string;
 	export const LS_COLORS: string;
@@ -220,7 +220,6 @@ declare module '$env/dynamic/private' {
 		npm_config_local_prefix: string;
 		BOOTSTRAP_ADMIN_PASSWORD: string;
 		DBUS_SESSION_BUS_ADDRESS: string;
-		COLORTERM: string;
 		COLOR: string;
 		DEBUGINFOD_URLS: string;
 		npm_config_metrics_registry: string;
@@ -238,6 +237,7 @@ declare module '$env/dynamic/private' {
 		npm_package_name: string;
 		LC_ADDRESS: string;
 		XDG_RUNTIME_DIR: string;
+		DISPLAY: string;
 		LANG: string;
 		LC_TELEPHONE: string;
 		LS_COLORS: string;

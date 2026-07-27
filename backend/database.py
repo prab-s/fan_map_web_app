@@ -82,6 +82,7 @@ def init_db():
     _ensure_product_platform_columns(engine)
     _ensure_series_template_columns(engine)
     _rename_series_comments_column(engine)
+    _ensure_series_contents_description_column(engine)
     _ensure_series_tab_color_column(engine)
     _ensure_product_type_columns(engine)
     _ensure_product_type_parameter_preset_columns(engine)
@@ -204,6 +205,17 @@ def _rename_series_comments_column(target_engine):
 
     with target_engine.begin() as connection:
         connection.execute(text("ALTER TABLE series RENAME COLUMN comments_html TO description4_html"))
+
+
+def _ensure_series_contents_description_column(target_engine):
+    inspector = inspect(target_engine)
+    if "series" not in set(inspector.get_table_names()):
+        return
+
+    existing_columns = {column["name"] for column in inspector.get_columns("series")}
+    if "contents_description" not in existing_columns:
+        with target_engine.begin() as connection:
+            connection.execute(text("ALTER TABLE series ADD COLUMN contents_description VARCHAR(500)"))
 
 
 def _ensure_series_tab_color_column(target_engine):

@@ -1,5 +1,5 @@
 import { error } from "@sveltejs/kit";
-import { w as getPublicSeries } from "../../../../chunks/api.js";
+import { x as getPublicSeries } from "../../../../chunks/api.js";
 async function load({ fetch, params }) {
   const seriesIdentifier = params.series;
   try {

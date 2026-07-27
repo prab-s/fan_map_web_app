@@ -375,6 +375,7 @@ class SeriesBase(_RichTextAliasMixin):
     description2_html: Optional[str] = None
     description3_html: Optional[str] = None
     description4_html: Optional[str] = None
+    contents_description: Optional[str] = Field(default=None, max_length=500)
     template_id: Optional[str] = None
     printed_template_id: Optional[str] = None
     online_template_id: Optional[str] = None
@@ -391,6 +392,7 @@ class SeriesUpdate(_RichTextAliasMixin):
     description2_html: Optional[str] = None
     description3_html: Optional[str] = None
     description4_html: Optional[str] = None
+    contents_description: Optional[str] = Field(default=None, max_length=500)
     template_id: Optional[str] = None
     printed_template_id: Optional[str] = None
     online_template_id: Optional[str] = None
@@ -405,6 +407,7 @@ class SeriesResponse(BaseModel):
     description2_html: Optional[str] = None
     description3_html: Optional[str] = None
     description4_html: Optional[str] = None
+    contents_description: Optional[str] = Field(default=None, max_length=500)
     template_id: Optional[str] = None
     printed_template_id: Optional[str] = None
     online_template_id: Optional[str] = None

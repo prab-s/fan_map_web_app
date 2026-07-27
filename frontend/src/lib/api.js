@@ -318,15 +318,24 @@ export async function deleteSeriesImage(seriesId, imageId) {
   return r.json();
 }
 
+function associatedDocumentsPath(ownerType, ownerId, documentId = '') {
+  const collection = {
+    product: 'products',
+    product_type: 'product-types',
+    series: 'series'
+  }[ownerType] || ownerType;
+  return `/${collection}/${ownerId}/documents${documentId ? `/${documentId}` : ''}`;
+}
+
 export async function getAssociatedDocuments(ownerType, ownerId) {
-  const r = await apiFetch(`/${ownerType === 'product_type' ? 'product-types' : `${ownerType}s`}/${ownerId}/documents`);
+  const r = await apiFetch(associatedDocumentsPath(ownerType, ownerId));
   return r.json();
 }
 
 export async function uploadAssociatedDocuments(ownerType, ownerId, files) {
   const formData = new FormData();
   for (const file of files) formData.append('files', file);
-  const r = await apiFetch(`/${ownerType === 'product_type' ? 'product-types' : `${ownerType}s`}/${ownerId}/documents`, {
+  const r = await apiFetch(associatedDocumentsPath(ownerType, ownerId), {
     method: 'POST',
     body: formData
   });
@@ -334,7 +343,7 @@ export async function uploadAssociatedDocuments(ownerType, ownerId, files) {
 }
 
 export async function deleteAssociatedDocument(ownerType, ownerId, documentId) {
-  const r = await apiFetch(`/${ownerType === 'product_type' ? 'product-types' : `${ownerType}s`}/${ownerId}/documents/${documentId}`, {
+  const r = await apiFetch(associatedDocumentsPath(ownerType, ownerId, documentId), {
     method: 'DELETE'
   });
   return r.json();

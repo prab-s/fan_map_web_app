@@ -62,6 +62,10 @@ async function getProductTypes() {
   const r = await apiFetch("/product-types");
   return r.json();
 }
+async function getProductTypePdfContext(id) {
+  const r = await apiFetch(`/product-types/${id}/pdf-context`);
+  return r.json();
+}
 async function getSeries(params = {}) {
   const sp = new URLSearchParams(params).toString();
   const r = await apiFetch("/series" + (sp ? "?" + sp : ""));
@@ -113,8 +117,16 @@ async function deleteSeriesImage(seriesId, imageId) {
   });
   return r.json();
 }
+function associatedDocumentsPath(ownerType, ownerId, documentId = "") {
+  const collection = {
+    product: "products",
+    product_type: "product-types",
+    series: "series"
+  }[ownerType] || ownerType;
+  return `/${collection}/${ownerId}/documents${documentId ? `/${documentId}` : ""}`;
+}
 async function getAssociatedDocuments(ownerType, ownerId) {
-  const r = await apiFetch(`/${ownerType === "product_type" ? "product-types" : `${ownerType}s`}/${ownerId}/documents`);
+  const r = await apiFetch(associatedDocumentsPath(ownerType, ownerId));
   return r.json();
 }
 async function getProduct(id) {
@@ -195,8 +207,9 @@ async function getUsers() {
   return r.json();
 }
 export {
-  getProductChartData as A,
-  getSeriesById as B,
+  getProductTypes as A,
+  getProductChartData as B,
+  getProductTypePdfContext as C,
   reorderProductImages as a,
   uploadProductImages as b,
   getProduct as c,
@@ -205,22 +218,22 @@ export {
   getRpmPoints as f,
   getProducts as g,
   getEfficiencyPoints as h,
-  deleteSeriesImage as i,
-  reorderSeriesImages as j,
-  uploadSeriesImages as k,
-  logout as l,
-  login as m,
-  getAuthSession as n,
-  getMaintenanceJob as o,
-  getAssociatedDocuments as p,
-  getPublicProductTypes as q,
+  getSeriesById as i,
+  deleteSeriesImage as j,
+  reorderSeriesImages as k,
+  uploadSeriesImages as l,
+  logout as m,
+  login as n,
+  getAuthSession as o,
+  getMaintenanceJob as p,
+  getAssociatedDocuments as q,
   refreshGraphImage as r,
   startRefreshProductPdfJob as s,
-  getPublicProducts as t,
+  getPublicProductTypes as t,
   updateProduct as u,
-  getPublicProduct as v,
-  getPublicSeries as w,
-  getSeries as x,
-  getUsers as y,
-  getProductTypes as z
+  getPublicProducts as v,
+  getPublicProduct as w,
+  getPublicSeries as x,
+  getSeries as y,
+  getUsers as z
 };

@@ -1,5 +1,5 @@
 import { error } from "@sveltejs/kit";
-import { q as getPublicProductTypes, t as getPublicProducts } from "../../../chunks/api.js";
+import { t as getPublicProductTypes, v as getPublicProducts } from "../../../chunks/api.js";
 async function load({ fetch, url }) {
   try {
     const search = url.searchParams.get("search") || "";

@@ -84,7 +84,14 @@
   let seriesTabOptionsReady = false;
   let productTypeContextRequestToken = 0;
   let seriesGraphRequestToken = 0;
-  let previousSelectedSeriesGraphId = null;
+  let productRequestToken = 0;
+  let chartRequestToken = 0;
+  let productListRequestToken = 0;
+  let seriesOptionsRequestToken = 0;
+  let seriesTabOptionsRequestToken = 0;
+  let previousSelectedSeriesId = null;
+  let previousSelectedProductTypeId = '';
+  let previousActiveViewerTab = activeViewerTab;
 
   let refreshingProductGraphId = null;
   let refreshingProductPdfJob = null;
@@ -421,6 +428,7 @@
   }
 
   async function loadChartData() {
+    const requestToken = ++chartRequestToken;
     if (!selectedProductId) {
       rpmLines = [];
       rpmPoints = [];
@@ -433,14 +441,16 @@
     error = '';
     try {
       const chartData = await getProductChartData(selectedProductId);
+      if (requestToken !== chartRequestToken) return;
       rpmLines = chartData.rpmLines;
       rpmPoints = chartData.rpmPoints;
       efficiencyPoints = chartData.efficiencyPoints;
       buildChartOptions();
     } catch (e) {
+      if (requestToken !== chartRequestToken) return;
       error = e.message;
     } finally {
-      loadingChart = false;
+      if (requestToken === chartRequestToken) loadingChart = false;
     }
   }
 
@@ -586,9 +596,6 @@
 
   function handleProductTypeSelectionChange() {
     selectedProductTypeContext = null;
-    if (activeViewerTab === 'product-type' && selectedProductTypeId) {
-      loadProductTypeContext(selectedProductTypeId);
-    }
   }
 
   function reloadViewerPage() {
@@ -597,10 +604,13 @@
   }
 
   async function loadSeriesOptions() {
+    const requestToken = ++seriesOptionsRequestToken;
     try {
       const explicitSeries = await getSeries(productTypeFilter ? { product_type_key: productTypeFilter } : {});
+      if (requestToken !== seriesOptionsRequestToken) return;
       seriesRecords = explicitSeries;
     } catch {
+      if (requestToken !== seriesOptionsRequestToken) return;
       seriesRecords = [];
     }
     seriesOptions = buildProductSeriesOptions();
@@ -617,12 +627,15 @@
   }
 
   async function loadSeriesTabOptions() {
+    const requestToken = ++seriesTabOptionsRequestToken;
     seriesTabOptionsReady = false;
     try {
       seriesTabOptions = await getSeries(
         seriesTabProductTypeFilter ? { product_type_key: seriesTabProductTypeFilter } : {}
       );
+      if (requestToken !== seriesTabOptionsRequestToken) return;
     } catch {
+      if (requestToken !== seriesTabOptionsRequestToken) return;
       seriesTabOptions = [];
     } finally {
       seriesTabOptionsReady = true;
@@ -639,20 +652,13 @@
 
   async function loadSelectedSeriesGraph() {
     const selectedSeriesId = selectedSeriesRecord?.id != null ? Number(selectedSeriesRecord.id) : null;
+    const requestToken = ++seriesGraphRequestToken;
     if (!selectedSeriesId) {
       selectedSeriesGraphRecord = null;
       seriesChartOption = {};
       loadingSeriesGraph = false;
-      previousSelectedSeriesGraphId = null;
       return;
     }
-
-    if (selectedSeriesId === previousSelectedSeriesGraphId && selectedSeriesGraphRecord) {
-      return;
-    }
-
-    previousSelectedSeriesGraphId = selectedSeriesId;
-    const requestToken = ++seriesGraphRequestToken;
     loadingSeriesGraph = true;
 
     try {
@@ -672,12 +678,12 @@
   }
 
   async function loadProductTypeContext(productTypeId = selectedProductTypeRecord?.id) {
+    const requestToken = ++productTypeContextRequestToken;
     if (!productTypeId) {
       selectedProductTypeContext = null;
       return;
     }
 
-    const requestToken = ++productTypeContextRequestToken;
     try {
       const context = await getProductTypePdfContext(productTypeId);
       if (requestToken === productTypeContextRequestToken) {
@@ -691,6 +697,7 @@
   }
 
   async function loadFilteredProducts() {
+    const requestToken = ++productListRequestToken;
     loadingList = true;
     error = '';
     try {
@@ -701,6 +708,7 @@
         params.series_id = String(seriesFilter);
       }
       products = await getProducts(params);
+      if (requestToken !== productListRequestToken) return;
       filteredProducts = [...products].sort((a, b) => {
         const typeCompare = String(a.product_type_label || '').localeCompare(String(b.product_type_label || ''));
         if (typeCompare !== 0) return typeCompare;
@@ -716,6 +724,7 @@
         selectedProductId = Number(filteredProducts[0].id);
       }
     } catch (e) {
+      if (requestToken !== productListRequestToken) return;
       error = e.message;
       products = [];
       filteredProducts = [];
@@ -725,6 +734,7 @@
   }
 
   async function loadSelectedProduct() {
+    const requestToken = ++productRequestToken;
     if (!selectedProductId) {
       selectedProduct = null;
       rpmLines = [];
@@ -733,10 +743,18 @@
       chartOption = {};
       return;
     }
+    selectedProduct = null;
+    rpmLines = [];
+    rpmPoints = [];
+    efficiencyPoints = [];
+    chartOption = {};
     error = '';
     try {
-      selectedProduct = await getProduct(selectedProductId);
+      const product = await getProduct(selectedProductId);
+      if (requestToken !== productRequestToken) return;
+      selectedProduct = product;
     } catch (e) {
+      if (requestToken !== productRequestToken) return;
       error = e.message;
       selectedProduct = null;
     }
@@ -760,6 +778,10 @@
   $: if (seriesTabProductTypeFilter !== previousSeriesTabProductTypeFilter) {
     previousSeriesTabProductTypeFilter = seriesTabProductTypeFilter;
     if (seriesTabProductTypeFilter) {
+      if (!viewerStateHydrating) {
+        seriesTabOptions = [];
+        seriesTabSeriesId = '';
+      }
       loadSeriesTabOptions();
     } else if (!viewerStateHydrating && seriesTabOptionsReady) {
       seriesTabOptions = [];
@@ -777,6 +799,10 @@
     });
     if (filterKey !== previousFilterKey) {
       previousFilterKey = filterKey;
+      if (!viewerStateHydrating) {
+        selectedProductId = null;
+        selectedProduct = null;
+      }
       loadFilteredProducts();
     }
   }
@@ -790,7 +816,10 @@
   $: selectedSeriesRecord =
     seriesTabOptions.find((series) => Number(series.id) === Number(seriesTabSeriesId)) || null;
 
-  $: if (selectedSeriesRecord?.id !== previousSelectedSeriesGraphId) {
+  $: if (String(selectedSeriesRecord?.id || '') !== String(previousSelectedSeriesId || '')) {
+    previousSelectedSeriesId = selectedSeriesRecord?.id ?? null;
+    selectedSeriesGraphRecord = null;
+    seriesChartOption = {};
     loadSelectedSeriesGraph();
   }
 
@@ -798,6 +827,21 @@
     productTypes.find(
       (productType) => String(productType.id) === String(selectedProductTypeId) || String(productType.key) === String(selectedProductTypeId)
     ) || null;
+
+  $: if (String(selectedProductTypeId || '') !== String(previousSelectedProductTypeId || '')) {
+    previousSelectedProductTypeId = selectedProductTypeId || '';
+    selectedProductTypeContext = null;
+    if (selectedProductTypeId && activeViewerTab === 'product-type') {
+      loadProductTypeContext(selectedProductTypeId);
+    }
+  }
+
+  $: if (activeViewerTab !== previousActiveViewerTab) {
+    previousActiveViewerTab = activeViewerTab;
+    if (activeViewerTab === 'product-type' && selectedProductTypeId) {
+      loadProductTypeContext(selectedProductTypeId);
+    }
+  }
 
   $: selectedProductTypeContextMissingSeries =
     selectedProductTypeContext?.series?.filter((series) => Number(series.page_count || 0) === 0) || [];
@@ -1427,6 +1471,12 @@
                 <div class="viewer-metric">
                   <div class="viewer-metric-label">Series PDF template</div>
                   <div>{seriesPdfTemplateLabel(selectedSeriesRecord)}</div>
+                </div>
+              </div>
+              <div class="col-12 col-md-8">
+                <div class="viewer-metric">
+                  <div class="viewer-metric-label">Contents page description</div>
+                  <div>{selectedSeriesGraphRecord?.contents_description || selectedSeriesRecord.contents_description || 'Not provided.'}</div>
                 </div>
               </div>
             </div>

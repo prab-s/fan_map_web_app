@@ -5224,7 +5224,8 @@ def build_product_type_series_groups_html(
     for summary in series_summaries:
         series_name = html.escape(str(summary.get("name") or "Series"))
         series_color = html.escape(str(summary.get("series_tab_color") or SERIES_TAB_FALLBACK_COLOR))
-        description_html = summary.get("series_description_html") or '<p class="placeholder">No description provided.</p>'
+        contents_description = html.escape(str(summary.get("contents_description") or ""))
+        description_html = contents_description or '<span class="placeholder">No description provided.</span>'
         image_uri = html.escape(str(summary.get("first_product_image_uri") or ""))
         page_start = int(summary.get("page_start") or 0)
         page_end = int(summary.get("page_end") or 0)
@@ -5301,6 +5302,7 @@ def build_product_type_series_pdf_summaries(
                 "primary_series_image_uri": series_primary_image_uri(series),
                 "secondary_series_image_uri": series_secondary_image_uri(series),
                 "series_description_html": render_richtext_html(series.description1_html),
+                "contents_description": series.contents_description,
                 "first_product_image_uri": product_primary_image_uri(ordered_products[0]) if ordered_products else "",
                 "page_count": pdf_page_count(source_path) if source_path is not None else 0,
                 "product_count": series.product_count,
@@ -8182,6 +8184,7 @@ def create_series(body: SeriesCreate, db: Session = Depends(get_db)):
         description2_html=body.description2_html,
         description3_html=body.description3_html,
         description4_html=body.description4_html,
+        contents_description=(body.contents_description or "").strip() or None,
         printed_template_id=printed_template_id,
         online_template_id=online_template_id,
         template_id=online_template_id or printed_template_id,
@@ -8226,6 +8229,8 @@ def update_series(series_id: int, body: SeriesUpdate, db: Session = Depends(get_
     for field in ("description1_html", "description2_html", "description3_html", "description4_html"):
         if field in updates:
             setattr(series, field, updates[field])
+    if "contents_description" in updates:
+        series.contents_description = (updates["contents_description"] or "").strip() or None
     if any(field in updates for field in ("template_id", "printed_template_id", "online_template_id")):
         printed_template_id, online_template_id = resolve_template_pair(
             "series",

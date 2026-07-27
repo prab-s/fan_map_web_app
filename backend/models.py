@@ -409,6 +409,7 @@ class Series(Base):
     description2_html = Column(Text, nullable=True)
     description3_html = Column(Text, nullable=True)
     description4_html = Column(Text, nullable=True)
+    contents_description = Column(String(500), nullable=True)
     template_id = Column(String(128), nullable=True)
     printed_template_id = Column(String(128), nullable=True)
     online_template_id = Column(String(128), nullable=True)

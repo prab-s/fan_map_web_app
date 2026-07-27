@@ -1,6 +1,6 @@
 import { e as escape_html, c as attr_class, b as attr, i as attr_style, f as bind_props, d as ensure_array_like } from "./index2.js";
 import { o as onDestroy } from "./index-server.js";
-import { o as getMaintenanceJob } from "./api.js";
+import { p as getMaintenanceJob } from "./api.js";
 import { f as fallback } from "./equality.js";
 function delay(ms) {
   return new Promise((resolve) => {

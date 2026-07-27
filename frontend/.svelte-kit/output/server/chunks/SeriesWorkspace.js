@@ -1,7 +1,7 @@
 import { b as attr, d as ensure_array_like, e as escape_html, f as bind_props, h as head } from "./index2.js";
 import { f as fallback } from "./equality.js";
 import { g as goto } from "./client.js";
-import { i as deleteSeriesImage, j as reorderSeriesImages, k as uploadSeriesImages } from "./api.js";
+import { i as getSeriesById, j as deleteSeriesImage, k as reorderSeriesImages, l as uploadSeriesImages } from "./api.js";
 import { c as createDescriptionSectionDrafts, g as getDescriptionFieldCount } from "./descriptionSections.js";
 import { A as AssociatedDocumentsPanel } from "./AssociatedDocumentsPanel.js";
 import { R as RichTextEditor } from "./RichTextEditor.js";
@@ -67,6 +67,8 @@ function SeriesWorkspace($$renderer, $$props) {
     let appliedInitialSeriesId = null;
     let appliedSeriesEditorUrlId = "";
     let hydratedSeriesId = "";
+    let seriesHydrating = false;
+    let seriesHydrationError = "";
     let seriesDescriptionSections = createDescriptionSectionDrafts();
     getDescriptionFieldCount();
     function resetDraft(series = null) {
@@ -74,6 +76,7 @@ function SeriesWorkspace($$renderer, $$props) {
         id: series?.id ?? null,
         name: series?.name ?? "",
         product_type_key: series?.product_type_key ?? "",
+        contents_description: series?.contents_description ?? "",
         printed_template_id: series?.printed_template_id || series?.template_id || "",
         online_template_id: series?.online_template_id || series?.template_id || ""
       };
@@ -97,12 +100,27 @@ function SeriesWorkspace($$renderer, $$props) {
         return;
       }
       hydratedSeriesId = normalizedSeriesId;
+      seriesHydrationError = "";
       resetSeriesDescriptionSections(selected);
       seriesDraft = resetDraft(selected);
       seriesImages = selected.series_images || [];
       if (!seriesProductTypeFilter) {
         seriesProductTypeFilter = selected.product_type_key || "";
       }
+      seriesHydrating = true;
+      getSeriesById(normalizedSeriesId).then((detail) => {
+        if (String(selectedSeriesId) !== normalizedSeriesId) return;
+        resetSeriesDescriptionSections(detail);
+        seriesDraft = resetDraft(detail);
+        seriesImages = detail.series_images || [];
+      }).catch((detailError) => {
+        if (String(selectedSeriesId) !== normalizedSeriesId) return;
+        seriesHydrationError = detailError?.message || "Unable to load the complete series record.";
+      }).finally(() => {
+        if (String(selectedSeriesId) === normalizedSeriesId) {
+          seriesHydrating = false;
+        }
+      });
     }
     function syncSeriesEditorUrl(seriesId) {
       if (typeof window === "undefined") return;
@@ -300,25 +318,29 @@ function SeriesWorkspace($$renderer, $$props) {
           $$renderer4.push(`<!--]-->`);
         }
       );
-      $$renderer3.push(`</div> <div class="col-12"><div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2"><div><div class="form-label mb-0">Description sections</div> <div class="form-text">Add or remove as many HTML blocks as this series needs.</div></div> <button class="btn btn-outline-primary btn-sm" type="button">Add section</button></div> <div class="vstack gap-3"><!--[-->`);
+      $$renderer3.push(`</div> <div class="col-12"><label class="form-label" for="series-contents-description">Contents page description</label> <input class="form-control" id="series-contents-description" maxlength="500"${attr("value", seriesDraft.contents_description)} placeholder="Short description shown in the product type contents grid"/> <div class="form-text">Short plain-text description used only on the product type PDF contents page.</div></div> <div class="col-12"><div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2"><div><div class="form-label mb-0">Description sections</div> <div class="form-text">Add or remove as many HTML blocks as this series needs.</div></div> <button class="btn btn-outline-primary btn-sm" type="button">Add section</button></div> <div class="vstack gap-3"><!--[-->`);
       const each_array_4 = ensure_array_like(seriesDescriptionSections);
       for (let sectionIndex = 0, $$length = each_array_4.length; sectionIndex < $$length; sectionIndex++) {
         let section = each_array_4[sectionIndex];
-        $$renderer3.push(`<div class="border rounded p-3 bg-body-tertiary"><div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2"><label class="form-label mb-0"${attr("for", `series-description-${sectionIndex + 1}`)}>${escape_html(section.title)}</label> <button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", seriesDescriptionSections.length === 1, true)}>Remove</button></div> `);
-        RichTextEditor($$renderer3, {
-          id: `series-description-${sectionIndex + 1}`,
-          rows: 3,
-          get value() {
-            return seriesDescriptionSections[sectionIndex].html;
-          },
-          set value($$value) {
-            seriesDescriptionSections[sectionIndex].html = $$value;
-            $$settled = false;
-          }
-        });
-        $$renderer3.push(`<!----></div>`);
+        $$renderer3.push(`<!---->`);
+        {
+          $$renderer3.push(`<div class="border rounded p-3 bg-body-tertiary"><div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2"><label class="form-label mb-0"${attr("for", `series-description-${sectionIndex + 1}`)}>${escape_html(section.title)}</label> <button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", seriesDescriptionSections.length === 1, true)}>Remove</button></div> `);
+          RichTextEditor($$renderer3, {
+            id: `series-description-${sectionIndex + 1}`,
+            rows: 3,
+            get value() {
+              return seriesDescriptionSections[sectionIndex].html;
+            },
+            set value($$value) {
+              seriesDescriptionSections[sectionIndex].html = $$value;
+              $$settled = false;
+            }
+          });
+          $$renderer3.push(`<!----></div>`);
+        }
+        $$renderer3.push(`<!---->`);
       }
-      $$renderer3.push(`<!--]--></div></div></div> <div class="d-flex flex-wrap gap-2 mt-3"><button class="btn btn-primary"${attr("disabled", saving, true)}>${escape_html(saving ? "Saving..." : "Save Series")}</button> `);
+      $$renderer3.push(`<!--]--></div></div></div> <div class="d-flex flex-wrap gap-2 mt-3"><button class="btn btn-primary"${attr("disabled", saving || seriesHydrating || Boolean(seriesHydrationError), true)}>${escape_html(saving ? "Saving..." : seriesHydrating ? "Loading Series..." : "Save Series")}</button> `);
       if (seriesDraft.id) {
         $$renderer3.push("<!--[0-->");
         $$renderer3.push(`<a class="btn btn-outline-primary"${attr("href", seriesViewerUrl(seriesDraft.id))}>View in Viewer</a>`);
@@ -333,6 +355,13 @@ function SeriesWorkspace($$renderer, $$props) {
         $$renderer3.push("<!--[-1-->");
       }
       $$renderer3.push(`<!--]--> <button class="btn btn-outline-secondary">Cancel</button></div> `);
+      if (seriesHydrationError) {
+        $$renderer3.push("<!--[0-->");
+        $$renderer3.push(`<div class="alert alert-danger mt-3 mb-0">${escape_html(seriesHydrationError)}. The series cannot be saved until all description fields have loaded.</div>`);
+      } else {
+        $$renderer3.push("<!--[-1-->");
+      }
+      $$renderer3.push(`<!--]--> `);
       if (mode === "edit" && seriesDraft.id) {
         $$renderer3.push("<!--[0-->");
         $$renderer3.push(`<div class="mt-3">`);

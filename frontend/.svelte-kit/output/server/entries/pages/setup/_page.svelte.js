@@ -4,7 +4,7 @@ import { o as onDestroy } from "../../../chunks/index-server.js";
 import { a as auth } from "../../../chunks/auth.js";
 import { G as GLOBAL_UNIT_OPTIONS } from "../../../chunks/config.js";
 import { f as fallback } from "../../../chunks/equality.js";
-import { g as getProducts, x as getSeries, y as getUsers, z as getProductTypes } from "../../../chunks/api.js";
+import { g as getProducts, y as getSeries, z as getUsers, A as getProductTypes } from "../../../chunks/api.js";
 function FileManager($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
     let currentPath, pathSegments, canModifyCurrentFolder;

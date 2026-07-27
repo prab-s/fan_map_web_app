@@ -7,7 +7,7 @@ import { f as fallback } from "../../../../../chunks/equality.js";
 import "@sveltejs/kit/internal/server";
 import "../../../../../chunks/root.js";
 import "../../../../../chunks/state.svelte.js";
-import { A as getProductChartData, x as getSeries, B as getSeriesById, g as getProducts, c as getProduct } from "../../../../../chunks/api.js";
+import { B as getProductChartData, y as getSeries, i as getSeriesById, C as getProductTypePdfContext, g as getProducts, c as getProduct } from "../../../../../chunks/api.js";
 import { E as ECharts, g as getChartTheme, b as buildFullChartOption } from "../../../../../chunks/fullChart.js";
 import { t as theme } from "../../../../../chunks/config.js";
 import { a as getDescriptionSections } from "../../../../../chunks/descriptionSections.js";
@@ -68,8 +68,15 @@ function _page($$renderer, $$props) {
     let seriesDescriptionSections = [];
     let seriesChartOption = {};
     let loadingSeriesGraph = false;
+    let productTypeContextRequestToken = 0;
     let seriesGraphRequestToken = 0;
-    let previousSelectedSeriesGraphId = null;
+    let productRequestToken = 0;
+    let chartRequestToken = 0;
+    let productListRequestToken = 0;
+    let seriesTabOptionsRequestToken = 0;
+    let previousSelectedSeriesId = null;
+    let previousSelectedProductTypeId = "";
+    let previousActiveViewerTab = activeViewerTab;
     let refreshingProductGraphId = null;
     let refreshingProductPdfJob = null;
     let refreshingProductTypePdfJob = null;
@@ -258,6 +265,7 @@ function _page($$renderer, $$props) {
       });
     }
     async function loadChartData() {
+      const requestToken = ++chartRequestToken;
       if (!selectedProductId) {
         rpmLines = [];
         rpmPoints = [];
@@ -269,20 +277,25 @@ function _page($$renderer, $$props) {
       error = "";
       try {
         const chartData = await getProductChartData(selectedProductId);
+        if (requestToken !== chartRequestToken) return;
         rpmLines = chartData.rpmLines;
         rpmPoints = chartData.rpmPoints;
         efficiencyPoints = chartData.efficiencyPoints;
         buildChartOptions();
       } catch (e) {
+        if (requestToken !== chartRequestToken) return;
         error = e.message;
       } finally {
-        loadingChart = false;
+        if (requestToken === chartRequestToken) loadingChart = false;
       }
     }
     async function loadSeriesTabOptions() {
+      const requestToken = ++seriesTabOptionsRequestToken;
       try {
         seriesTabOptions = await getSeries(seriesTabProductTypeFilter ? { product_type_key: seriesTabProductTypeFilter } : {});
+        if (requestToken !== seriesTabOptionsRequestToken) return;
       } catch {
+        if (requestToken !== seriesTabOptionsRequestToken) return;
         seriesTabOptions = [];
       } finally {
       }
@@ -292,18 +305,13 @@ function _page($$renderer, $$props) {
     }
     async function loadSelectedSeriesGraph() {
       const selectedSeriesId = selectedSeriesRecord?.id != null ? Number(selectedSeriesRecord.id) : null;
+      const requestToken = ++seriesGraphRequestToken;
       if (!selectedSeriesId) {
         selectedSeriesGraphRecord = null;
         seriesChartOption = {};
         loadingSeriesGraph = false;
-        previousSelectedSeriesGraphId = null;
         return;
       }
-      if (selectedSeriesId === previousSelectedSeriesGraphId && selectedSeriesGraphRecord) {
-        return;
-      }
-      previousSelectedSeriesGraphId = selectedSeriesId;
-      const requestToken = ++seriesGraphRequestToken;
       loadingSeriesGraph = true;
       try {
         const seriesDetail = await getSeriesById(selectedSeriesId);
@@ -320,7 +328,25 @@ function _page($$renderer, $$props) {
         }
       }
     }
+    async function loadProductTypeContext(productTypeId = selectedProductTypeRecord?.id) {
+      const requestToken = ++productTypeContextRequestToken;
+      if (!productTypeId) {
+        selectedProductTypeContext = null;
+        return;
+      }
+      try {
+        const context = await getProductTypePdfContext(productTypeId);
+        if (requestToken === productTypeContextRequestToken) {
+          selectedProductTypeContext = context;
+        }
+      } catch {
+        if (requestToken === productTypeContextRequestToken) {
+          selectedProductTypeContext = null;
+        }
+      }
+    }
     async function loadFilteredProducts() {
+      const requestToken = ++productListRequestToken;
       loadingList = true;
       error = "";
       try {
@@ -329,6 +355,7 @@ function _page($$renderer, $$props) {
         if (productTypeFilter) ;
         if (seriesFilter && !Number.isNaN(Number(seriesFilter))) ;
         products = await getProducts(params);
+        if (requestToken !== productListRequestToken) return;
         filteredProducts = [...products].sort((a, b) => {
           const typeCompare = String(a.product_type_label || "").localeCompare(String(b.product_type_label || ""));
           if (typeCompare !== 0) return typeCompare;
@@ -343,6 +370,7 @@ function _page($$renderer, $$props) {
           selectedProductId = Number(filteredProducts[0].id);
         }
       } catch (e) {
+        if (requestToken !== productListRequestToken) return;
         error = e.message;
         products = [];
         filteredProducts = [];
@@ -351,6 +379,7 @@ function _page($$renderer, $$props) {
       }
     }
     async function loadSelectedProduct() {
+      const requestToken = ++productRequestToken;
       if (!selectedProductId) {
         selectedProduct = null;
         rpmLines = [];
@@ -359,10 +388,18 @@ function _page($$renderer, $$props) {
         chartOption = {};
         return;
       }
+      selectedProduct = null;
+      rpmLines = [];
+      rpmPoints = [];
+      efficiencyPoints = [];
+      chartOption = {};
       error = "";
       try {
-        selectedProduct = await getProduct(selectedProductId);
+        const product = await getProduct(selectedProductId);
+        if (requestToken !== productRequestToken) return;
+        selectedProduct = product;
       } catch (e) {
+        if (requestToken !== productRequestToken) return;
         error = e.message;
         selectedProduct = null;
       }
@@ -372,6 +409,13 @@ function _page($$renderer, $$props) {
     let previousSeriesTabProductTypeFilter = "";
     onDestroy(() => {
     });
+    {
+      const filterKey = JSON.stringify({ search, productTypeFilter, seriesFilter });
+      if (filterKey !== previousFilterKey) {
+        previousFilterKey = filterKey;
+        loadFilteredProducts();
+      }
+    }
     productDescriptionSections = getDescriptionSections(selectedProduct || {});
     if (seriesTabProductTypeFilter !== previousSeriesTabProductTypeFilter) {
       previousSeriesTabProductTypeFilter = seriesTabProductTypeFilter;
@@ -384,19 +428,15 @@ function _page($$renderer, $$props) {
     if (store_get($$store_subs ??= {}, "$theme", theme), productTypes) {
       buildChartOptions();
     }
-    {
-      const filterKey = JSON.stringify({ search, productTypeFilter, seriesFilter });
-      if (filterKey !== previousFilterKey) {
-        previousFilterKey = filterKey;
-        loadFilteredProducts();
-      }
-    }
     if (selectedProductId !== previousSelectedProductId) {
       previousSelectedProductId = selectedProductId;
       loadSelectedProduct();
       loadChartData();
     }
-    if (selectedSeriesRecord?.id !== previousSelectedSeriesGraphId) {
+    if (String(selectedSeriesRecord?.id || "") !== String(previousSelectedSeriesId || "")) {
+      previousSelectedSeriesId = selectedSeriesRecord?.id ?? null;
+      selectedSeriesGraphRecord = null;
+      seriesChartOption = {};
       loadSelectedSeriesGraph();
     }
     if (productTypes.length > 0 && selectedProductTypeId) {
@@ -406,6 +446,19 @@ function _page($$renderer, $$props) {
       }
     }
     selectedProductTypeRecord = productTypes.find((productType) => String(productType.id) === String(selectedProductTypeId) || String(productType.key) === String(selectedProductTypeId)) || null;
+    if (String(selectedProductTypeId || "") !== String(previousSelectedProductTypeId || "")) {
+      previousSelectedProductTypeId = selectedProductTypeId || "";
+      selectedProductTypeContext = null;
+      if (selectedProductTypeId && activeViewerTab === "product-type") {
+        loadProductTypeContext(selectedProductTypeId);
+      }
+    }
+    if (activeViewerTab !== previousActiveViewerTab) {
+      previousActiveViewerTab = activeViewerTab;
+      if (activeViewerTab === "product-type" && selectedProductTypeId) {
+        loadProductTypeContext(selectedProductTypeId);
+      }
+    }
     selectedProductTypeContextMissingSeries = selectedProductTypeContext?.series?.filter((series) => Number(series.page_count || 0) === 0) || [];
     selectedProductTypeContextWarning = selectedProductTypeContextMissingSeries.length ? "One or more linked series PDF files are missing or not generated yet, so this PDF context is incomplete." : "";
     if (selectedSeriesGraphRecord && store_get($$store_subs ??= {}, "$theme", theme)) {
@@ -837,7 +890,7 @@ function _page($$renderer, $$props) {
         }
         $$renderer2.push(`<!--]--></div> `);
         JobProgressPanel($$renderer2, { job: refreshingSeriesPdfJob, label: "Series PDF generation" });
-        $$renderer2.push(`<!----> <div class="row g-3 mb-3"><div class="col-12 col-md-4"><div class="viewer-metric svelte-36khdd"><div class="viewer-metric-label svelte-36khdd">Series PDF template</div> <div>${escape_html(seriesPdfTemplateLabel(selectedSeriesRecord))}</div></div></div></div> <div class="card series-graph-card shadow-sm mb-3 svelte-36khdd"><div class="card-body"><div class="d-flex flex-wrap align-items-center gap-2 mb-2"><h4 class="h6 mb-0">Series Graph</h4> <div class="ms-auto">`);
+        $$renderer2.push(`<!----> <div class="row g-3 mb-3"><div class="col-12 col-md-4"><div class="viewer-metric svelte-36khdd"><div class="viewer-metric-label svelte-36khdd">Series PDF template</div> <div>${escape_html(seriesPdfTemplateLabel(selectedSeriesRecord))}</div></div></div> <div class="col-12 col-md-8"><div class="viewer-metric svelte-36khdd"><div class="viewer-metric-label svelte-36khdd">Contents page description</div> <div>${escape_html(selectedSeriesGraphRecord?.contents_description || selectedSeriesRecord.contents_description || "Not provided.")}</div></div></div></div> <div class="card series-graph-card shadow-sm mb-3 svelte-36khdd"><div class="card-body"><div class="d-flex flex-wrap align-items-center gap-2 mb-2"><h4 class="h6 mb-0">Series Graph</h4> <div class="ms-auto">`);
         if (selectedSeriesRecord.series_graph_image_url) {
           $$renderer2.push("<!--[0-->");
           $$renderer2.push(`<a class="btn btn-outline-secondary btn-sm"${attr("href", selectedSeriesRecord.series_graph_image_url)} target="_blank" rel="noreferrer">Open Series Graph</a>`);
