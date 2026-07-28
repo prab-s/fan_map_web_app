@@ -40,6 +40,18 @@ class ProductTypeParameterPresetResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class InternalDeviceActivityResponse(BaseModel):
+    id: int
+    occurred_at: str
+    username: Optional[str] = None
+    device_fingerprint: str
+    route_group: Optional[str] = None
+    event: str
+    payload: dict = Field(default_factory=dict)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class ProductTypeParameterPresetUpdate(BaseModel):
     parameter_name: str
     preferred_unit: Optional[str] = None
@@ -121,11 +133,27 @@ class ProductTypePresetUpdate(BaseModel):
     efficiency_point_presets: list[ProductTypeEfficiencyPointPresetUpdate] = Field(default_factory=list)
 
 
+class ProductTypeSeriesSummaryResponse(BaseModel):
+    id: int
+    name: str
+    product_type_key: Optional[str] = None
+    product_type_label: Optional[str] = None
+    product_count: int = 0
+    primary_series_image_url: Optional[str] = None
+    series_pdf_url: Optional[str] = None
+    series_printed_pdf_url: Optional[str] = None
+    series_online_pdf_url: Optional[str] = None
+    series_tab_color: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class ProductTypeResponse(BaseModel):
     id: int
     key: str
     label: str
     series_names: list[str] = Field(default_factory=list)
+    series: list[ProductTypeSeriesSummaryResponse] = Field(default_factory=list)
     series_count: int = 0
     product_count: int = 0
     product_type_pdf_url: Optional[str] = None

@@ -74,6 +74,7 @@ from backend.models import (
     AssociatedDocument,
     QuoteRequest,
     User,
+    InternalDeviceActivity,
 )
 from backend.models import AppSettings
 from backend.timezone import APP_TIMEZONE, backend_now, backend_now_iso
@@ -143,6 +144,7 @@ from backend.schemas import (
     ProductTypePdfResponse,
     SetupLogEntryResponse,
     PublicAccessLogEntryResponse,
+    InternalDeviceActivityResponse,
     QuoteRequestNotificationSettings,
     QuoteRequestCreate,
     QuoteRequestResponse,
@@ -200,6 +202,9 @@ APP_LOG_LEVEL_NAME = os.getenv("LOG_LEVEL", "INFO").strip().upper() or "INFO"
 APP_LOG_LEVEL = getattr(logging, APP_LOG_LEVEL_NAME, logging.INFO)
 LOG_BUFFER_SIZE = int(os.getenv("SETUP_LOG_BUFFER_SIZE", "500"))
 LOG_BUFFER = deque(maxlen=LOG_BUFFER_SIZE)
+INTERNAL_ACTIVITY_RETENTION_DAYS = int(os.getenv("INTERNAL_ACTIVITY_RETENTION_DAYS", "30"))
+INTERNAL_ACTIVITY_WRITE_COUNT = 0
+INTERNAL_ACTIVITY_WRITE_LOCK = threading.Lock()
 LOG_BUFFER_LOCK = threading.Lock()
 LOG_BUFFER_CONDITION = threading.Condition(LOG_BUFFER_LOCK)
 LOG_SEQUENCE = 0
@@ -579,7 +584,50 @@ def _log_request_event(site: str, request: Request, status_code: int | None = No
         payload["status"] = status_code
     if duration_ms is not None:
         payload["duration_ms"] = round(duration_ms, 1)
+    if site == "internal":
+        _persist_internal_device_activity(payload)
     logger.info("public-access %s", json.dumps(payload, ensure_ascii=True, sort_keys=True, separators=(",", ":")))
+
+
+def _internal_device_fingerprint(payload: dict[str, object]) -> str:
+    fingerprint = {
+        "user_agent": payload.get("user_agent", ""),
+        "device_type": payload.get("device_type", ""),
+        "accept_language": payload.get("accept_language", ""),
+        "platform": payload.get("sec_ch_ua_platform", ""),
+    }
+    return hashlib.sha256(json.dumps(fingerprint, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+def _persist_internal_device_activity(payload: dict[str, object]):
+    """Keep internal activity independent of the short-lived diagnostic log buffer."""
+    try:
+        occurred_at = datetime.datetime.fromisoformat(str(payload.get("logged_at")))
+        db = SessionLocal()
+        try:
+            db.add(
+                InternalDeviceActivity(
+                    occurred_at=occurred_at,
+                    username=str(payload.get("username") or "") or None,
+                    device_fingerprint=_internal_device_fingerprint(payload),
+                    route_group=str(payload.get("route_group") or "") or None,
+                    event=str(payload.get("event") or "request"),
+                    payload=payload,
+                )
+            )
+            db.commit()
+            global INTERNAL_ACTIVITY_WRITE_COUNT
+            with INTERNAL_ACTIVITY_WRITE_LOCK:
+                INTERNAL_ACTIVITY_WRITE_COUNT += 1
+                should_prune = INTERNAL_ACTIVITY_WRITE_COUNT % 100 == 0
+            if should_prune:
+                cutoff = datetime.datetime.now(tz=APP_TIMEZONE) - datetime.timedelta(days=max(INTERNAL_ACTIVITY_RETENTION_DAYS, 1))
+                db.query(InternalDeviceActivity).filter(InternalDeviceActivity.occurred_at < cutoff).delete(synchronize_session=False)
+                db.commit()
+        finally:
+            db.close()
+    except Exception:
+        logger.exception("Unable to persist internal device activity")
 
 
 def trace_product_filter(message: str, *args):
@@ -5668,15 +5716,31 @@ def build_product_type_page_decorations(metadata: dict, decorations: list[dict] 
         }
         for summary in series_summaries
     ]
+    # Keep the tab strip readable for larger product types by showing only
+    # the tabs for the current half of the PDF. When the series count is odd,
+    # the extra tab belongs to the second half. Smaller product types retain
+    # the original all-tabs behavior.
+    first_half_count = len(series_tabs) // 2 if len(series_tabs) > 8 else len(series_tabs)
+    series_tab_groups = (
+        series_tabs[:first_half_count],
+        series_tabs[first_half_count:],
+    )
+    logger.info(
+        "[product-type-pdf] tab layout series=%d first_group=%d second_group=%d",
+        len(series_tabs),
+        len(series_tab_groups[0]),
+        len(series_tab_groups[1]),
+    )
 
     for _ in range(intro_page_count):
         decorations.append({"tabs": []})
 
-    for active_summary in series_summaries:
+    for series_index, active_summary in enumerate(series_summaries):
         if int(active_summary.get("buffer_page") or 0):
             decorations.append({"tabs": []})
         active_id = active_summary.get("id")
         page_count = int(active_summary.get("page_count") or 0)
+        tab_group = series_tab_groups[0 if series_index < first_half_count else 1]
         for _ in range(page_count):
             decorations.append(
                 {
@@ -5685,7 +5749,7 @@ def build_product_type_page_decorations(metadata: dict, decorations: list[dict] 
                             **tab,
                             "tab_opacity": 1.0 if tab.get("series_id") == active_id else 0.2,
                         }
-                        for tab in series_tabs
+                        for tab in tab_group
                     ]
                 }
             )
@@ -7306,7 +7370,7 @@ async def log_public_requests(request: Request, call_next):
         response = await call_next(request)
         return response
     finally:
-        if _extract_public_client(request).get("public_host"):
+        if _extract_public_client(request).get("public_host") and request.url.path != "/api/internal-device-activity/recent":
             status_code = getattr(response, "status_code", 500)
             duration_ms = (time.perf_counter() - started) * 1000.0
             _log_request_event("internal", request, status_code=status_code, duration_ms=duration_ms)
@@ -7352,6 +7416,8 @@ async def client_telemetry(request: Request):
             "touch_points": payload.get("touch_points"),
         },
     }
+    if telemetry["route_group"] == "internal-browser-telemetry":
+        _persist_internal_device_activity(telemetry)
     logger.info("public-access %s", json.dumps(telemetry, ensure_ascii=True, sort_keys=True, separators=(",", ":")))
     return {"ok": True}
 
@@ -9924,6 +9990,41 @@ def get_public_access_logs_recent(
     route_group: str | None = Query(default=None),
 ):
     return get_recent_public_access_log_entries(limit, site=site, route_group=route_group)
+
+
+@app.get(
+    "/api/internal-device-activity/recent",
+    response_model=list[InternalDeviceActivityResponse],
+    dependencies=[Depends(require_admin_user)],
+    tags=["Setup"],
+    summary="Get persistent internal device activity",
+)
+def get_internal_device_activity_recent(
+    limit: int = Query(2000, ge=1, le=5000),
+    since: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    query = db.query(InternalDeviceActivity).order_by(InternalDeviceActivity.occurred_at.desc(), InternalDeviceActivity.id.desc())
+    if since:
+        try:
+            since_at = datetime.datetime.fromisoformat(since)
+            query = query.filter(InternalDeviceActivity.occurred_at >= since_at)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid activity timestamp.") from exc
+
+    entries = query.limit(limit).all()
+    return [
+        {
+            "id": entry.id,
+            "occurred_at": entry.occurred_at.isoformat(),
+            "username": entry.username,
+            "device_fingerprint": entry.device_fingerprint,
+            "route_group": entry.route_group,
+            "event": entry.event,
+            "payload": entry.payload or {},
+        }
+        for entry in entries
+    ]
 
 
 @app.get("/api/customer-facing/logs/recent", response_model=list[PublicAccessLogEntryResponse], dependencies=[Depends(require_admin_user)], tags=["Setup"], summary="Get recent customer-facing logs")

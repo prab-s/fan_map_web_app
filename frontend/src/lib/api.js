@@ -980,6 +980,13 @@ export async function getPublicAccessLogsRecent(limit = 200, site = 'internal', 
   return r.json();
 }
 
+export async function getInternalDeviceActivityRecent(limit = 2000, since = '') {
+  const sp = new URLSearchParams({ limit: String(limit) });
+  if (since) sp.set('since', since);
+  const r = await apiFetch(`/internal-device-activity/recent?${sp.toString()}`);
+  return r.json();
+}
+
 export async function downloadMaintenanceJobFile(jobId) {
   const r = await apiFetch(`/maintenance/jobs/${jobId}/download`);
   const blob = await r.blob();

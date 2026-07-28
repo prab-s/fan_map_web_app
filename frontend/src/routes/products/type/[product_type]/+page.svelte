@@ -5,6 +5,7 @@
   $: productTypes = data?.productTypes ?? [];
   $: products = data?.products ?? [];
   $: productType = productTypes.find((item) => String(item.key) === String(productTypeKey)) || null;
+  $: series = productType?.series ?? [];
   $: pageTitle = `${productType?.label || productTypeKey || 'Product Type'} | Products`;
 </script>
 
@@ -18,8 +19,37 @@
       <p class="eyebrow mb-2">Customer Facing</p>
       <h1 class="display-title mb-2">{productType?.label || productTypeKey}</h1>
       <p class="lead text-body-secondary mb-0">
-        {products.length} products in this type
+        {series.length} linked series · {products.length} products in this type
       </p>
+    </div>
+  </section>
+
+  <section class="mb-5">
+    <div class="section-heading">
+      <div>
+        <p class="eyebrow mb-2">Series</p>
+        <h2 class="h3 mb-0">Browse by series</h2>
+      </div>
+      <span class="text-body-secondary">{series.length} series</span>
+    </div>
+    <div class="row g-4 mt-1">
+      {#each series as item}
+        <div class="col-12 col-md-6 col-xl-4">
+          <article class="card shadow-sm h-100 border-0 series-card">
+            {#if item.primary_series_image_url}
+              <img class="card-img-top series-image" src={item.primary_series_image_url} alt={item.name} />
+            {/if}
+            <div class="card-body p-4 d-flex flex-column gap-3">
+              <div>
+                <p class="section-label mb-2">Series</p>
+                <h3 class="h4 mb-2">{item.name}</h3>
+                <p class="text-body-secondary mb-0">{item.product_count || 0} products</p>
+              </div>
+              <a class="btn btn-primary mt-auto" href={`/series/${encodeURIComponent(item.id)}`}>Open Series</a>
+            </div>
+          </article>
+        </div>
+      {/each}
     </div>
   </section>
 
@@ -88,6 +118,24 @@
   .product-card {
     overflow: hidden;
     background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.96));
+  }
+
+  .section-heading {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .series-card {
+    overflow: hidden;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.96));
+  }
+
+  .series-image {
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    background: #fff;
   }
 
   .product-image {

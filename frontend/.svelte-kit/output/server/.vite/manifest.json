@@ -630,7 +630,7 @@
       "_equality.js"
     ],
     "css": [
-      "_app/immutable/assets/_page.xJJ4eKvo.css"
+      "_app/immutable/assets/_page.IiTHVF79.css"
     ]
   },
   "src/routes/quotes/+page.js": {
@@ -689,7 +689,7 @@
       "_api.js"
     ],
     "css": [
-      "_app/immutable/assets/_page.dcleNs6_.css"
+      "_app/immutable/assets/_page.fFmZ3kra.css"
     ]
   },
   "src/routes/template-builder-v2/+page.svelte": {

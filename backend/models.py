@@ -234,6 +234,18 @@ class User(Base):
     is_active = Column(Boolean, nullable=False, default=True)
 
 
+class InternalDeviceActivity(Base):
+    __tablename__ = "internal_device_activity"
+
+    id = Column(Integer, primary_key=True, index=True)
+    occurred_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    username = Column(String(255), nullable=True, index=True)
+    device_fingerprint = Column(String(512), nullable=False, index=True)
+    route_group = Column(String(128), nullable=True, index=True)
+    event = Column(String(64), nullable=False, default="request", index=True)
+    payload = Column(JSON, nullable=False, default=dict)
+
+
 class ProductType(Base):
     __tablename__ = "product_types"
 
