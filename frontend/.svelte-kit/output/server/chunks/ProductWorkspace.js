@@ -384,7 +384,7 @@ function ProductWorkspace($$renderer, $$props) {
         id: parameter.id ?? null,
         _pending_delete: parameter._pending_delete ?? false,
         parameter_name: parameter.parameter_name ?? "",
-        value_type: parameter.value_string != null && parameter.value_string !== "" ? "string" : parameter.value_number != null ? "number" : unitValue !== "" ? "number" : "string",
+        value_type: parameter.value_type ?? (parameter.value_string != null && parameter.value_string !== "" ? "string" : parameter.value_number != null ? "number" : unitValue !== "" ? "number" : "string"),
         value_string: parameter.value_string ?? "",
         value_number: parameter.value_number ?? "",
         unit: isCustomUnit ? "__custom__" : unitValue,
@@ -474,6 +474,7 @@ function ProductWorkspace($$renderer, $$props) {
         group_name: group.group_name,
         parameters: (group.parameter_presets ?? []).map((parameter) => createParameterDraft({
           parameter_name: parameter.parameter_name,
+          value_type: parameter.value_type,
           value_string: parameter.value_string ?? "",
           value_number: parameter.value_number ?? "",
           unit: parameter.preferred_unit ?? ""
@@ -1451,8 +1452,13 @@ function ProductWorkspace($$renderer, $$props) {
       }
       function updateDraggedPoint(point, pixel) {
         if (!point) return;
-        const axisIndex = point.pointType === "efficiency" ? 1 : 0;
-        const [airflow, value] = chartInstance.convertFromPixel({ xAxisIndex: 0, yAxisIndex: axisIndex }, [pixel.x, pixel.y]);
+        const [airflow, value] = chartInstance.convertFromPixel(
+          // Efficiency/permissible overlays use the same pressure axis as RPM
+          // points. The chart has a single y-axis, so both point types must use
+          // yAxisIndex 0 here.
+          { xAxisIndex: 0, yAxisIndex: 0 },
+          [pixel.x, pixel.y]
+        );
         if (point.pointType === "efficiency") {
           const updated2 = {
             ...efficiencyPoints.find((p) => p.id === point.id),
@@ -1849,7 +1855,7 @@ function ProductWorkspace($$renderer, $$props) {
             $$settled = false;
           },
           children: ($$renderer4) => {
-            $$renderer4.push(`<div class="d-flex flex-wrap justify-content-between align-items-center gap-2"><div class="d-flex flex-wrap gap-2"><button class="btn btn-outline-secondary btn-sm">${escape_html(parameterGroups.length > 0 && parameterGroups.every((_, index) => specificationGroupOpenState[index] ?? true) ? "Collapse All Groups" : "Expand All Groups")}</button> <button class="btn btn-outline-secondary btn-sm">Load Type Presets</button> <button class="btn btn-outline-primary btn-sm">Add Group</button></div></div> `);
+            $$renderer4.push(`<div class="d-flex flex-wrap justify-content-between align-items-center gap-2"><div class="d-flex flex-wrap gap-2"><button class="btn btn-outline-secondary btn-sm">${escape_html(parameterGroups.length > 0 && parameterGroups.every((_, index) => specificationGroupOpenState[index] ?? true) ? "Collapse All Groups" : "Expand All Groups")}</button> <button class="btn btn-outline-secondary btn-sm">Load Specification Presets</button> <button class="btn btn-outline-primary btn-sm">Add Group</button></div></div> `);
             if (parameterGroups.length > 0) {
               $$renderer4.push("<!--[0-->");
               $$renderer4.push(`<div class="vstack gap-3 mt-3"><!--[-->`);
@@ -2353,7 +2359,7 @@ function ProductWorkspace($$renderer, $$props) {
             $$settled = false;
           },
           children: ($$renderer4) => {
-            $$renderer4.push(`<div class="d-flex flex-wrap justify-content-between align-items-center gap-2"><div><p class="text-body-secondary mb-0">These are ordered exactly as they will appear elsewhere.</p></div> <div class="d-flex flex-wrap gap-2"><button class="btn btn-outline-secondary btn-sm">${escape_html(parameterGroups.length > 0 && parameterGroups.every((_, index) => specificationGroupOpenState[index] ?? true) ? "Collapse All Groups" : "Expand All Groups")}</button> <button class="btn btn-outline-secondary btn-sm">Load Type Presets</button> <button class="btn btn-outline-primary btn-sm">Add Group</button></div></div> `);
+            $$renderer4.push(`<div class="d-flex flex-wrap justify-content-between align-items-center gap-2"><div><p class="text-body-secondary mb-0">These are ordered exactly as they will appear elsewhere.</p></div> <div class="d-flex flex-wrap gap-2"><button class="btn btn-outline-secondary btn-sm">${escape_html(parameterGroups.length > 0 && parameterGroups.every((_, index) => specificationGroupOpenState[index] ?? true) ? "Collapse All Groups" : "Expand All Groups")}</button> <button class="btn btn-outline-secondary btn-sm">Load Specification Presets</button> <button class="btn btn-outline-primary btn-sm">Add Group</button></div></div> `);
             if (parameterGroups.length > 0) {
               $$renderer4.push("<!--[0-->");
               $$renderer4.push(`<div class="vstack gap-3 mt-3"><!--[-->`);

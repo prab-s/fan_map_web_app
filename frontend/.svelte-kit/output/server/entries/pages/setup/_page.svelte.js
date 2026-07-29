@@ -253,7 +253,7 @@ function _page($$renderer, $$props) {
       const isCustomUnit = preferredUnit !== "" && !GLOBAL_UNIT_OPTIONS.includes(preferredUnit);
       const valueString = parameter.value_string ?? "";
       const valueNumber = parameter.value_number ?? "";
-      const valueType = valueString !== "" ? "string" : valueNumber !== "" && valueNumber != null ? "number" : preferredUnit !== "" ? "number" : "string";
+      const valueType = parameter.value_type ?? (valueString !== "" ? "string" : valueNumber !== "" && valueNumber != null ? "number" : preferredUnit !== "" ? "number" : "string");
       return {
         id: parameter.id ?? null,
         _pending_delete: false,

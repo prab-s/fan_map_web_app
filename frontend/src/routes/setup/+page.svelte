@@ -293,14 +293,14 @@
     const isCustomUnit = preferredUnit !== '' && !GLOBAL_UNIT_OPTIONS.includes(preferredUnit);
     const valueString = parameter.value_string ?? '';
     const valueNumber = parameter.value_number ?? '';
-    const valueType =
-      valueString !== ''
+    const valueType = parameter.value_type ??
+      (valueString !== ''
         ? 'string'
         : valueNumber !== '' && valueNumber != null
           ? 'number'
           : preferredUnit !== ''
             ? 'number'
-            : 'string';
+            : 'string');
     return {
       id: parameter.id ?? null,
       _pending_delete: false,
@@ -585,6 +585,7 @@
           .filter((parameter) => !parameter._pending_delete)
           .map((parameter, parameterIndex) => ({
             parameter_name: parameter.parameter_name.trim(),
+            value_type: parameter.value_type,
             preferred_unit:
               parameter.value_type === 'number'
                 ? ((parameter.preferred_unit === '__custom__' ? parameter.custom_unit : parameter.preferred_unit) || '').trim() || null

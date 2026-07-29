@@ -360,6 +360,7 @@ class ProductTypeParameterPreset(Base):
     parameter_name = Column(String(255), nullable=False)
     sort_order = Column(Integer, nullable=False, default=0)
     preferred_unit = Column(String(64), nullable=True)
+    value_type = Column(String(16), nullable=False, default="string", server_default="string")
     value_string = Column(Text, nullable=True)
     value_number = Column(Float, nullable=True)
 
@@ -421,7 +422,7 @@ class Series(Base):
     description2_html = Column(Text, nullable=True)
     description3_html = Column(Text, nullable=True)
     description4_html = Column(Text, nullable=True)
-    contents_description = Column(String(500), nullable=True)
+    contents_description = Column(Text, nullable=True)
     template_id = Column(String(128), nullable=True)
     printed_template_id = Column(String(128), nullable=True)
     online_template_id = Column(String(128), nullable=True)

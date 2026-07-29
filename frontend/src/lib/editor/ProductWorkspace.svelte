@@ -853,13 +853,14 @@
       _pending_delete: parameter._pending_delete ?? false,
       parameter_name: parameter.parameter_name ?? "",
       value_type:
-        parameter.value_string != null && parameter.value_string !== ""
+        parameter.value_type ??
+        (parameter.value_string != null && parameter.value_string !== ""
           ? "string"
           : parameter.value_number != null
             ? "number"
             : unitValue !== ""
               ? "number"
-              : "string",
+              : "string"),
       value_string: parameter.value_string ?? "",
       value_number: parameter.value_number ?? "",
       unit: isCustomUnit ? "__custom__" : unitValue,
@@ -1087,6 +1088,7 @@
       parameters: (group.parameter_presets ?? []).map((parameter) =>
         createParameterDraft({
           parameter_name: parameter.parameter_name,
+          value_type: parameter.value_type,
           value_string: parameter.value_string ?? "",
           value_number: parameter.value_number ?? "",
           unit: parameter.preferred_unit ?? "",
@@ -1349,8 +1351,9 @@
     return productSupportsGraphOverlays() ? FULL_CHART_LINE_DEFINITIONS : [];
   }
 
-  function usePresetGroupsForSelectedType() {
-    applyCreateTypePresets(productForm.product_type_key);
+  function loadSpecificationPresetsForSelectedType() {
+    parameterGroups = clonePresetGroups(productForm.product_type_key);
+    specificationGroupOpenState = {};
   }
 
   function changeProductType(nextKey) {
@@ -4541,9 +4544,11 @@
 
     function updateDraggedPoint(point, pixel) {
       if (!point) return;
-      const axisIndex = point.pointType === "efficiency" ? 1 : 0;
       const [airflow, value] = chartInstance.convertFromPixel(
-        { xAxisIndex: 0, yAxisIndex: axisIndex },
+        // Efficiency/permissible overlays use the same pressure axis as RPM
+        // points. The chart has a single y-axis, so both point types must use
+        // yAxisIndex 0 here.
+        { xAxisIndex: 0, yAxisIndex: 0 },
         [pixel.x, pixel.y],
       );
       if (point.pointType === "efficiency") {
@@ -5101,8 +5106,8 @@
               </button>
               <button
                 class="btn btn-outline-secondary btn-sm"
-                on:click={usePresetGroupsForSelectedType}
-                >Load Type Presets</button
+                on:click={loadSpecificationPresetsForSelectedType}
+                >Load Specification Presets</button
               >
               <button
                 class="btn btn-outline-primary btn-sm"
@@ -5974,8 +5979,8 @@
                   </button>
                   <button
                     class="btn btn-outline-secondary btn-sm"
-                    on:click={usePresetGroupsForSelectedType}
-                    >Load Type Presets</button
+                    on:click={loadSpecificationPresetsForSelectedType}
+                    >Load Specification Presets</button
                   >
                   <button
                     class="btn btn-outline-primary btn-sm"

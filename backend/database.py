@@ -215,7 +215,10 @@ def _ensure_series_contents_description_column(target_engine):
     existing_columns = {column["name"] for column in inspector.get_columns("series")}
     if "contents_description" not in existing_columns:
         with target_engine.begin() as connection:
-            connection.execute(text("ALTER TABLE series ADD COLUMN contents_description VARCHAR(500)"))
+            connection.execute(text("ALTER TABLE series ADD COLUMN contents_description TEXT"))
+    elif target_engine.dialect.name == "postgresql":
+        with target_engine.begin() as connection:
+            connection.execute(text("ALTER TABLE series ALTER COLUMN contents_description TYPE TEXT"))
 
 
 def _ensure_series_tab_color_column(target_engine):
@@ -311,6 +314,7 @@ def _ensure_product_type_parameter_preset_columns(target_engine):
 
     existing_columns = {column["name"] for column in inspector.get_columns("product_type_parameter_presets")}
     missing_columns = {
+        "value_type": "TEXT",
         "value_string": "TEXT",
         "value_number": "FLOAT",
     }
@@ -321,6 +325,19 @@ def _ensure_product_type_parameter_preset_columns(target_engine):
                 connection.execute(
                     text(f"ALTER TABLE product_type_parameter_presets ADD COLUMN {column_name} {column_type}")
                 )
+        connection.execute(
+            text(
+                """
+                UPDATE product_type_parameter_presets
+                SET value_type = CASE
+                    WHEN value_string IS NOT NULL THEN 'string'
+                    WHEN value_number IS NOT NULL OR preferred_unit IS NOT NULL THEN 'number'
+                    ELSE 'string'
+                END
+                WHERE value_type IS NULL OR value_type = ''
+                """
+            )
+        )
 
 
 def _seed_product_types(target_engine):
@@ -631,6 +648,7 @@ def _seed_product_types(target_engine):
                                     parameter_name,
                                     sort_order,
                                     preferred_unit,
+                                    value_type,
                                     value_string,
                                     value_number
                                 )
@@ -639,6 +657,7 @@ def _seed_product_types(target_engine):
                                     :parameter_name,
                                     :sort_order,
                                     :preferred_unit,
+                                    CASE WHEN :preferred_unit IS NULL THEN 'string' ELSE 'number' END,
                                     NULL,
                                     NULL
                                 )

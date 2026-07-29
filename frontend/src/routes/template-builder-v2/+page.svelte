@@ -387,7 +387,7 @@
               }
             </div>
             <div class="series-tile__description">
-              ${escapeHtml(series.contents_description || '') || '<span class="placeholder">No description provided.</span>'}
+              ${series.contents_description || '<span class="placeholder">No description provided.</span>'}
             </div>
           </article>`
       )

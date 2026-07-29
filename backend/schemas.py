@@ -1,7 +1,7 @@
 """
 Pydantic schemas for request/response validation.
 """
-from typing import Annotated, Optional
+from typing import Annotated, Literal, Optional
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, confloat, model_validator
 
 
@@ -34,6 +34,7 @@ class ProductTypeParameterPresetResponse(BaseModel):
     parameter_name: str
     sort_order: int
     preferred_unit: Optional[str] = None
+    value_type: Literal["string", "number"] = "string"
     value_string: Optional[str] = None
     value_number: Optional[float] = None
 
@@ -55,6 +56,7 @@ class InternalDeviceActivityResponse(BaseModel):
 class ProductTypeParameterPresetUpdate(BaseModel):
     parameter_name: str
     preferred_unit: Optional[str] = None
+    value_type: Literal["string", "number"] = "string"
     value_string: Optional[str] = None
     value_number: Optional[float] = None
 
@@ -403,7 +405,7 @@ class SeriesBase(_RichTextAliasMixin):
     description2_html: Optional[str] = None
     description3_html: Optional[str] = None
     description4_html: Optional[str] = None
-    contents_description: Optional[str] = Field(default=None, max_length=500)
+    contents_description: Optional[str] = None
     template_id: Optional[str] = None
     printed_template_id: Optional[str] = None
     online_template_id: Optional[str] = None
@@ -420,7 +422,7 @@ class SeriesUpdate(_RichTextAliasMixin):
     description2_html: Optional[str] = None
     description3_html: Optional[str] = None
     description4_html: Optional[str] = None
-    contents_description: Optional[str] = Field(default=None, max_length=500)
+    contents_description: Optional[str] = None
     template_id: Optional[str] = None
     printed_template_id: Optional[str] = None
     online_template_id: Optional[str] = None
@@ -435,7 +437,7 @@ class SeriesResponse(BaseModel):
     description2_html: Optional[str] = None
     description3_html: Optional[str] = None
     description4_html: Optional[str] = None
-    contents_description: Optional[str] = Field(default=None, max_length=500)
+    contents_description: Optional[str] = None
     template_id: Optional[str] = None
     printed_template_id: Optional[str] = None
     online_template_id: Optional[str] = None

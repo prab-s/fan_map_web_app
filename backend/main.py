@@ -743,8 +743,14 @@ def apply_product_type_parameter_presets(product_type: ProductType, preset_group
             seen_parameters.add(normalized_parameter_name)
 
             preferred_unit = (parameter.preferred_unit or "").strip() or None
+            value_type = parameter.value_type
             value_string = None if parameter.value_string is None else str(parameter.value_string).strip() or None
             value_number = None if parameter.value_number is None else float(parameter.value_number)
+            if value_type == "string":
+                value_number = None
+                preferred_unit = None
+            else:
+                value_string = None
             if value_string is not None and value_number is not None:
                 raise HTTPException(
                     status_code=400,
@@ -5272,8 +5278,7 @@ def build_product_type_series_groups_html(
     for summary in series_summaries:
         series_name = html.escape(str(summary.get("name") or "Series"))
         series_color = html.escape(str(summary.get("series_tab_color") or SERIES_TAB_FALLBACK_COLOR))
-        contents_description = html.escape(str(summary.get("contents_description") or ""))
-        description_html = contents_description or '<span class="placeholder">No description provided.</span>'
+        description_html = render_richtext_html(summary.get("contents_description")) or '<span class="placeholder">No description provided.</span>'
         image_uri = html.escape(str(summary.get("first_product_image_uri") or ""))
         page_start = int(summary.get("page_start") or 0)
         page_end = int(summary.get("page_end") or 0)
@@ -10364,7 +10369,16 @@ ASSOCIATED_DOCUMENT_EXTENSIONS = {
 ASSOCIATED_DOCUMENT_MAX_BYTES = 25 * 1024 * 1024
 
 
+def _canonical_associated_document_owner_type(owner_type: str) -> str:
+    return {
+        "products": "product",
+        "product-types": "product_type",
+        "product_types": "product_type",
+    }.get(owner_type, owner_type)
+
+
 def _associated_document_owner(db: Session, owner_type: str, owner_id: int):
+    owner_type = _canonical_associated_document_owner_type(owner_type)
     if owner_type == "product":
         return db.get(Product, owner_id)
     if owner_type == "series":
@@ -10459,6 +10473,7 @@ async def upload_product_type_documents(product_type_id: int, files: list[Upload
 
 @app.delete("/api/{owner_type}/{owner_id}/documents/{document_id}", response_model=dict, dependencies=[Depends(get_current_user)], tags=["Associated Documents"])
 def delete_associated_document(owner_type: str, owner_id: int, document_id: int, db: Session = Depends(get_db)):
+    owner_type = _canonical_associated_document_owner_type(owner_type)
     owner = _associated_document_owner(db, owner_type, owner_id)
     if not owner:
         raise HTTPException(404, f"{owner_type.replace('_', ' ').title()} not found")

@@ -483,14 +483,8 @@
           </div>
           <div class="col-12">
             <label class="form-label" for="series-contents-description">Contents page description</label>
-            <input
-              class="form-control"
-              id="series-contents-description"
-              maxlength="500"
-              bind:value={seriesDraft.contents_description}
-              placeholder="Short description shown in the product type contents grid"
-            />
-            <div class="form-text">Short plain-text description used only on the product type PDF contents page.</div>
+            <RichTextEditor id="series-contents-description" rows={3} bind:value={seriesDraft.contents_description} />
+            <div class="form-text">Rich-text description used only on the product type PDF contents page.</div>
           </div>
           <div class="col-12">
             <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">

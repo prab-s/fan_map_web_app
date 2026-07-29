@@ -1476,7 +1476,7 @@
               <div class="col-12 col-md-8">
                 <div class="viewer-metric">
                   <div class="viewer-metric-label">Contents page description</div>
-                  <div>{selectedSeriesGraphRecord?.contents_description || selectedSeriesRecord.contents_description || 'Not provided.'}</div>
+                  <div class="viewer-html">{@html selectedSeriesGraphRecord?.contents_description || selectedSeriesRecord.contents_description || '<span class="text-body-secondary">Not provided.</span>'}</div>
                 </div>
               </div>
             </div>

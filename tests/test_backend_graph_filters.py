@@ -6,6 +6,7 @@ from unittest.mock import patch
 from openpyxl import Workbook
 
 from backend.main import (
+    _canonical_associated_document_owner_type,
     bulk_import_find_best_overlay_scale_factor,
     bulk_import_find_highest_efficiency_overlay_key,
     bulk_import_scale_overlay_points_to_highest_rpm_line,
@@ -14,6 +15,18 @@ from backend.main import (
     normalize_bulk_import_name,
     product_matches_parameter_filters,
 )
+
+
+class AssociatedDocumentOwnerTypeTests(unittest.TestCase):
+    def test_product_type_route_slug_is_normalized_for_delete_handler(self):
+        self.assertEqual(_canonical_associated_document_owner_type("product-types"), "product_type")
+
+    def test_product_route_slug_is_normalized_for_delete_handler(self):
+        self.assertEqual(_canonical_associated_document_owner_type("products"), "product")
+
+    def test_non_product_type_owner_types_are_unchanged(self):
+        self.assertEqual(_canonical_associated_document_owner_type("product"), "product")
+        self.assertEqual(_canonical_associated_document_owner_type("series"), "series")
 
 
 def make_parameter(group_name: str, parameter_name: str, value_number=None, value_string=None):
