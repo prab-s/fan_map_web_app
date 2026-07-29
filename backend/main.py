@@ -115,6 +115,7 @@ from backend.schemas import (
     SeriesImageResponse,
     SeriesImageReorder,
     ProductTypeResponse,
+    ProductTypeSeriesSummaryResponse,
     ProductTypeCreate,
     ProductTypeParameterGroupPresetUpdate,
     ProductTypePresetUpdate,
@@ -7463,7 +7464,7 @@ def list_product_types(db: Session = Depends(get_db)):
     description="Returns product types for the public catalog navigation.",
 )
 def list_public_product_types(db: Session = Depends(get_db)):
-    return (
+    product_types = (
         db.query(ProductType)
         .options(
             selectinload(ProductType.series).selectinload(Series.products),
@@ -7477,6 +7478,42 @@ def list_public_product_types(db: Session = Depends(get_db)):
         .order_by(ProductType.sort_order, ProductType.id)
         .all()
     )
+    series_by_product_type: dict[int, list[Series]] = {}
+    if product_types:
+        all_series = (
+            db.query(Series)
+            .options(
+                joinedload(Series.product_type),
+                selectinload(Series.products),
+                selectinload(Series.series_images),
+            )
+            .filter(Series.product_type_id.in_([product_type.id for product_type in product_types]))
+            .order_by(Series.name, Series.id)
+            .all()
+        )
+        for series in all_series:
+            series_by_product_type.setdefault(series.product_type_id, []).append(series)
+
+    responses = []
+    for product_type in product_types:
+        response = ProductTypeResponse.model_validate(product_type, from_attributes=True)
+        ordered_series = sorted(
+            series_by_product_type.get(product_type.id, []),
+            key=lambda item: ((item.name or "").casefold(), item.id),
+        )
+        response.series = [
+            ProductTypeSeriesSummaryResponse.model_validate(series, from_attributes=True)
+            for series in ordered_series
+        ]
+        response.series_names = [series.name for series in ordered_series if series.name]
+        response.series_count = len(ordered_series)
+        logger.info(
+            "[public-product-types] product_type=%s series=%d",
+            product_type.key,
+            len(ordered_series),
+        )
+        responses.append(response)
+    return responses
 
 
 @app.post("/api/product-types", response_model=ProductTypeResponse, dependencies=[Depends(get_current_user)], tags=["Product Types"])

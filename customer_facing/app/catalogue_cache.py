@@ -178,7 +178,23 @@ class CatalogueCache:
 
         product_type_list = list(product_types)
         product_list = list(products)
-        series_summary_list = build_series_summary_from_products(product_list)
+        # Product-derived series summaries omit valid empty series. Prefer the
+        # authoritative series relationship returned with each product type,
+        # then retain the product-derived fallback for older backends that do
+        # not include that relationship yet.
+        series_summary_list: list[dict] = []
+        for product_type in product_type_list:
+            product_type_key = product_type.get("key")
+            for series in product_type.get("series", []) or []:
+                if not isinstance(series, dict) or series.get("id") is None:
+                    continue
+                summary = dict(series)
+                summary.setdefault("product_type_key", product_type_key)
+                summary.setdefault("product_type_label", product_type.get("label"))
+                series_summary_list.append(summary)
+
+        if not series_summary_list:
+            series_summary_list = build_series_summary_from_products(product_list)
 
         series_records: list[dict] = []
         if series_summary_list:
