@@ -28,7 +28,6 @@ RUN apt-get update \
         chromium-sandbox \
         fontconfig \
         fonts-dejavu-core \
-        mariadb-client \
         postgresql-client \
         tzdata \
     && rm -rf /var/lib/apt/lists/*

@@ -61,8 +61,6 @@ MIGRATE_DB_SCRIPT="${MIGRATE_DB_SCRIPT:-./migrate_db.sh}"
 PG_TOOL_DATABASE_URL=""
 PODMAN_BIN="${PODMAN_BIN:-podman}"
 POSTGRES_CONTAINER_NAME="${POSTGRES_CONTAINER_NAME:-fan-graphs-postgres}"
-WORDPRESS_DB_CONTAINER_NAME="${WORDPRESS_DB_CONTAINER_NAME:-fan-graphs-wordpress-db}"
-WORDPRESS_CONTAINER_NAME="${WORDPRESS_CONTAINER_NAME:-fan-graphs-wordpress}"
 PV_BIN="${PV_BIN:-$(command -v pv || true)}"
 
 while [[ $# -gt 0 ]]; do
@@ -199,51 +197,9 @@ PY
     sh -lc 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1'
 }
 
-restore_optional_wordpress_data() {
-  local wordpress_dump_path="${STAGING_DIR}/wordpress_dump.sql"
-  local wordpress_content_tar="${STAGING_DIR}/wordpress/wp-content.tar"
-
-  if [[ ! -f "${wordpress_dump_path}" ]] && [[ ! -f "${wordpress_content_tar}" ]]; then
-    log "No WordPress data in backup archive"
-    return 0
-  fi
-
-  log "Restoring WordPress data"
-
-  if ${PODMAN_BIN} container exists "${WORDPRESS_DB_CONTAINER_NAME}" >/dev/null 2>&1; then
-    ${PODMAN_BIN} start "${WORDPRESS_DB_CONTAINER_NAME}" >/dev/null 2>&1 || true
-  fi
-  if ${PODMAN_BIN} container exists "${WORDPRESS_CONTAINER_NAME}" >/dev/null 2>&1; then
-    ${PODMAN_BIN} start "${WORDPRESS_CONTAINER_NAME}" >/dev/null 2>&1 || true
-  fi
-  if ! ${PODMAN_BIN} container exists "${WORDPRESS_DB_CONTAINER_NAME}" >/dev/null 2>&1 || ! ${PODMAN_BIN} container exists "${WORDPRESS_CONTAINER_NAME}" >/dev/null 2>&1; then
-    ${COMPOSE_BIN} "${COMPOSE_ARGS[@]}" up -d wordpress_db wordpress
-  fi
-
-  if [[ -f "${wordpress_dump_path}" ]]; then
-    echo "  Importing WordPress MariaDB dump"
-    ${PODMAN_BIN} exec -i "${WORDPRESS_DB_CONTAINER_NAME}" mariadb \
-      -u root \
-      "-p${WORDPRESS_DB_ROOT_PASSWORD}" \
-      -e "DROP DATABASE IF EXISTS \`${WORDPRESS_DB_NAME}\`; CREATE DATABASE \`${WORDPRESS_DB_NAME}\`; GRANT ALL PRIVILEGES ON \`${WORDPRESS_DB_NAME}\`.* TO '${WORDPRESS_DB_USER}'@'%'; FLUSH PRIVILEGES;"
-
-    stream_file_with_progress "${wordpress_dump_path}" "WordPress MariaDB dump stream" | ${PODMAN_BIN} exec -i "${WORDPRESS_DB_CONTAINER_NAME}" mariadb \
-      -u root \
-      "-p${WORDPRESS_DB_ROOT_PASSWORD}" \
-      "${WORDPRESS_DB_NAME}"
-  fi
-
-  if [[ -f "${wordpress_content_tar}" ]]; then
-    echo "  Restoring WordPress wp-content snapshot"
-    ${PODMAN_BIN} exec -i "${WORDPRESS_CONTAINER_NAME}" sh -lc 'rm -rf /var/www/html/wp-content && mkdir -p /var/www/html'
-    stream_file_with_progress "${wordpress_content_tar}" "WordPress wp-content tar stream" | ${PODMAN_BIN} exec -i "${WORDPRESS_CONTAINER_NAME}" tar -xf - -C /var/www/html
-  fi
-}
-
 case "$RESTORE_MODE" in
   compose)
     restore_postgres_via_compose
-    restore_optional_wordpress_data
     ;;
   url)
     restore_postgres_via_url

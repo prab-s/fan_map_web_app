@@ -24,8 +24,6 @@ COMPOSE_ARGS=(-f "${COMPOSE_FILE}")
 PG_TOOL_DATABASE_URL=""
 PODMAN_BIN="${PODMAN_BIN:-podman}"
 POSTGRES_CONTAINER_NAME="${POSTGRES_CONTAINER_NAME:-fan-graphs-postgres}"
-WORDPRESS_DB_CONTAINER_NAME="${WORDPRESS_DB_CONTAINER_NAME:-fan-graphs-wordpress-db}"
-WORDPRESS_CONTAINER_NAME="${WORDPRESS_CONTAINER_NAME:-fan-graphs-wordpress}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -126,31 +124,9 @@ PY
     sh -lc 'pg_dump "$DATABASE_URL" --no-owner --no-privileges' > "${DB_DUMP_PATH}"
 }
 
-backup_optional_wordpress_data() {
-  if ! ${PODMAN_BIN} ps --format '{{.Names}}' | grep -qx "${WORDPRESS_CONTAINER_NAME}"; then
-    log "No running WordPress stack detected; skipping WordPress backup"
-    return 0
-  fi
-
-  log "Backing up WordPress data"
-  if ${PODMAN_BIN} ps --format '{{.Names}}' | grep -qx "${WORDPRESS_DB_CONTAINER_NAME}"; then
-    echo "  Dumping WordPress MariaDB"
-    ${PODMAN_BIN} exec -i "${WORDPRESS_DB_CONTAINER_NAME}" mariadb-dump \
-      -u "${WORDPRESS_DB_USER}" \
-      "-p${WORDPRESS_DB_PASSWORD}" \
-      "${WORDPRESS_DB_NAME}" > "${STAGING_DIR}/wordpress_dump.sql"
-  fi
-
-  mkdir -p "${STAGING_DIR}/wordpress"
-  echo "  Capturing wp-content"
-  ${PODMAN_BIN} exec -i "${WORDPRESS_CONTAINER_NAME}" \
-    tar -C /var/www/html -cf - wp-content > "${STAGING_DIR}/wordpress/wp-content.tar"
-}
-
 case "$BACKUP_MODE" in
   compose)
     dump_postgres_via_compose
-    backup_optional_wordpress_data
     ;;
   url)
     dump_postgres_via_url
@@ -169,8 +145,6 @@ Env file: ${ENV_FILE}
 
 Contents:
 - postgres_dump.sql : PostgreSQL database dump
-- wordpress_dump.sql : WordPress MariaDB dump (if present)
-- wordpress/wp-content.tar : WordPress content volume snapshot (if present)
 EOF
 
 python3 - <<'PY' "$STAGING_DIR" "${OUTPUT_DIR}/${ARCHIVE_NAME}"
