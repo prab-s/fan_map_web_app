@@ -2,11 +2,47 @@ import { A as API_BASE } from "./config.js";
 function url(path) {
   return `${API_BASE}${path}`;
 }
+let csrfToken = "";
+async function ensureCsrfToken(fetchImpl, force = false) {
+  if (csrfToken && !force) return;
+  const response = await fetchImpl(url("/auth/session"), { credentials: "include" });
+  if (response.ok) {
+    const payload = await response.json();
+    csrfToken = payload?.csrf_token || "";
+  }
+}
 async function apiFetch(path, options = {}, fetchImpl = fetch) {
-  const response = await fetchImpl(url(path), {
+  const method = String(options.method || "GET").toUpperCase();
+  if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS" && !path.endsWith("/auth/session")) {
+    await ensureCsrfToken(fetchImpl);
+  }
+  const headers = new Headers(options.headers || {});
+  if (csrfToken && method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
+    headers.set("X-CSRF-Token", csrfToken);
+  }
+  let response = await fetchImpl(url(path), {
+    ...options,
     credentials: "include",
-    ...options
+    headers
   });
+  if (response.status === 403 && method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
+    let detail = "";
+    try {
+      detail = (await response.clone().json())?.detail || "";
+    } catch {
+      detail = "";
+    }
+    if (detail === "CSRF validation failed.") {
+      csrfToken = "";
+      await ensureCsrfToken(fetchImpl, true);
+      if (csrfToken) headers.set("X-CSRF-Token", csrfToken);
+      response = await fetchImpl(url(path), {
+        ...options,
+        credentials: "include",
+        headers
+      });
+    }
+  }
   if (!response.ok) {
     const contentType = response.headers.get("content-type") || "";
     const rawText = await response.text();
@@ -37,21 +73,28 @@ async function apiFetch(path, options = {}, fetchImpl = fetch) {
 }
 async function getAuthSession() {
   const r = await apiFetch("/auth/session");
-  return r.json();
+  const payload = await r.json();
+  csrfToken = payload?.csrf_token || csrfToken;
+  return payload;
 }
 async function login(username, password) {
+  csrfToken = "";
   const r = await apiFetch("/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, password })
   });
-  return r.json();
+  const payload = await r.json();
+  csrfToken = payload?.csrf_token || csrfToken;
+  return payload;
 }
 async function logout() {
   const r = await apiFetch("/auth/logout", {
     method: "POST"
   });
-  return r.json();
+  const payload = await r.json();
+  csrfToken = payload?.csrf_token || "";
+  return payload;
 }
 async function getProducts(params = {}) {
   const sp = new URLSearchParams(params).toString();

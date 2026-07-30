@@ -50,6 +50,7 @@ declare module '$env/static/private' {
 	export const SHLVL: string;
 	export const npm_config_noproxy: string;
 	export const HOME: string;
+	export const FRAME_ANCESTORS: string;
 	export const OLDPWD: string;
 	export const CHROMIUM_BIN: string;
 	export const SESSION_SECRET: string;
@@ -62,6 +63,7 @@ declare module '$env/static/private' {
 	export const BOOTSTRAP_ADMIN_PASSWORD: string;
 	export const DBUS_SESSION_BUS_ADDRESS: string;
 	export const COLOR: string;
+	export const INTERNAL_FRAME_ANCESTORS: string;
 	export const DEBUGINFOD_URLS: string;
 	export const npm_config_metrics_registry: string;
 	export const AUTH_COOKIE_SECURE: string;
@@ -90,6 +92,7 @@ declare module '$env/static/private' {
 	export const npm_package_version: string;
 	export const npm_lifecycle_event: string;
 	export const APP_TIMEZONE: string;
+	export const SECURITY_CONFIGURATION_FILE: string;
 	export const LESSCLOSE: string;
 	export const LC_MEASUREMENT: string;
 	export const BOOTSTRAP_ADMIN_USERNAME: string;
@@ -209,6 +212,7 @@ declare module '$env/dynamic/private' {
 		SHLVL: string;
 		npm_config_noproxy: string;
 		HOME: string;
+		FRAME_ANCESTORS: string;
 		OLDPWD: string;
 		CHROMIUM_BIN: string;
 		SESSION_SECRET: string;
@@ -221,6 +225,7 @@ declare module '$env/dynamic/private' {
 		BOOTSTRAP_ADMIN_PASSWORD: string;
 		DBUS_SESSION_BUS_ADDRESS: string;
 		COLOR: string;
+		INTERNAL_FRAME_ANCESTORS: string;
 		DEBUGINFOD_URLS: string;
 		npm_config_metrics_registry: string;
 		AUTH_COOKIE_SECURE: string;
@@ -249,6 +254,7 @@ declare module '$env/dynamic/private' {
 		npm_package_version: string;
 		npm_lifecycle_event: string;
 		APP_TIMEZONE: string;
+		SECURITY_CONFIGURATION_FILE: string;
 		LESSCLOSE: string;
 		LC_MEASUREMENT: string;
 		BOOTSTRAP_ADMIN_USERNAME: string;

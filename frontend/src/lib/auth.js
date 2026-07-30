@@ -117,8 +117,11 @@ function createAuthStore() {
     },
     async logout() {
       update((state) => ({ ...state, busy: true, error: '' }));
+      let logoutError = '';
       try {
         await logoutRequest();
+      } catch (error) {
+        logoutError = error?.message || 'Unable to end the server session.';
       } finally {
         set({
           ready: true,
@@ -133,9 +136,10 @@ function createAuthStore() {
           device_ip_v6: null,
           device_ip: null,
           busy: false,
-          error: ''
+          error: logoutError ? `Local session cleared, but server logout failed: ${logoutError}` : ''
         });
       }
+      return !logoutError;
     }
   };
 }

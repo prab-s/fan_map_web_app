@@ -133,12 +133,12 @@ function _page($$renderer, $$props) {
     function productTypePdfPreviewUrl(productType) {
       if (!productType?.product_type_pdf_url) return "";
       const separator = productType.product_type_pdf_url.includes("?") ? "&" : "?";
-      return `${productType.product_type_pdf_url}${separator}v=${productTypePdfPreviewRevision}`;
+      return `${productType.product_type_pdf_url}${separator}security=pdf-frame-2-${productTypePdfPreviewRevision}`;
     }
     function versionedPdfPreviewUrl(baseUrl, revision) {
       if (!baseUrl) return "";
       const separator = baseUrl.includes("?") ? "&" : "?";
-      return `${baseUrl}${separator}v=${revision}`;
+      return `${baseUrl}${separator}security=pdf-frame-2-${revision}`;
     }
     function productPdfPreviewUrl(product) {
       const baseUrl = product?.product_printed_pdf_url || product?.product_pdf_url;

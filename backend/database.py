@@ -1,10 +1,13 @@
 import os
 import hashlib
 import colorsys
+import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.pool import NullPool
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)
@@ -26,6 +29,16 @@ def _build_engine(database_url: str):
 
 engine = _build_engine(PRIMARY_DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# Diagnostic activity writes happen in request middleware while endpoint
+# dependencies may still hold their normal request connections. Keep those
+# writes off the main request pool so logging cannot starve application work.
+activity_engine = create_engine(
+    PRIMARY_DATABASE_URL,
+    connect_args={"check_same_thread": False} if PRIMARY_DATABASE_URL.startswith("sqlite:") else {},
+    poolclass=NullPool,
+    echo=False,
+)
+ActivitySessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=activity_engine)
 
 Base = declarative_base()
 
@@ -93,6 +106,58 @@ def init_db():
     _seed_product_types(engine)
     _ensure_product_type_sort_order(engine)
     _migrate_legacy_map_points(engine)
+
+
+def sanitize_stored_rich_text(models, sanitizer, *, dry_run: bool = False) -> dict:
+    """Sanitize persisted rich text only when explicitly requested.
+
+    A JSON snapshot is written before committing changes so the operation is
+    reversible if a legacy field contains formatting outside the allowlist.
+    """
+    rich_text_models = (
+        (models.Product, ("description1_html", "description2_html", "description3_html", "comments_html")),
+        (models.Series, ("description1_html", "description2_html", "description3_html", "description4_html", "contents_description")),
+    )
+    changed_values = []
+    with SessionLocal() as db:
+        for model, fields in rich_text_models:
+            for record in db.query(model).all():
+                for field in fields:
+                    current = getattr(record, field, None)
+                    cleaned = sanitizer(current)
+                    if cleaned != current:
+                        changed_values.append({
+                            "model": model.__name__,
+                            "id": record.id,
+                            "field": field,
+                            "original": current,
+                            "sanitized": cleaned,
+                        })
+
+        result = {
+            "dry_run": dry_run,
+            "changed_count": len(changed_values),
+            "backup_path": None,
+        }
+        if dry_run or not changed_values:
+            return result
+
+        backup_dir = Path(DEFAULT_DATA_DIR) / "backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        backup_path = backup_dir / f"rich_text_before_sanitize_{timestamp}.json"
+        backup_path.write_text(
+            json.dumps(changed_values, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+        for item in changed_values:
+            model = next(model for model, _ in rich_text_models if model.__name__ == item["model"])
+            record = db.get(model, item["id"])
+            setattr(record, item["field"], item["sanitized"])
+        db.commit()
+        result["backup_path"] = str(backup_path)
+        return result
 
 
 def _ensure_fan_columns(target_engine):

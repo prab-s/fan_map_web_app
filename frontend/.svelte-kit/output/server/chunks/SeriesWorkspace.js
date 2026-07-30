@@ -318,18 +318,20 @@ function SeriesWorkspace($$renderer, $$props) {
           $$renderer4.push(`<!--]-->`);
         }
       );
-      $$renderer3.push(`</div> <div class="col-12"><label class="form-label" for="series-contents-description">Contents page description</label> `);
-      RichTextEditor($$renderer3, {
-        id: "series-contents-description",
-        rows: 3,
-        get value() {
-          return seriesDraft.contents_description;
-        },
-        set value($$value) {
-          seriesDraft.contents_description = $$value;
-          $$settled = false;
-        }
-      });
+      $$renderer3.push(`</div> <div class="col-12"><label class="form-label" for="series-contents-description">Contents page description</label> <!---->`);
+      {
+        RichTextEditor($$renderer3, {
+          id: "series-contents-description",
+          rows: 3,
+          get value() {
+            return seriesDraft.contents_description;
+          },
+          set value($$value) {
+            seriesDraft.contents_description = $$value;
+            $$settled = false;
+          }
+        });
+      }
       $$renderer3.push(`<!----> <div class="form-text">Rich-text description used only on the product type PDF contents page.</div></div> <div class="col-12"><div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2"><div><div class="form-label mb-0">Description sections</div> <div class="form-text">Add or remove as many HTML blocks as this series needs.</div></div> <button class="btn btn-outline-primary btn-sm" type="button">Add section</button></div> <div class="vstack gap-3"><!--[-->`);
       const each_array_4 = ensure_array_like(seriesDescriptionSections);
       for (let sectionIndex = 0, $$length = each_array_4.length; sectionIndex < $$length; sectionIndex++) {

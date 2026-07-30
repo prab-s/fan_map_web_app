@@ -41,6 +41,7 @@
   let hydratedSeriesId = '';
   let seriesHydrating = false;
   let seriesHydrationError = '';
+  let contentsEditorKey = 0;
   let seriesDescriptionSections = createDescriptionSectionDrafts();
   let seriesDescriptionFieldCount = getDescriptionFieldCount();
 
@@ -81,6 +82,7 @@
     }
 
     hydratedSeriesId = normalizedSeriesId;
+    contentsEditorKey += 1;
     seriesHydrationError = '';
     resetSeriesDescriptionSections(selected);
     seriesDraft = resetDraft(selected);
@@ -97,6 +99,7 @@
         if (String(selectedSeriesId) !== normalizedSeriesId) return;
         resetSeriesDescriptionSections(detail);
         seriesDraft = resetDraft(detail);
+        contentsEditorKey += 1;
         seriesImages = detail.series_images || [];
       })
       .catch((detailError) => {
@@ -483,7 +486,9 @@
           </div>
           <div class="col-12">
             <label class="form-label" for="series-contents-description">Contents page description</label>
-            <RichTextEditor id="series-contents-description" rows={3} bind:value={seriesDraft.contents_description} />
+            {#key contentsEditorKey}
+              <RichTextEditor id="series-contents-description" rows={3} bind:value={seriesDraft.contents_description} />
+            {/key}
             <div class="form-text">Rich-text description used only on the product type PDF contents page.</div>
           </div>
           <div class="col-12">

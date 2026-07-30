@@ -1,4 +1,6 @@
+import os
 import secrets
+import logging
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -9,6 +11,15 @@ from app.api_client import api
 from app.catalogue_cache import catalogue_cache
 from app.config import settings
 from app.view_templates import templates
+
+FRAME_ANCESTORS = os.getenv(
+    "FRAME_ANCESTORS",
+    "'self' http://localhost:8001 http://127.0.0.1:8001 http://xps.local:8001",
+).strip()
+FRAME_ANCESTORS_EXPLICIT = bool(os.getenv("FRAME_ANCESTORS", "").strip())
+SECURITY_CONFIGURATION_STRICT = os.getenv("SECURITY_CONFIGURATION_STRICT", "false").strip().lower() in {"1", "true", "yes", "on"}
+SECURITY_CONFIGURATION_FILE = os.getenv("SECURITY_CONFIGURATION_FILE", ".env.sit" if not SECURITY_CONFIGURATION_STRICT else ".env.deploy").strip()
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Vent-tech catalogue")
 
@@ -21,6 +32,20 @@ async def site_version():
         {"version": settings.app_build_marker},
         headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
     )
+
+
+@app.get("/api/health/security", include_in_schema=False)
+async def security_health():
+    errors = []
+    if SECURITY_CONFIGURATION_STRICT and not FRAME_ANCESTORS_EXPLICIT:
+        errors.append("FRAME_ANCESTORS is not explicitly configured.")
+    payload = {
+        "ok": not errors,
+        "strict": SECURITY_CONFIGURATION_STRICT,
+        "errors": errors,
+        "frame_ancestors_source": "FRAME_ANCESTORS" if FRAME_ANCESTORS_EXPLICIT else "development defaults",
+    }
+    return JSONResponse(status_code=200 if not errors else 503, content=payload)
 
 
 @app.post("/api/cache/refresh", include_in_schema=False)
@@ -49,6 +74,15 @@ app.include_router(media.router)
 @app.middleware("http")
 async def prevent_html_caching(request: Request, call_next):
     response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy", "camera=(), geolocation=(), microphone=()")
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https:; "
+        f"frame-ancestors {FRAME_ANCESTORS}; base-uri 'self'; form-action 'self'",
+    )
     content_type = response.headers.get("content-type", "")
     if content_type.startswith("text/html"):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
@@ -58,6 +92,17 @@ async def prevent_html_caching(request: Request, call_next):
 
 @app.on_event("startup")
 async def startup():
+    logger.info("Security configuration: customer-facing CSP frame-ancestors=%s", FRAME_ANCESTORS)
+    logger.info(
+        "Customer-facing CSP configuration source: %s",
+        "FRAME_ANCESTORS" if FRAME_ANCESTORS_EXPLICIT else "development defaults",
+    )
+    if not FRAME_ANCESTORS_EXPLICIT:
+        logger.warning(
+            "CSP framing is using development defaults. Add FRAME_ANCESTORS='https://framing-host.example' "
+            "to %s, then restart the application.",
+            SECURITY_CONFIGURATION_FILE,
+        )
     await catalogue_cache.initialize()
 
 

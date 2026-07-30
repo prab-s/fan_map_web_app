@@ -37,7 +37,7 @@ import html5lib
 from fastapi import APIRouter, FastAPI, Depends, HTTPException, Query, Request, Response, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy import func, or_
@@ -49,9 +49,11 @@ from reportlab.pdfgen import canvas
 from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageOps
 
 from backend.database import (
+    ActivitySessionLocal,
     DEFAULT_DATA_DIR,
     SessionLocal,
     get_db,
+    sanitize_stored_rich_text,
     init_db,
     allocate_series_tab_color,
 )
@@ -78,6 +80,7 @@ from backend.models import (
 )
 from backend.models import AppSettings
 from backend.timezone import APP_TIMEZONE, backend_now, backend_now_iso
+from backend.security import sanitize_rich_text, sanitizer_status, validate_zip_members
 
 PERMISSIBLE_USE_MODES = {"dedicated", "upper", "lower", "both", "none"}
 
@@ -197,7 +200,9 @@ TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
 logger = logging.getLogger(__name__)
 PDF_MEDIA_HEADERS = {
     "X-Content-Type-Options": "nosniff",
-    "Cache-Control": "public, max-age=3600",
+    # Revalidate PDF responses so security-header changes are not held for an
+    # hour by a browser or proxy.
+    "Cache-Control": "no-cache",
 }
 APP_LOG_LEVEL_NAME = os.getenv("LOG_LEVEL", "INFO").strip().upper() or "INFO"
 APP_LOG_LEVEL = getattr(logging, APP_LOG_LEVEL_NAME, logging.INFO)
@@ -232,6 +237,19 @@ QUOTE_REQUEST_THROTTLE_WINDOW_SECONDS = int(os.getenv("QUOTE_REQUEST_THROTTLE_WI
 QUOTE_REQUEST_THROTTLE_MAX_ATTEMPTS = int(os.getenv("QUOTE_REQUEST_THROTTLE_MAX_ATTEMPTS", "3"))
 QUOTE_REQUEST_THROTTLE_STATE: dict[str, deque[float]] = {}
 QUOTE_REQUEST_THROTTLE_LOCK = threading.Lock()
+LOGIN_THROTTLE_WINDOW_SECONDS = int(os.getenv("LOGIN_THROTTLE_WINDOW_SECONDS", "900"))
+LOGIN_THROTTLE_MAX_ATTEMPTS = int(os.getenv("LOGIN_THROTTLE_MAX_ATTEMPTS", "5"))
+LOGIN_THROTTLE_STATE: dict[str, deque[float]] = {}
+LOGIN_THROTTLE_LOCK = threading.Lock()
+CSRF_SESSION_KEY = "csrf_token"
+CSRF_HEADER_NAME = "x-csrf-token"
+INTERNAL_FRAME_ANCESTORS = os.getenv(
+    "INTERNAL_FRAME_ANCESTORS",
+    "'self' http://localhost:8001 http://127.0.0.1:8001 http://xps.local:8001",
+).strip()
+INTERNAL_FRAME_ANCESTORS_EXPLICIT = bool(os.getenv("INTERNAL_FRAME_ANCESTORS", "").strip())
+SECURITY_CONFIGURATION_STRICT = os.getenv("SECURITY_CONFIGURATION_STRICT", "false").strip().lower() in {"1", "true", "yes", "on"}
+SECURITY_CONFIGURATION_FILE = os.getenv("SECURITY_CONFIGURATION_FILE", ".env.sit" if not SECURITY_CONFIGURATION_STRICT else ".env.deploy").strip()
 SMTP_HOST = os.getenv("SMTP_HOST", "").strip()
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USERNAME = os.getenv("SMTP_USERNAME", "").strip()
@@ -604,7 +622,7 @@ def _persist_internal_device_activity(payload: dict[str, object]):
     """Keep internal activity independent of the short-lived diagnostic log buffer."""
     try:
         occurred_at = datetime.datetime.fromisoformat(str(payload.get("logged_at")))
-        db = SessionLocal()
+        db = ActivitySessionLocal()
         try:
             db.add(
                 InternalDeviceActivity(
@@ -6447,6 +6465,77 @@ def verify_password(password: str, password_hash: str) -> bool:
     return secrets.compare_digest(actual, expected)
 
 
+def csrf_token_for_request(request: Request) -> str:
+    token = request.session.get(CSRF_SESSION_KEY)
+    if not token:
+        token = secrets.token_urlsafe(32)
+        request.session[CSRF_SESSION_KEY] = token
+    return str(token)
+
+
+def _login_throttle_key(request: Request, username: str) -> str:
+    client = request.client.host if request.client else "unknown"
+    return f"{client}:{username.strip().casefold()}"
+
+
+def _check_login_throttle(key: str) -> None:
+    cutoff = time.time() - LOGIN_THROTTLE_WINDOW_SECONDS
+    with LOGIN_THROTTLE_LOCK:
+        attempts = LOGIN_THROTTLE_STATE.setdefault(key, deque())
+        while attempts and attempts[0] < cutoff:
+            attempts.popleft()
+        if len(attempts) >= LOGIN_THROTTLE_MAX_ATTEMPTS:
+            raise HTTPException(status_code=429, detail="Too many login attempts. Please try again later.")
+
+
+def _record_login_failure(key: str) -> None:
+    with LOGIN_THROTTLE_LOCK:
+        LOGIN_THROTTLE_STATE.setdefault(key, deque()).append(time.time())
+
+
+def _clear_login_failures(key: str) -> None:
+    with LOGIN_THROTTLE_LOCK:
+        LOGIN_THROTTLE_STATE.pop(key, None)
+
+
+def enforce_csrf(request: Request) -> None:
+    if request.method.upper() in {"GET", "HEAD", "OPTIONS"}:
+        return
+    if request.url.path in {"/api/client-telemetry", "/api/quote-requests"}:
+        return
+    expected = request.session.get(CSRF_SESSION_KEY)
+    supplied = request.headers.get(CSRF_HEADER_NAME, "")
+    if not expected or not supplied or not secrets.compare_digest(str(expected), supplied):
+        raise HTTPException(status_code=403, detail="CSRF validation failed.")
+
+
+def security_configuration() -> dict:
+    sanitizer = sanitizer_status()
+    frame_ancestors = INTERNAL_FRAME_ANCESTORS.split()
+    return {
+        "sanitizer": sanitizer,
+        "csrf_enabled": True,
+        "frame_ancestors": frame_ancestors,
+        "frame_ancestors_source": "INTERNAL_FRAME_ANCESTORS" if INTERNAL_FRAME_ANCESTORS_EXPLICIT else "development defaults",
+        "frame_ancestors_using_defaults": not INTERNAL_FRAME_ANCESTORS_EXPLICIT,
+    }
+
+
+def security_configuration_health() -> dict:
+    configuration = security_configuration()
+    errors = []
+    if SECURITY_CONFIGURATION_STRICT and configuration["frame_ancestors_using_defaults"]:
+        errors.append("INTERNAL_FRAME_ANCESTORS is not explicitly configured.")
+    if SECURITY_CONFIGURATION_STRICT and not configuration["sanitizer"]["full_protection"]:
+        errors.append("Bleach is unavailable; the fallback sanitizer is active.")
+    return {
+        "ok": not errors,
+        "strict": SECURITY_CONFIGURATION_STRICT,
+        "errors": errors,
+        "configuration": configuration,
+    }
+
+
 def ensure_auth_config():
     missing = []
     if not SESSION_SECRET:
@@ -7148,6 +7237,10 @@ def create_database_backup_bundle(progress_callback=None) -> Path:
 
 
 def restore_backup_bundle(archive_bytes: bytes, progress_callback=None):
+    try:
+        validate_zip_members(archive_bytes)
+    except ValueError as exc:
+        raise RuntimeError(str(exc)) from exc
     restore_stages_total = len(DATA_BACKUP_DIR_NAMES) + 3
     with tempfile.TemporaryDirectory() as staging_dir_raw:
         staging_dir = Path(staging_dir_raw)
@@ -7195,6 +7288,10 @@ def restore_backup_bundle(archive_bytes: bytes, progress_callback=None):
 
 
 def restore_media_backup_bundle(archive_bytes: bytes, progress_callback=None):
+    try:
+        validate_zip_members(archive_bytes)
+    except ValueError as exc:
+        raise RuntimeError(str(exc)) from exc
     restore_stages_total = len(DATA_BACKUP_DIRS) + 2
     with tempfile.TemporaryDirectory() as staging_dir_raw:
         staging_dir = Path(staging_dir_raw)
@@ -7311,6 +7408,7 @@ app = FastAPI(
         "Legacy `/api/fans...` aliases still work, but they are intentionally hidden from the schema."
     ),
     openapi_tags=OPENAPI_TAGS,
+    dependencies=[Depends(enforce_csrf)],
     docs_url=None,
     redoc_url=None,
     openapi_url=None,
@@ -7336,6 +7434,21 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def security_headers_and_csrf(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy", "camera=(), geolocation=(), microphone=()")
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https:; "
+        f"frame-ancestors {INTERNAL_FRAME_ANCESTORS}; base-uri 'self'; form-action 'self'",
+    )
+    return response
 
 app.include_router(bulk_import_router)
 
@@ -7366,6 +7479,23 @@ def startup():
     ensure_auth_config()
     init_db()
     ensure_bootstrap_admin()
+    configuration = security_configuration()
+    logger.info("=" * 60)
+    logger.info("Security configuration")
+    logger.info("  Sanitizer:              %s %s", configuration["sanitizer"]["implementation"], configuration["sanitizer"]["version"])
+    logger.info("  CSRF protection:        ENABLED")
+    logger.info("  CSP frame-ancestors:    %s", " ".join(configuration["frame_ancestors"]))
+    logger.info("  Configuration source:   %s", configuration["frame_ancestors_source"])
+    if configuration["frame_ancestors_using_defaults"]:
+        logger.warning(
+            "CSP framing is using development defaults. Add INTERNAL_FRAME_ANCESTORS='https://framing-host.example' "
+            "to %s, then restart the application.",
+            SECURITY_CONFIGURATION_FILE,
+        )
+    if not configuration["sanitizer"]["full_protection"]:
+        logger.warning("Bleach is unavailable; the built-in fallback sanitizer is active. Install backend/requirements.txt for full sanitization.")
+    logger.info("Application startup complete")
+    logger.info("=" * 60)
 
 
 @app.middleware("http")
@@ -7386,6 +7516,29 @@ async def log_public_requests(request: Request, call_next):
 @app.get("/api/health", tags=["Public"])
 def health():
     return {"ok": True}
+
+
+@app.get("/api/health/security", tags=["Public"])
+def security_health():
+    result = security_configuration_health()
+    return JSONResponse(status_code=200 if result["ok"] else 503, content=result)
+
+
+@app.get("/api/security/configuration", tags=["Maintenance"])
+def get_security_configuration(_: User = Depends(require_admin_user)):
+    """Expose effective security settings to the authenticated setup screen."""
+    return security_configuration()
+
+
+@app.post("/api/maintenance/rich-text/sanitize", tags=["Maintenance"])
+def sanitize_persisted_rich_text(
+    dry_run: bool = Query(False),
+    _: User = Depends(require_admin_user),
+):
+    """Explicitly sanitize legacy rich text after an administrator review."""
+    from backend import models
+
+    return sanitize_stored_rich_text(models, sanitize_rich_text, dry_run=dry_run)
 
 
 @app.post("/api/client-telemetry", tags=["Public"])
@@ -8288,11 +8441,11 @@ def create_series(body: SeriesCreate, db: Session = Depends(get_db)):
     series = Series(
         product_type_id=product_type.id,
         name=name,
-        description1_html=body.description1_html,
-        description2_html=body.description2_html,
-        description3_html=body.description3_html,
-        description4_html=body.description4_html,
-        contents_description=(body.contents_description or "").strip() or None,
+        description1_html=sanitize_rich_text(body.description1_html),
+        description2_html=sanitize_rich_text(body.description2_html),
+        description3_html=sanitize_rich_text(body.description3_html),
+        description4_html=sanitize_rich_text(body.description4_html),
+        contents_description=sanitize_rich_text((body.contents_description or "").strip() or None),
         printed_template_id=printed_template_id,
         online_template_id=online_template_id,
         template_id=online_template_id or printed_template_id,
@@ -8336,9 +8489,9 @@ def update_series(series_id: int, body: SeriesUpdate, db: Session = Depends(get_
         series.name = name
     for field in ("description1_html", "description2_html", "description3_html", "description4_html"):
         if field in updates:
-            setattr(series, field, updates[field])
+            setattr(series, field, sanitize_rich_text(updates[field]))
     if "contents_description" in updates:
-        series.contents_description = (updates["contents_description"] or "").strip() or None
+        series.contents_description = sanitize_rich_text((updates["contents_description"] or "").strip() or None)
     if any(field in updates for field in ("template_id", "printed_template_id", "online_template_id")):
         printed_template_id, online_template_id = resolve_template_pair(
             "series",
@@ -8647,6 +8800,7 @@ def delete_quote_request(
 
 @app.get("/api/auth/session", response_model=AuthSessionResponse, tags=["Public", "Authentication"])
 def get_auth_session(request: Request):
+    csrf_token = csrf_token_for_request(request)
     if not is_authenticated(request):
         details = _extract_request_ip_details(request)
         device_details = _extract_device_ip_details(request)
@@ -8659,6 +8813,7 @@ def get_auth_session(request: Request):
             device_ip_v4=device_details["device_ip_v4"],
             device_ip_v6=device_details["device_ip_v6"],
             device_ip=device_details["device_ip"],
+            csrf_token=csrf_token,
         )
     details = _extract_request_ip_details(request)
     device_details = _extract_device_ip_details(request)
@@ -8673,18 +8828,25 @@ def get_auth_session(request: Request):
         device_ip_v4=device_details["device_ip_v4"],
         device_ip_v6=device_details["device_ip_v6"],
         device_ip=device_details["device_ip"],
+        csrf_token=csrf_token,
     )
 
 
 @app.post("/api/auth/login", response_model=AuthSessionResponse, tags=["Public", "Authentication"])
 def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
+    throttle_key = _login_throttle_key(request, body.username)
+    _check_login_throttle(throttle_key)
     user = db.query(User).filter(User.username == body.username.strip()).first()
     if user is None or not user.is_active or not verify_password(body.password, user.password_hash):
+        _record_login_failure(throttle_key)
         raise HTTPException(status_code=401, detail="Invalid username or password")
+    _clear_login_failures(throttle_key)
+    request.session.clear()
     request.session["authenticated"] = True
     request.session["user_id"] = user.id
     request.session["username"] = user.username
     request.session["is_admin"] = user.is_admin
+    csrf_token = csrf_token_for_request(request)
     details = _extract_request_ip_details(request)
     device_details = _extract_device_ip_details(request)
     return AuthSessionResponse(
@@ -8698,13 +8860,18 @@ def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
         device_ip_v4=device_details["device_ip_v4"],
         device_ip_v6=device_details["device_ip_v6"],
         device_ip=device_details["device_ip"],
+        csrf_token=csrf_token,
     )
 
 
 @app.post("/api/auth/logout", response_model=AuthSessionResponse, tags=["Public", "Authentication"])
 def logout(request: Request):
     request.session.clear()
-    return AuthSessionResponse(authenticated=False, cookie_secure=AUTH_COOKIE_SECURE)
+    return AuthSessionResponse(
+        authenticated=False,
+        cookie_secure=AUTH_COOKIE_SECURE,
+        csrf_token=csrf_token_for_request(request),
+    )
 
 
 @app.post("/api/auth/change-password", response_model=AuthSessionResponse, tags=["Authentication"])
@@ -9010,6 +9177,9 @@ def list_products(
 @app.post("/api/products", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Products"], summary="Create a product")
 def create_product(body: ProductCreate, db: Session = Depends(get_db)):
     product_data = body.model_dump()
+    for field in ("description1_html", "description2_html", "description3_html", "comments_html"):
+        if field in product_data:
+            product_data[field] = sanitize_rich_text(product_data[field])
     product_data["permissible_use_mode"] = normalize_permissible_use_mode(product_data.get("permissible_use_mode"))
     product_type = get_product_type_by_key(db, product_data.pop("product_type_key", "fan"))
     series = get_series_by_id(db, product_data.pop("series_id", None))
@@ -9159,6 +9329,9 @@ def update_product(product_id: int, body: ProductUpdate, db: Session = Depends(g
             product.online_template_id = online_template_id
         product.template_id = product.online_template_id or product.printed_template_id
     for k, v in updates.items():
+        if k in {"description1_html", "description2_html", "description3_html", "comments_html"}:
+            setattr(product, k, sanitize_rich_text(v))
+            continue
         if k == "permissible_use_mode":
             setattr(product, k, normalize_permissible_use_mode(v))
             continue

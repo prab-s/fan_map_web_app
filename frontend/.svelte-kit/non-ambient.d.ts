@@ -79,6 +79,6 @@ declare module "$app/types" {
 		};
 		Pathname(): "/" | "/bulk-import" | "/catalogue" | "/editor" | "/editor/create" | "/editor/edit" | `/editor/edit/${string}` & {} | "/editor/product-types" | "/editor/product-types/create" | "/editor/product-types/edit" | `/editor/product-types/edit/${string}` & {} | "/editor/quote-requests" | "/editor/series" | "/editor/series/create" | "/editor/series/edit" | `/editor/series/edit/${string}` & {} | "/enquiries" | "/entry" | "/map" | "/products" | `/products/type/${string}` & {} | `/products/${string}` & {} | "/quotes" | `/series/${string}` & {} | "/setup" | "/template-builder-v2" | "/template-builder" | "/viewer" | `/viewer/${string}${string}` & {};
 		ResolvedPathname(): `${"" | `/${string}`}${ReturnType<AppTypes['Pathname']>}`;
-		Asset(): "/favicon.png" | string & {};
+		Asset(): "/favicon.ico" | "/favicon.png" | string & {};
 	}
 }

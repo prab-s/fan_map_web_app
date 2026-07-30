@@ -35,7 +35,7 @@ services:
     ports:
       - "8000:8000"
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3).read()\""]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; url='http://127.0.0.1:8000/api/health/security'; opener=urllib.request.build_opener();\ntry: response=opener.open(url, timeout=3); print(response.read().decode())\nexcept urllib.error.HTTPError as error: print(error.read().decode()); raise\""]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -48,6 +48,9 @@ services:
       SESSION_SECRET: ${SESSION_SECRET}
       AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE}
       CMS_API_TOKEN: ${CMS_API_TOKEN}
+      INTERNAL_FRAME_ANCESTORS: ${INTERNAL_FRAME_ANCESTORS}
+      SECURITY_CONFIGURATION_FILE: ${SECURITY_CONFIGURATION_FILE:-.env.deploy}
+      SECURITY_CONFIGURATION_STRICT: ${SECURITY_CONFIGURATION_STRICT:-true}
       PUBLIC_CATALOGUE_SITE_URL: ${PUBLIC_CATALOGUE_SITE_URL:-https://p1.bitrep.nz}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_DB: ${POSTGRES_DB}
@@ -78,8 +81,11 @@ services:
       CATALOGUE_CACHE_PATH: ${PUBLIC_CATALOGUE_CACHE_PATH:-/tmp/vent-tech-catalogue-cache.json}
       CATALOGUE_REFRESH_INTERVAL_SECONDS: ${PUBLIC_CATALOGUE_REFRESH_INTERVAL_SECONDS:-300}
       CMS_API_TOKEN: ${CMS_API_TOKEN}
+      FRAME_ANCESTORS: ${FRAME_ANCESTORS}
+      SECURITY_CONFIGURATION_FILE: ${SECURITY_CONFIGURATION_FILE:-.env.deploy}
+      SECURITY_CONFIGURATION_STRICT: ${SECURITY_CONFIGURATION_STRICT:-true}
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8004/', timeout=3).read()\""]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; url='http://127.0.0.1:8004/api/health/security'; opener=urllib.request.build_opener();\ntry: response=opener.open(url, timeout=3); print(response.read().decode())\nexcept urllib.error.HTTPError as error: print(error.read().decode()); raise\""]
       interval: 5s
       timeout: 5s
       retries: 20

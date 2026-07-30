@@ -842,6 +842,7 @@ class AuthSessionResponse(BaseModel):
     device_ip_v4: Optional[str] = None
     device_ip_v6: Optional[str] = None
     device_ip: Optional[str] = None
+    csrf_token: Optional[str] = None
 
 
 class UserCreate(BaseModel):
@@ -928,6 +929,7 @@ class CmsSeriesResponse(BaseModel):
     description2_html: Optional[str] = None
     description3_html: Optional[str] = None
     comments_html: Optional[str] = None
+    contents_description: Optional[str] = None
     template_id: Optional[str] = None
     printed_template_id: Optional[str] = None
     online_template_id: Optional[str] = None
