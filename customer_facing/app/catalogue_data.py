@@ -8,6 +8,25 @@ from app.config import settings
 
 GRAPH_FILTER_GROUP_NAME = "__graph__"
 ACOUSTIC_FILTER_GROUP_NAME = "Acoustic"
+
+
+def fan_acoustic_table_variant(product: dict) -> str:
+    table = product.get("fan_acoustic_table") or {}
+    mode = str(table.get("variant_mode") or "default").strip().casefold()
+    if mode == "override_1ph":
+        return "1ph"
+    if mode == "override_3ph":
+        return "3ph"
+    for group in product.get("parameter_groups", []) or []:
+        if str(group.get("group_name") or "").strip().casefold() != "motor":
+            continue
+        for parameter in group.get("parameters", []) or []:
+            if str(parameter.get("parameter_name") or "").strip().casefold() != "power supply":
+                continue
+            value = str(parameter.get("value_string") or "").strip()
+            if re.search(r"(?:^|[^a-z0-9])(?:1\s*[-/]?\s*(?:ph|phase)|single\s*[- ]?\s*phase)(?:[^a-z0-9]|$)", value, re.IGNORECASE):
+                return "1ph"
+    return "3ph"
 logger = logging.getLogger(__name__)
 
 
@@ -231,6 +250,7 @@ def acoustic_filter_parameters(product: dict) -> list[dict]:
         ("Peak Pressure", "peak_pressure_pa", "Pa"),
         ("Peak Power", "peak_power_kw", "kW"),
         ("Running Frequency", "running_frequency_hz", "Hz"),
+        ("Running Voltage", "running_voltage_v", "V"),
         ("Sound Pressure Level", "sound_pressure_db_3m", "dB @ 3 m"),
     ]
     parameters = []

@@ -245,9 +245,14 @@ CSRF_SESSION_KEY = "csrf_token"
 CSRF_HEADER_NAME = "x-csrf-token"
 INTERNAL_FRAME_ANCESTORS = os.getenv(
     "INTERNAL_FRAME_ANCESTORS",
-    "'self' http://localhost:8001 http://127.0.0.1:8001 http://xps.local:8001",
+    "'self' http://localhost:8001 http://127.0.0.1:8001 http://192.168.18.33:8001 http://xps.local:8001",
 ).strip()
 INTERNAL_FRAME_ANCESTORS_EXPLICIT = bool(os.getenv("INTERNAL_FRAME_ANCESTORS", "").strip())
+INTERNAL_CORS_ORIGINS = [
+    origin
+    for origin in INTERNAL_FRAME_ANCESTORS.split()
+    if origin.startswith(("http://", "https://"))
+]
 SECURITY_CONFIGURATION_STRICT = os.getenv("SECURITY_CONFIGURATION_STRICT", "false").strip().lower() in {"1", "true", "yes", "on"}
 SECURITY_CONFIGURATION_FILE = os.getenv("SECURITY_CONFIGURATION_FILE", ".env.sit" if not SECURITY_CONFIGURATION_STRICT else ".env.deploy").strip()
 SMTP_HOST = os.getenv("SMTP_HOST", "").strip()
@@ -4049,6 +4054,27 @@ def render_fan_acoustic_table(product: Product) -> str:
     if not sound_power_columns:
         sound_power_columns = ["63", "125", "250", "500", "1k", "2k", "4k", "8k"]
     rows = table.get("rows") or []
+    variant_mode = str(table.get("variant_mode") or "default").strip().casefold()
+    if variant_mode == "override_1ph":
+        table_variant = "1ph"
+    elif variant_mode == "override_3ph":
+        table_variant = "3ph"
+    else:
+        table_variant = "3ph"
+        for group in product.parameter_groups or []:
+            if str(group.group_name or "").strip().casefold() != "motor":
+                continue
+            for parameter in group.parameters or []:
+                if str(parameter.parameter_name or "").strip().casefold() != "power supply":
+                    continue
+                power_supply = str(parameter.value_string or "").strip()
+                if re.search(r"(?:^|[^a-z0-9])(?:1\s*[-/]?\s*(?:ph|phase)|single\s*[- ]?\s*phase)(?:[^a-z0-9]|$)", power_supply, re.IGNORECASE):
+                    table_variant = "1ph"
+                    break
+            if table_variant == "1ph":
+                break
+    running_label = "Running Voltage (V)" if table_variant == "1ph" else "Running Frequency (Hz)"
+    running_field = "running_voltage_v" if table_variant == "1ph" else "running_frequency_hz"
 
     def format_numeric(value):
         if value is None or value == "":
@@ -4062,7 +4088,7 @@ def render_fan_acoustic_table(product: Product) -> str:
         '<th rowspan="2" class="fan-acoustic-table__cell fan-acoustic-table__primary-heading fan-acoustic-table__cell--speed">Speed (rpm)</th>',
         '<th rowspan="2" class="fan-acoustic-table__cell fan-acoustic-table__primary-heading fan-acoustic-table__cell--peak-pressure">Peak Pressure (Pa)</th>',
         '<th rowspan="2" class="fan-acoustic-table__cell fan-acoustic-table__primary-heading fan-acoustic-table__cell--peak-power">Peak Power (kW)</th>',
-        '<th rowspan="2" class="fan-acoustic-table__cell fan-acoustic-table__primary-heading fan-acoustic-table__cell--running-frequency">Running Frequency (Hz)</th>',
+        f'<th rowspan="2" class="fan-acoustic-table__cell fan-acoustic-table__primary-heading fan-acoustic-table__cell--running-frequency">{running_label}</th>',
         '<th rowspan="2" class="fan-acoustic-table__cell fan-acoustic-table__primary-heading fan-acoustic-table__cell--sound-pressure">Sound Pressure Level (dB) @ 3 meters</th>',
     ]
 
@@ -4075,7 +4101,7 @@ def render_fan_acoustic_table(product: Product) -> str:
                 f'<td class="fan-acoustic-table__cell fan-acoustic-table__primary-cell fan-acoustic-table__cell--speed">{format_numeric(row.get("speed_rpm"))}</td>'
                 f'<td class="fan-acoustic-table__cell fan-acoustic-table__primary-cell fan-acoustic-table__cell--peak-pressure">{format_numeric(row.get("peak_pressure_pa"))}</td>'
                 f'<td class="fan-acoustic-table__cell fan-acoustic-table__primary-cell fan-acoustic-table__cell--peak-power">{format_numeric(row.get("peak_power_kw"))}</td>'
-                f'<td class="fan-acoustic-table__cell fan-acoustic-table__primary-cell fan-acoustic-table__cell--running-frequency">{format_numeric(row.get("running_frequency_hz"))}</td>'
+                f'<td class="fan-acoustic-table__cell fan-acoustic-table__primary-cell fan-acoustic-table__cell--running-frequency">{format_numeric(row.get(running_field))}</td>'
                 f'<td class="fan-acoustic-table__cell fan-acoustic-table__primary-cell fan-acoustic-table__cell--sound-pressure">{format_numeric(row.get("sound_pressure_db_3m"))}</td>'
                 + "".join(
                     f'<td class="fan-acoustic-table__cell fan-acoustic-table__sound-power-cell fan-acoustic-table__cell--sound-power">{format_numeric(sound_power_levels.get(column))}</td>'
@@ -7428,8 +7454,9 @@ app.add_middleware(
         "http://127.0.0.1:5173",
         "http://localhost:8001",
         "http://127.0.0.1:8001",
+        "http://192.168.18.33:8001",
         "http://xps.local:8001",
-    ],
+    ] + [origin for origin in INTERNAL_CORS_ORIGINS if origin not in {"http://localhost:8001", "http://127.0.0.1:8001", "http://192.168.18.33:8001", "http://xps.local:8001"}],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -7446,6 +7473,7 @@ async def security_headers_and_csrf(request: Request, call_next):
         "Content-Security-Policy",
         "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
         "img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https:; "
+        "frame-src 'self' https://www.google.com https://maps.google.com; "
         f"frame-ancestors {INTERNAL_FRAME_ANCESTORS}; base-uri 'self'; form-action 'self'",
     )
     return response

@@ -167,6 +167,7 @@ api = CatalogueApi()
 EOF
 
 cat > "$ROOT_DIR/app/main.py" <<'EOF'
+import re
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -185,6 +186,26 @@ templates.env.globals["product_url"] = product_url
 templates.env.globals["series_url"] = series_url
 templates.env.globals["product_type_url"] = product_type_url
 templates.env.globals["media_url"] = api.media_url
+
+def fan_acoustic_table_variant(product):
+    table = product.get("fan_acoustic_table") or {}
+    mode = str(table.get("variant_mode") or "default").strip().casefold()
+    if mode == "override_1ph":
+        return "1ph"
+    if mode == "override_3ph":
+        return "3ph"
+    for group in product.get("parameter_groups", []) or []:
+        if str(group.get("group_name") or "").strip().casefold() != "motor":
+            continue
+        for parameter in group.get("parameters", []) or []:
+            if str(parameter.get("parameter_name") or "").strip().casefold() != "power supply":
+                continue
+            value = str(parameter.get("value_string") or "").strip()
+            if re.search(r"(?:^|[^a-z0-9])(?:1\s*[-/]?\s*(?:ph|phase)|single\s*[- ]?\s*phase)(?:[^a-z0-9]|$)", value, re.IGNORECASE):
+                return "1ph"
+    return "3ph"
+
+templates.env.globals["fan_acoustic_table_variant"] = fan_acoustic_table_variant
 
 app.include_router(pages.router)
 app.include_router(finder.router)
@@ -1267,6 +1288,7 @@ cat > "$ROOT_DIR/app/templates/partials/fan_acoustic_table.html" <<'EOF'
   {% set acoustic_table = product.fan_acoustic_table or {} %}
   {% set sound_power_columns = acoustic_table.get('sound_power_columns') or ['63', '125', '250', '500', '1k', '2k', '4k', '8k'] %}
   {% set rows = acoustic_table.get('rows') or [] %}
+  {% set table_variant = fan_acoustic_table_variant(product) %}
 
   <section class="content-section mb-4 fan-acoustic-section">
     <h2 class="h4">Fan Acoustic Table</h2>
@@ -1291,7 +1313,7 @@ cat > "$ROOT_DIR/app/templates/partials/fan_acoustic_table.html" <<'EOF'
             <th rowspan="2">Speed (rpm)</th>
             <th rowspan="2">Peak Pressure (Pa)</th>
             <th rowspan="2">Peak Power (kW)</th>
-            <th rowspan="2">Running Frequency</th>
+            <th rowspan="2">{{ 'Running Voltage' if table_variant == '1ph' else 'Running Frequency' }}</th>
             <th rowspan="2">Sound Pressure Level dB @ 3 meters</th>
             <th colspan="{{ sound_power_columns|length }}" class="text-center">
               Sound Power Level SWL dB re 1pw
@@ -1310,7 +1332,7 @@ cat > "$ROOT_DIR/app/templates/partials/fan_acoustic_table.html" <<'EOF'
                 <td>{{ row.speed_rpm | format_numeric_value }}</td>
                 <td>{{ row.peak_pressure_pa | format_numeric_value }}</td>
                 <td>{{ row.peak_power_kw | format_numeric_value }}</td>
-                <td>{{ row.running_frequency_hz | format_numeric_value }}</td>
+                <td>{{ (row.running_voltage_v if table_variant == '1ph' else row.running_frequency_hz) | format_numeric_value }}</td>
                 <td>{{ row.sound_pressure_db_3m | format_numeric_value }}</td>
                 {% set sound_power_levels = row.sound_power_levels or {} %}
                 {% for column in sound_power_columns %}

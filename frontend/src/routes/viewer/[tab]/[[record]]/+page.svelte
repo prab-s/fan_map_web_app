@@ -25,6 +25,7 @@
   import SeriesNamesBadgeList from '$lib/editor/SeriesNamesBadgeList.svelte';
   import AssociatedDocumentsPanel from '$lib/editor/AssociatedDocumentsPanel.svelte';
   import { runMaintenanceJob } from '$lib/maintenanceJobs.js';
+  import { fanAcousticVariant } from '$lib/fanAcoustic.js';
 
   export let data = {};
 
@@ -295,6 +296,10 @@
 
   function productHasFanAcousticTable(product) {
     return product?.product_type_key === 'fan';
+  }
+
+  function currentFanAcousticVariant(product) {
+    return fanAcousticVariant(product?.fan_acoustic_table, product?.parameter_groups);
   }
 
   function flattenSeriesGraphPayload(seriesGraphPayload) {
@@ -1156,7 +1161,7 @@
                     <th rowspan="2">Speed (rpm)</th>
                     <th rowspan="2">Peak Pressure (Pa)</th>
                     <th rowspan="2">Peak Power (kW)</th>
-                    <th rowspan="2">Running Frequency</th>
+                    <th rowspan="2">{currentFanAcousticVariant(currentProduct) === '1ph' ? 'Running Voltage' : 'Running Frequency'}</th>
                     <th rowspan="2">Sound Pressure Level dB @ 3 meters</th>
                     <th colspan={currentProduct.fan_acoustic_table.sound_power_columns?.length ?? 0} class="text-center">
                       Sound Power Level SWL dB re 1pw
@@ -1175,7 +1180,7 @@
                         <td>{formatNumericValue(row.speed_rpm)}</td>
                         <td>{formatNumericValue(row.peak_pressure_pa)}</td>
                         <td>{formatNumericValue(row.peak_power_kw)}</td>
-                        <td>{formatNumericValue(row.running_frequency_hz)}</td>
+                        <td>{formatNumericValue(currentFanAcousticVariant(currentProduct) === '1ph' ? row.running_voltage_v : row.running_frequency_hz)}</td>
                         <td>{formatNumericValue(row.sound_pressure_db_3m)}</td>
                         {#each currentProduct.fan_acoustic_table.sound_power_columns as column}
                           <td>{formatNumericValue(row.sound_power_levels?.[column])}</td>

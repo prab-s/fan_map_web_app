@@ -5,6 +5,7 @@ from fastapi.templating import Jinja2Templates
 from app.api_client import api
 from app.config import settings
 from app.slug import product_url, series_url, product_type_url, products_url
+from app.catalogue_data import fan_acoustic_table_variant
 
 APP_DIR = Path(__file__).resolve().parent
 TEMPLATE_DIR = APP_DIR / "templates"
@@ -31,6 +32,7 @@ templates.env.globals["app_build_marker"] = settings.app_build_marker
 templates.env.globals["finder_debug"] = settings.finder_debug
 templates.env.globals["backend_api_base_url"] = settings.backend_api_base_url
 templates.env.globals["quote_request_endpoint_url"] = "/api/quote-requests"
+templates.env.globals["fan_acoustic_table_variant"] = fan_acoustic_table_variant
 templates.env.globals["site_contact"] = {
     "address": "576c Fergusson Drive, Upper Hutt 5018, Wellington",
     "gerald_email": "gerald@venttech.co.nz",

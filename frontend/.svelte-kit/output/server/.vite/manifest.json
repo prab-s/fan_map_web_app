@@ -59,7 +59,8 @@
       "_AssociatedDocumentsPanel.js",
       "_RichTextEditor.js",
       "_config.js",
-      "_descriptionSections.js"
+      "_descriptionSections.js",
+      "_fanAcoustic.js"
     ],
     "css": [
       "_app/immutable/assets/ProductWorkspace.Cdp6zMrW.css"
@@ -151,6 +152,10 @@
   "_false.js": {
     "file": "chunks/false.js",
     "name": "false"
+  },
+  "_fanAcoustic.js": {
+    "file": "chunks/fanAcoustic.js",
+    "name": "fanAcoustic"
   },
   "_fullChart.js": {
     "file": "chunks/fullChart.js",
@@ -750,6 +755,7 @@
       "_descriptionSections.js",
       "_SeriesNamesBadgeList.js",
       "_AssociatedDocumentsPanel.js",
+      "_fanAcoustic.js",
       "_html.js"
     ],
     "css": [

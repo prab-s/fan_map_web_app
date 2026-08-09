@@ -43,7 +43,12 @@ FAN_ACOUSTIC_DEFAULT_SOUND_POWER_COLUMNS = ["63", "125", "250", "500", "1k", "2k
 
 
 def _fan_acoustic_default_table() -> dict:
-    return {"sound_power_columns": list(FAN_ACOUSTIC_DEFAULT_SOUND_POWER_COLUMNS), "rows": []}
+    return {"variant_mode": "default", "sound_power_columns": list(FAN_ACOUSTIC_DEFAULT_SOUND_POWER_COLUMNS), "rows": []}
+
+
+def _fan_acoustic_normalize_variant_mode(value) -> str:
+    value = str(value or "default").strip().lower()
+    return value if value in {"default", "override_1ph", "override_3ph"} else "default"
 
 
 def _fan_acoustic_normalize_columns(columns) -> list[str]:
@@ -77,6 +82,7 @@ def _fan_acoustic_normalize_row(row: dict | None, sound_power_columns: list[str]
         "peak_pressure_pa": _fan_acoustic_coerce_number(row.get("peak_pressure_pa")),
         "peak_power_kw": _fan_acoustic_coerce_number(row.get("peak_power_kw")),
         "running_frequency_hz": _fan_acoustic_coerce_number(row.get("running_frequency_hz")),
+        "running_voltage_v": _fan_acoustic_coerce_number(row.get("running_voltage_v")),
         "sound_pressure_db_3m": _fan_acoustic_coerce_number(row.get("sound_pressure_db_3m")),
         "sound_power_levels": {
             column: _fan_acoustic_coerce_number(sound_power_levels.get(column))
@@ -108,11 +114,12 @@ def _fan_acoustic_public_table(table: dict | None) -> dict:
                 "peak_pressure_pa": _fan_acoustic_coerce_number(public_row.get("peak_pressure_pa")),
                 "peak_power_kw": _fan_acoustic_coerce_number(public_row.get("peak_power_kw")),
                 "running_frequency_hz": _fan_acoustic_coerce_number(public_row.get("running_frequency_hz")),
+                "running_voltage_v": _fan_acoustic_coerce_number(public_row.get("running_voltage_v")),
                 "sound_pressure_db_3m": _fan_acoustic_coerce_number(public_row.get("sound_pressure_db_3m")),
                 "sound_power_levels": public_row["sound_power_levels"],
             }
         )
-    return {"sound_power_columns": sound_power_columns, "rows": rows}
+    return {"variant_mode": _fan_acoustic_normalize_variant_mode(table.get("variant_mode")), "sound_power_columns": sound_power_columns, "rows": rows}
 
 
 def _fan_acoustic_lines_by_id(rpm_lines) -> dict[int, object]:
@@ -197,6 +204,7 @@ def _fan_acoustic_merge_tables(existing_table: dict | None, incoming_table: dict
                 "peak_pressure_pa": source_row.get("peak_pressure_pa", fallback_row.get("peak_pressure_pa")),
                 "peak_power_kw": source_row.get("peak_power_kw", fallback_row.get("peak_power_kw")),
                 "running_frequency_hz": source_row.get("running_frequency_hz", fallback_row.get("running_frequency_hz")),
+                "running_voltage_v": source_row.get("running_voltage_v", fallback_row.get("running_voltage_v")),
                 "sound_pressure_db_3m": source_row.get("sound_pressure_db_3m", fallback_row.get("sound_pressure_db_3m")),
                 "sound_power_levels": {
                     column: (source_row.get("sound_power_levels") or {}).get(
@@ -208,7 +216,7 @@ def _fan_acoustic_merge_tables(existing_table: dict | None, incoming_table: dict
             }
         )
 
-    return _fan_acoustic_sync_rows({"sound_power_columns": sound_power_columns, "rows": merged_rows}, rpm_lines=rpm_lines)
+    return _fan_acoustic_sync_rows({"variant_mode": _fan_acoustic_normalize_variant_mode(incoming_table.get("variant_mode") if incoming_table.get("variant_mode") is not None else existing_table.get("variant_mode")), "sound_power_columns": sound_power_columns, "rows": merged_rows}, rpm_lines=rpm_lines)
 
 
 def _fan_acoustic_parse_table(raw_value) -> dict | None:

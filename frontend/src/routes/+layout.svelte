@@ -28,6 +28,7 @@
   let searchError = '';
   let searchInput;
   let telemetrySentForPath = '';
+  let authReady = false;
   const PUBLIC_ROUTE_PREFIXES = ['/series', '/products'];
   const TELEMETRY_ENDPOINT = '/api/client-telemetry';
 
@@ -41,9 +42,10 @@
   $: setupActive = currentPath === '/setup' || currentPath.startsWith('/setup/');
   $: enquiriesActive = currentPath === '/enquiries' || currentPath.startsWith('/enquiries/');
 
-  onMount(() => {
+  onMount(async () => {
     initTheme();
-    auth.refresh();
+    await auth.refresh();
+    authReady = true;
     sendBrowserTelemetry();
   });
 
@@ -121,6 +123,7 @@
 
   function sendBrowserTelemetry() {
     if (!browser) return;
+    if (!authReady) return;
     if (telemetrySentForPath === currentPath) return;
     telemetrySentForPath = currentPath;
 
@@ -147,6 +150,8 @@
     if (ok) {
       username = '';
       password = '';
+      telemetrySentForPath = '';
+      sendBrowserTelemetry();
     }
   }
 </script>

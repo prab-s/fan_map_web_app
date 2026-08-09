@@ -1167,19 +1167,22 @@ body {
   padding-top: 0.1rem;
 }
 
-.footer-icon .fa-map-marker,
-.footer-text .fa-map-marker {
+.footer-icon--map {
   color: #34d399;
 }
 
-.footer-icon .fa-envelope,
-.footer-text .fa-envelope {
+.footer-icon--mail {
   color: #60a5fa;
 }
 
-.footer-icon .fa-phone-square,
-.footer-text .fa-phone-square {
+.footer-inline-icon--phone {
   color: #f59e0b;
+}
+
+.footer-icon,
+.footer-inline-icon {
+  font-family: system-ui, sans-serif;
+  font-weight: 700;
 }
 
 .footer-links a,

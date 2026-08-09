@@ -13,6 +13,7 @@ import { t as theme } from "../../../../../chunks/config.js";
 import { a as getDescriptionSections } from "../../../../../chunks/descriptionSections.js";
 import { J as JobProgressPanel, S as SeriesNamesBadgeList } from "../../../../../chunks/SeriesNamesBadgeList.js";
 import { A as AssociatedDocumentsPanel } from "../../../../../chunks/AssociatedDocumentsPanel.js";
+import { f as fanAcousticVariant } from "../../../../../chunks/fanAcoustic.js";
 import { h as html } from "../../../../../chunks/html.js";
 function _page($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
@@ -189,6 +190,9 @@ function _page($$renderer, $$props) {
     }
     function productHasFanAcousticTable(product) {
       return product?.product_type_key === "fan";
+    }
+    function currentFanAcousticVariant(product) {
+      return fanAcousticVariant(product?.fan_acoustic_table, product?.parameter_groups);
     }
     function flattenSeriesGraphPayload(seriesGraphPayload) {
       const rpmLines2 = Array.isArray(seriesGraphPayload?.rpmLines) ? seriesGraphPayload.rpmLines : [];
@@ -617,7 +621,7 @@ function _page($$renderer, $$props) {
             each_array_6[$$index_6];
             $$renderer2.push(`<col style="width: 4.75rem"/>`);
           }
-          $$renderer2.push(`<!--]--></colgroup><thead><tr><th rowspan="2" class="svelte-36khdd">Speed (rpm)</th><th rowspan="2" class="svelte-36khdd">Peak Pressure (Pa)</th><th rowspan="2" class="svelte-36khdd">Peak Power (kW)</th><th rowspan="2" class="svelte-36khdd">Running Frequency</th><th rowspan="2" class="svelte-36khdd">Sound Pressure Level dB @ 3 meters</th><th${attr("colspan", currentProduct.fan_acoustic_table.sound_power_columns?.length ?? 0)} class="text-center svelte-36khdd">Sound Power Level SWL dB re 1pw</th></tr><tr><!--[-->`);
+          $$renderer2.push(`<!--]--></colgroup><thead><tr><th rowspan="2" class="svelte-36khdd">Speed (rpm)</th><th rowspan="2" class="svelte-36khdd">Peak Pressure (Pa)</th><th rowspan="2" class="svelte-36khdd">Peak Power (kW)</th><th rowspan="2" class="svelte-36khdd">${escape_html(currentFanAcousticVariant(currentProduct) === "1ph" ? "Running Voltage" : "Running Frequency")}</th><th rowspan="2" class="svelte-36khdd">Sound Pressure Level dB @ 3 meters</th><th${attr("colspan", currentProduct.fan_acoustic_table.sound_power_columns?.length ?? 0)} class="text-center svelte-36khdd">Sound Power Level SWL dB re 1pw</th></tr><tr><!--[-->`);
           const each_array_7 = ensure_array_like(currentProduct.fan_acoustic_table.sound_power_columns);
           for (let $$index_7 = 0, $$length = each_array_7.length; $$index_7 < $$length; $$index_7++) {
             let column = each_array_7[$$index_7];
@@ -630,7 +634,7 @@ function _page($$renderer, $$props) {
             const each_array_8 = ensure_array_like(currentProduct.fan_acoustic_table.rows);
             for (let $$index_9 = 0, $$length = each_array_8.length; $$index_9 < $$length; $$index_9++) {
               let row = each_array_8[$$index_9];
-              $$renderer2.push(`<tr><td class="svelte-36khdd">${escape_html(formatNumericValue(row.speed_rpm))}</td><td class="svelte-36khdd">${escape_html(formatNumericValue(row.peak_pressure_pa))}</td><td class="svelte-36khdd">${escape_html(formatNumericValue(row.peak_power_kw))}</td><td class="svelte-36khdd">${escape_html(formatNumericValue(row.running_frequency_hz))}</td><td class="svelte-36khdd">${escape_html(formatNumericValue(row.sound_pressure_db_3m))}</td><!--[-->`);
+              $$renderer2.push(`<tr><td class="svelte-36khdd">${escape_html(formatNumericValue(row.speed_rpm))}</td><td class="svelte-36khdd">${escape_html(formatNumericValue(row.peak_pressure_pa))}</td><td class="svelte-36khdd">${escape_html(formatNumericValue(row.peak_power_kw))}</td><td class="svelte-36khdd">${escape_html(formatNumericValue(currentFanAcousticVariant(currentProduct) === "1ph" ? row.running_voltage_v : row.running_frequency_hz))}</td><td class="svelte-36khdd">${escape_html(formatNumericValue(row.sound_pressure_db_3m))}</td><!--[-->`);
               const each_array_9 = ensure_array_like(currentProduct.fan_acoustic_table.sound_power_columns);
               for (let $$index_8 = 0, $$length2 = each_array_9.length; $$index_8 < $$length2; $$index_8++) {
                 let column = each_array_9[$$index_8];

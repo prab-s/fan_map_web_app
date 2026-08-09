@@ -510,11 +510,13 @@ class FanAcousticTableRow(BaseModel):
     peak_pressure_pa: Optional[NumericValue] = None
     peak_power_kw: Optional[NumericValue] = None
     running_frequency_hz: Optional[NumericValue] = None
+    running_voltage_v: Optional[NumericValue] = None
     sound_pressure_db_3m: Optional[NumericValue] = None
     sound_power_levels: dict[str, Optional[NumericValue]] = Field(default_factory=dict)
 
 
 class FanAcousticTable(BaseModel):
+    variant_mode: Literal["default", "override_1ph", "override_3ph"] = "default"
     sound_power_columns: list[str] = Field(default_factory=list)
     rows: list[FanAcousticTableRow] = Field(default_factory=list)
 

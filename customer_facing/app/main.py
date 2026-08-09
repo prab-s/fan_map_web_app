@@ -14,7 +14,7 @@ from app.view_templates import templates
 
 FRAME_ANCESTORS = os.getenv(
     "FRAME_ANCESTORS",
-    "'self' http://localhost:8001 http://127.0.0.1:8001 http://xps.local:8001",
+    "'self' http://localhost:8001 http://127.0.0.1:8001 http://192.168.18.33:8001 http://xps.local:8001",
 ).strip()
 FRAME_ANCESTORS_EXPLICIT = bool(os.getenv("FRAME_ANCESTORS", "").strip())
 SECURITY_CONFIGURATION_STRICT = os.getenv("SECURITY_CONFIGURATION_STRICT", "false").strip().lower() in {"1", "true", "yes", "on"}
@@ -81,6 +81,7 @@ async def prevent_html_caching(request: Request, call_next):
         "Content-Security-Policy",
         "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
         "img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https:; "
+        "frame-src 'self' https://www.google.com https://maps.google.com; "
         f"frame-ancestors {FRAME_ANCESTORS}; base-uri 'self'; form-action 'self'",
     )
     content_type = response.headers.get("content-type", "")

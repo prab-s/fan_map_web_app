@@ -59,6 +59,10 @@
     FULL_CHART_LINE_DEFINITIONS,
     RPM_BAND_FALLBACK_COLORS,
   } from "$lib/fullChart.js";
+  import {
+    FAN_ACOUSTIC_VARIANT_MODES,
+    fanAcousticVariant,
+  } from "$lib/fanAcoustic.js";
 
   export let initialMode = "select";
   export let initialProductId = "";
@@ -831,6 +835,7 @@
           ["Peak Pressure (Pa)", row.peak_pressure_pa],
           ["Peak Power (kW)", row.peak_power_kw],
           ["Running Frequency", row.running_frequency_hz],
+          ["Running Voltage (V)", row.running_voltage_v],
           ["Sound Pressure Level dB @ 3 meters", row.sound_pressure_db_3m],
         ]);
         for (const column of fanAcousticTable.sound_power_columns ?? []) {
@@ -939,6 +944,7 @@
       peak_pressure_pa: row.peak_pressure_pa ?? "",
       peak_power_kw: row.peak_power_kw ?? "",
       running_frequency_hz: row.running_frequency_hz ?? "",
+      running_voltage_v: row.running_voltage_v ?? "",
       sound_pressure_db_3m: row.sound_pressure_db_3m ?? "",
       sound_power_levels: Object.fromEntries(
         columns.map((column) => [column, soundPowerLevels[column] ?? ""]),
@@ -966,6 +972,9 @@
     });
 
     return {
+      variant_mode: ["default", "override_1ph", "override_3ph"].includes(table.variant_mode)
+        ? table.variant_mode
+        : "default",
       sound_power_columns,
       rows,
     };
@@ -984,6 +993,10 @@
 
   function isFanAcousticTableVisible() {
     return productForm.product_type_key === "fan";
+  }
+
+  function currentFanAcousticVariant() {
+    return fanAcousticVariant(fanAcousticTable, parameterGroups);
   }
 
   function addFanAcousticColumn() {
@@ -1060,12 +1073,16 @@
       fanAcousticTable.sound_power_columns,
     );
     return {
+      variant_mode: ["default", "override_1ph", "override_3ph"].includes(fanAcousticTable.variant_mode)
+        ? fanAcousticTable.variant_mode
+        : "default",
       sound_power_columns,
       rows: fanAcousticTable.rows.map((row) => ({
         speed_rpm: parseOptionalNumber(row.speed_rpm),
         peak_pressure_pa: parseOptionalNumber(row.peak_pressure_pa),
         peak_power_kw: parseOptionalNumber(row.peak_power_kw),
         running_frequency_hz: parseOptionalNumber(row.running_frequency_hz),
+        running_voltage_v: parseOptionalNumber(row.running_voltage_v),
         sound_pressure_db_3m: parseOptionalNumber(row.sound_pressure_db_3m),
         sound_power_levels: Object.fromEntries(
           sound_power_columns.map((column) => [
@@ -5442,6 +5459,15 @@
               <div
                 class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"
               >
+                <div class="mb-3">
+                  <label class="form-label mb-1" for="create-fan-acoustic-variant">Acoustic table variant</label>
+                  <select id="create-fan-acoustic-variant" class="form-select form-select-sm" bind:value={fanAcousticTable.variant_mode}>
+                    {#each FAN_ACOUSTIC_VARIANT_MODES as option}
+                      <option value={option.value}>{option.label}</option>
+                    {/each}
+                  </select>
+                  <p class="form-text mb-0">When set to Default, this is driven by the Motor → Power Supply specification. Single-phase supplies show Running Voltage; all other or unrecognised values show Running Frequency.</p>
+                </div>
                 <p class="text-body-secondary mb-0">
                   The speed column is read-only and follows the fan graph line
                   order.
@@ -5490,7 +5516,7 @@
                       <th>Speed (rpm)</th>
                       <th>Peak Pressure (Pa)</th>
                       <th>Peak Power (kW)</th>
-                      <th>Running Frequency</th>
+                      <th>{currentFanAcousticVariant() === "1ph" ? "Running Voltage" : "Running Frequency"}</th>
                       <th>Sound Pressure Level dB @ 3 meters</th>
                       {#each fanAcousticTable.sound_power_columns as column, columnIndex}
                         <th>
@@ -5558,16 +5584,13 @@
                               (fanAcousticTable = { ...fanAcousticTable })}
                           /></td
                         >
-                        <td
-                          ><input
-                            class={`form-control form-control-sm ${editorNumericInputClass(row.running_frequency_hz)}`}
-                            type="number"
-                            step="any"
-                            bind:value={row.running_frequency_hz}
-                            on:input={() =>
-                              (fanAcousticTable = { ...fanAcousticTable })}
-                          /></td
-                        >
+                        <td>
+                          {#if currentFanAcousticVariant() === "1ph"}
+                            <input class={`form-control form-control-sm ${editorNumericInputClass(row.running_voltage_v)}`} type="number" step="any" bind:value={row.running_voltage_v} on:input={() => (fanAcousticTable = { ...fanAcousticTable })} />
+                          {:else}
+                            <input class={`form-control form-control-sm ${editorNumericInputClass(row.running_frequency_hz)}`} type="number" step="any" bind:value={row.running_frequency_hz} on:input={() => (fanAcousticTable = { ...fanAcousticTable })} />
+                          {/if}
+                        </td>
                         <td
                           ><input
                             class={`form-control form-control-sm ${editorNumericInputClass(row.sound_pressure_db_3m)}`}
@@ -7165,13 +7188,22 @@
             <AccordionCard
               title="Fan Acoustic Table"
               description="Rows stay aligned to the current RPM graph rows. Sound power columns can be added, removed, and renamed."
-              bind:open={editFanAcousticTableOpen}
-            >
-              {#if fanAcousticTable}
-                <div
-                  class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"
-                >
-                  <p class="text-body-secondary mb-0">
+            bind:open={editFanAcousticTableOpen}
+          >
+            {#if fanAcousticTable}
+              <div
+                class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"
+              >
+                <div class="mb-3">
+                  <label class="form-label mb-1" for="edit-fan-acoustic-variant">Acoustic table variant</label>
+                  <select id="edit-fan-acoustic-variant" class="form-select form-select-sm" bind:value={fanAcousticTable.variant_mode}>
+                    {#each FAN_ACOUSTIC_VARIANT_MODES as option}
+                      <option value={option.value}>{option.label}</option>
+                    {/each}
+                  </select>
+                  <p class="form-text mb-0">When set to Default, this is driven by the Motor → Power Supply specification. Single-phase supplies show Running Voltage; all other or unrecognised values show Running Frequency.</p>
+                </div>
+                <p class="text-body-secondary mb-0">
                     The speed column is read-only and follows the fan graph line
                     order.
                   </p>
@@ -7219,7 +7251,7 @@
                         <th>Speed (rpm)</th>
                         <th>Peak Pressure (Pa)</th>
                         <th>Peak Power (kW)</th>
-                        <th>Running Frequency</th>
+                        <th>{currentFanAcousticVariant() === "1ph" ? "Running Voltage" : "Running Frequency"}</th>
                         <th>Sound Pressure Level dB @ 3 meters</th>
                         {#each fanAcousticTable.sound_power_columns as column, columnIndex}
                           <th>
@@ -7287,16 +7319,13 @@
                                 (fanAcousticTable = { ...fanAcousticTable })}
                             /></td
                           >
-                          <td
-                            ><input
-                              class={`form-control form-control-sm ${editorNumericInputClass(row.running_frequency_hz)}`}
-                              type="number"
-                              step="any"
-                              bind:value={row.running_frequency_hz}
-                              on:input={() =>
-                                (fanAcousticTable = { ...fanAcousticTable })}
-                            /></td
-                          >
+                        <td>
+                          {#if currentFanAcousticVariant() === "1ph"}
+                            <input class={`form-control form-control-sm ${editorNumericInputClass(row.running_voltage_v)}`} type="number" step="any" bind:value={row.running_voltage_v} on:input={() => (fanAcousticTable = { ...fanAcousticTable })} />
+                          {:else}
+                            <input class={`form-control form-control-sm ${editorNumericInputClass(row.running_frequency_hz)}`} type="number" step="any" bind:value={row.running_frequency_hz} on:input={() => (fanAcousticTable = { ...fanAcousticTable })} />
+                          {/if}
+                        </td>
                           <td
                             ><input
                               class={`form-control form-control-sm ${editorNumericInputClass(row.sound_pressure_db_3m)}`}

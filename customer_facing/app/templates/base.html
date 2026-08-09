@@ -88,11 +88,6 @@
     href="/static/vendor/bootstrap.min.css?v={{ app_build_marker }}"
     rel="stylesheet"
   >
-  <link
-    rel="stylesheet"
-    href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css"
-  >
-
   <link rel="stylesheet" href="/static/css/site.css?v={{ app_build_marker }}">
 
   <script>
@@ -131,28 +126,28 @@
           <div class="footer-heading mb-2">Get in touch</div>
           <div class="footer-text d-grid gap-2">
             <div class="d-flex gap-2">
-              <span class="footer-icon"><i class="margin fa fa-map-marker" aria-hidden="true"></i></span>
+              <span class="footer-icon footer-icon--map" aria-hidden="true">🗺️</span>
               <span>{{ site_contact.address }}</span>
             </div>
             <div class="d-flex gap-2">
-              <span class="footer-icon"><i class="cp fa fa-envelope" aria-hidden="true"></i></span>
+              <span class="footer-icon footer-icon--mail" aria-hidden="true">✉</span>
               <span>
                 <a href="mailto:{{ site_contact.gerald_email }}">{{ site_contact.gerald_email }}</a>
-                <span class="d-block"><i class="cp fa fa-phone-square" aria-hidden="true"></i> {{ site_contact.gerald_phone }}</span>
+                <span class="d-block"><span class="footer-inline-icon footer-inline-icon--phone" aria-hidden="true">☎</span> {{ site_contact.gerald_phone }}</span>
               </span>
             </div>
             <div class="d-flex gap-2">
-              <span class="footer-icon"><i class="cp fa fa-envelope" aria-hidden="true"></i></span>
+              <span class="footer-icon footer-icon--mail" aria-hidden="true">✉</span>
               <span>
                 <a href="mailto:{{ site_contact.mahendra_email }}">{{ site_contact.mahendra_email }}</a>
-                <span class="d-block"><i class="cp fa fa-phone-square" aria-hidden="true"></i> {{ site_contact.mahendra_phone }}</span>
+                <span class="d-block"><span class="footer-inline-icon footer-inline-icon--phone" aria-hidden="true">☎</span> {{ site_contact.mahendra_phone }}</span>
               </span>
             </div>
             <div class="d-flex gap-2">
-              <span class="footer-icon"><i class="cp fa fa-envelope" aria-hidden="true"></i></span>
+              <span class="footer-icon footer-icon--mail" aria-hidden="true">✉</span>
               <span>
                 <a href="mailto:{{ site_contact.admin_email }}">{{ site_contact.admin_email }}</a>
-                <span class="d-block"><i class="cp fa fa-phone-square" aria-hidden="true"></i> {{ site_contact.admin_phone }}</span>
+                <span class="d-block"><span class="footer-inline-icon footer-inline-icon--phone" aria-hidden="true">☎</span> {{ site_contact.admin_phone }}</span>
               </span>
             </div>
           </div>
