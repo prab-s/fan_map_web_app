@@ -164,6 +164,8 @@ SAFE_CHARS_RE = re.compile(r"[^a-z0-9]+")
 JINJA_PATTERN = re.compile(r"(\{\{[\s\S]*?\}\}|\{%-?[\s\S]*?-?%\}|\{#.*?#\})")
 GRAPH_FILTER_GROUP_NAME = "__graph__"
 PRODUCT_IMAGES_DIR = Path(DEFAULT_DATA_DIR) / "product_images"
+PUBLIC_IMAGE_MAX_SIZE = 1600
+PUBLIC_IMAGE_QUALITY = 82
 SERIES_IMAGES_DIR = Path(DEFAULT_DATA_DIR) / "series_images"
 PRODUCT_GRAPHS_DIR = Path(DEFAULT_DATA_DIR) / "product_graphs"
 IMPORTS_DIR = Path(DEFAULT_DATA_DIR) / "bulk_imports"
@@ -3103,6 +3105,46 @@ def product_image_target_path(product_id: int, file_name: str) -> Path:
     return product_image_directory(product_id) / _normalize_media_relative_path(file_name)
 
 
+def public_product_image_target_path(product_id: int, file_name: str) -> Path:
+    return product_image_target_path(product_id, f"{file_name}.webp")
+
+
+def public_series_image_target_path(series_id: int, file_name: str) -> Path:
+    return series_image_target_path(series_id, f"{file_name}.webp")
+
+
+def ensure_public_product_image_derivative(product_id: int, file_name: str) -> Path:
+    source_path = product_image_path(product_id, file_name)
+    target_path = public_product_image_target_path(product_id, file_name)
+    if not source_path.is_file():
+        return target_path
+    if target_path.is_file() and target_path.stat().st_mtime_ns >= source_path.stat().st_mtime_ns:
+        return target_path
+
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    with Image.open(source_path) as source:
+        image = source.convert("RGBA") if "A" in source.getbands() else source.convert("RGB")
+        image.thumbnail((PUBLIC_IMAGE_MAX_SIZE, PUBLIC_IMAGE_MAX_SIZE), Image.Resampling.LANCZOS)
+        image.save(target_path, format="WEBP", quality=PUBLIC_IMAGE_QUALITY, method=6)
+    return target_path
+
+
+def ensure_public_series_image_derivative(series_id: int, file_name: str) -> Path:
+    source_path = series_image_path(series_id, file_name)
+    target_path = public_series_image_target_path(series_id, file_name)
+    if not source_path.is_file():
+        return target_path
+    if target_path.is_file() and target_path.stat().st_mtime_ns >= source_path.stat().st_mtime_ns:
+        return target_path
+
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    with Image.open(source_path) as source:
+        image = source.convert("RGBA") if "A" in source.getbands() else source.convert("RGB")
+        image.thumbnail((PUBLIC_IMAGE_MAX_SIZE, PUBLIC_IMAGE_MAX_SIZE), Image.Resampling.LANCZOS)
+        image.save(target_path, format="WEBP", quality=PUBLIC_IMAGE_QUALITY, method=6)
+    return target_path
+
+
 def series_image_target_path(series_id: int, file_name: str) -> Path:
     return series_image_directory(series_id) / _normalize_media_relative_path(file_name)
 
@@ -3112,7 +3154,9 @@ def product_image_path(product_id: int, file_name: str) -> Path:
     if target_path.exists():
         return target_path
     legacy_path = PRODUCT_IMAGES_DIR / _normalize_media_relative_path(file_name)
-    return legacy_path if legacy_path.exists() else target_path
+    if legacy_path.exists():
+        return legacy_path
+    return _legacy_media_path(PRODUCT_IMAGES_DIR, f"product_{product_id}", file_name, target_path)
 
 
 def series_image_path(series_id: int, file_name: str) -> Path:
@@ -3120,7 +3164,23 @@ def series_image_path(series_id: int, file_name: str) -> Path:
     if target_path.exists():
         return target_path
     legacy_path = SERIES_IMAGES_DIR / _normalize_media_relative_path(file_name)
-    return legacy_path if legacy_path.exists() else target_path
+    if legacy_path.exists():
+        return legacy_path
+    return _legacy_media_path(SERIES_IMAGES_DIR, f"series_{series_id}", file_name, target_path)
+
+
+def _legacy_media_path(media_dir: Path, record_directory: str, file_name: str, default_path: Path) -> Path:
+    """Resolve pre-fingerprint image files after a database filename rename."""
+    normalized = _normalize_media_relative_path(file_name)
+    if len(normalized.parts) != 1:
+        return default_path
+    legacy_name = re.sub(r"_\d{8}_\d{6}(?=\.[^.]+$)", "", normalized.name)
+    if legacy_name == normalized.name:
+        return default_path
+    for candidate in (media_dir / record_directory / legacy_name, media_dir / legacy_name):
+        if candidate.is_file():
+            return candidate
+    return default_path
 
 
 def associated_document_path(owner_type: str, owner_id: int, file_name: str) -> Path:
@@ -6324,11 +6384,13 @@ def generate_all_product_types_pdf(
 
 def delete_product_image_file(image: ProductImage):
     remove_file(product_image_target_path(image.product_id, image.file_name))
+    remove_file(public_product_image_target_path(image.product_id, image.file_name))
     remove_file(PRODUCT_IMAGES_DIR / _normalize_media_relative_path(image.file_name))
 
 
 def delete_series_image_file(image: SeriesImage):
     remove_file(series_image_target_path(image.series_id, image.file_name))
+    remove_file(public_series_image_target_path(image.series_id, image.file_name))
     remove_file(SERIES_IMAGES_DIR / _normalize_media_relative_path(image.file_name))
 
 
@@ -10953,6 +11015,7 @@ async def upload_product_images(
         target_path.parent.mkdir(parents=True, exist_ok=True)
         with open(target_path, "wb") as output:
             output.write(contents)
+        ensure_public_product_image_derivative(product_id, image.file_name)
         next_order += 1
 
     sync_product_image_files(product)
@@ -11001,6 +11064,7 @@ async def _bulk_upload_images(target_kind: str, target_id: int, files: list[Uplo
             target_path = product_image_target_path(target_id, file_name)
             target_path.parent.mkdir(parents=True, exist_ok=True)
             target_path.write_bytes(contents)
+            ensure_public_product_image_derivative(target_id, file_name)
         db.commit()
         db.refresh(product)
         notify_public_catalogue_cache_refresh()
@@ -11039,6 +11103,7 @@ async def _bulk_upload_images(target_kind: str, target_id: int, files: list[Uplo
         target_path = series_image_target_path(target_id, file_name)
         target_path.parent.mkdir(parents=True, exist_ok=True)
         target_path.write_bytes(contents)
+        ensure_public_series_image_derivative(target_id, file_name)
     db.commit()
     db.refresh(series)
     notify_public_catalogue_cache_refresh()
@@ -11139,6 +11204,7 @@ async def upload_series_images(
         target_path.parent.mkdir(parents=True, exist_ok=True)
         with open(target_path, "wb") as output:
             output.write(contents)
+        ensure_public_series_image_derivative(series_id, image.file_name)
         next_order += 1
 
     sync_series_image_files(series)
@@ -11386,7 +11452,10 @@ def serve_series_pdf(file_name: str):
     description="Public product image endpoint intended for rendered customer-facing pages.",
 )
 def serve_cms_product_image(product_id: int, file_name: str):
-    file_path = product_image_path(product_id, file_name)
+    if file_name.lower().endswith(".webp"):
+        file_path = ensure_public_product_image_derivative(product_id, file_name[:-5])
+    else:
+        file_path = product_image_path(product_id, file_name)
     if not file_path.is_file():
         raise HTTPException(status_code=404, detail="Product image not found")
     return FileResponse(file_path)
@@ -11399,7 +11468,10 @@ def serve_cms_product_image(product_id: int, file_name: str):
     description="Public series image endpoint intended for rendered customer-facing pages.",
 )
 def serve_cms_series_image(series_id: int, file_name: str):
-    file_path = series_image_path(series_id, file_name)
+    if file_name.lower().endswith(".webp"):
+        file_path = ensure_public_series_image_derivative(series_id, file_name[:-5])
+    else:
+        file_path = series_image_path(series_id, file_name)
     if not file_path.is_file():
         raise HTTPException(status_code=404, detail="Series image not found")
     return FileResponse(file_path)

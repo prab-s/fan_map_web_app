@@ -20,9 +20,9 @@ function _page($$renderer, $$props) {
     for (let $$index = 0, $$length = each_array.length; $$index < $$length; $$index++) {
       let item = each_array[$$index];
       $$renderer2.push(`<div class="col-12 col-md-6 col-xl-4"><article class="card shadow-sm h-100 border-0 series-card svelte-1djfovf">`);
-      if (item.primary_series_image_url) {
+      if (item.public_primary_series_image_url) {
         $$renderer2.push("<!--[0-->");
-        $$renderer2.push(`<img class="card-img-top series-image svelte-1djfovf"${attr("src", item.primary_series_image_url)}${attr("alt", item.name)}/>`);
+        $$renderer2.push(`<img class="card-img-top series-image svelte-1djfovf"${attr("src", item.public_primary_series_image_url)}${attr("alt", item.name)}/>`);
       } else {
         $$renderer2.push("<!--[-1-->");
       }
@@ -33,9 +33,9 @@ function _page($$renderer, $$props) {
     for (let $$index_1 = 0, $$length = each_array_1.length; $$index_1 < $$length; $$index_1++) {
       let product = each_array_1[$$index_1];
       $$renderer2.push(`<div class="col-12 col-lg-6 col-xxl-4"><article class="card shadow-sm h-100 border-0 product-card svelte-1djfovf">`);
-      if (product.primary_product_image_url) {
+      if (product.public_primary_product_image_url) {
         $$renderer2.push("<!--[0-->");
-        $$renderer2.push(`<img class="card-img-top product-image svelte-1djfovf"${attr("src", product.primary_product_image_url)}${attr("alt", `${product.model} product image`)}/>`);
+        $$renderer2.push(`<img class="card-img-top product-image svelte-1djfovf"${attr("src", product.public_primary_product_image_url)}${attr("alt", `${product.model} product image`)}/>`);
       } else {
         $$renderer2.push("<!--[-1-->");
       }

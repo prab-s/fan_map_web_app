@@ -1,7 +1,8 @@
+{% set product_image_url = (product.public_primary_product_image_url or product.primary_product_image_url) if use_preview_images else product.primary_product_image_url %}
 <div class="card h-100 shadow-sm border-0 product-card">
-  {% if product.primary_product_image_url %}
+  {% if product_image_url %}
     <img
-      src="{{ media_url(product.primary_product_image_url) }}"
+      src="{{ media_url(product_image_url) }}"
       class="card-img-top product-card-image"
       alt="{{ product.model }}"
     >

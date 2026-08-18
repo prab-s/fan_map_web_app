@@ -134,6 +134,8 @@ function ProductWorkspace($$renderer, $$props) {
     let productTemplateOptions, currentProductTypeForForm;
     let initialMode = fallback($$props["initialMode"], "select");
     let initialProductId = fallback($$props["initialProductId"], "");
+    let initialSeriesId = fallback($$props["initialSeriesId"], "");
+    let initialSelectionOnly = fallback($$props["initialSelectionOnly"], false);
     let products = [];
     let productTypes = [];
     let seriesRecords = [];
@@ -289,7 +291,7 @@ function ProductWorkspace($$renderer, $$props) {
       };
     }
     function seriesForType(productTypeKey) {
-      return seriesRecords.filter((series) => series.product_type_key === productTypeKey).sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+      return seriesRecords.filter((series) => series.product_type_key === productTypeKey || String(series.id) === String(editExistingSeriesId)).sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
     }
     function editableProductsForSelection(productTypeKey, seriesId) {
       return products.filter((product) => true).filter((product) => true).sort((a, b) => String(a.model || "").localeCompare(String(b.model || "")));
@@ -2955,7 +2957,12 @@ function ProductWorkspace($$renderer, $$props) {
     } while (!$$settled);
     $$renderer2.subsume($$inner_renderer);
     if ($$store_subs) unsubscribe_stores($$store_subs);
-    bind_props($$props, { initialMode, initialProductId });
+    bind_props($$props, {
+      initialMode,
+      initialProductId,
+      initialSeriesId,
+      initialSelectionOnly
+    });
   });
 }
 export {

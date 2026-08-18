@@ -468,6 +468,7 @@ def build_series_summary_from_products(products: list[dict]) -> list[dict]:
                 "product_type_label": product.get("product_type_label"),
                 "product_count": 0,
                 "first_product_image_url": None,
+                "first_product_preview_image_url": None,
             },
         )
         if series_entry.get("product_type_key") in (None, "") and product.get("product_type_key") not in (None, ""):
@@ -475,6 +476,12 @@ def build_series_summary_from_products(products: list[dict]) -> list[dict]:
         if not series_entry.get("first_product_image_url"):
             series_entry["first_product_image_url"] = (
                 product.get("primary_product_image_url")
+                or product.get("graph_image_url")
+            )
+        if not series_entry.get("first_product_preview_image_url"):
+            series_entry["first_product_preview_image_url"] = (
+                product.get("public_primary_product_image_url")
+                or product.get("primary_product_image_url")
                 or product.get("graph_image_url")
             )
         series_entry["product_count"] += 1

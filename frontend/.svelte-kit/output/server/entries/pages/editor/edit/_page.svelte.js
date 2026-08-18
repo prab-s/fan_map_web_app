@@ -19,7 +19,9 @@ function _page($$renderer, $$props) {
       children: ($$renderer3) => {
         ProductWorkspace($$renderer3, {
           initialMode: "editExisting",
-          initialProductId: data.product ?? ""
+          initialProductId: data.product ?? "",
+          initialSeriesId: data.series ?? "",
+          initialSelectionOnly: data.selectionOnly ?? false
         });
       },
       $$slots: { default: true }

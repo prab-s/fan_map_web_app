@@ -19,5 +19,7 @@
   <ProductWorkspace
     initialMode="editExisting"
     initialProductId={data.product ?? ''}
+    initialSeriesId={data.series ?? ''}
+    initialSelectionOnly={data.selectionOnly ?? false}
   />
 </ManagePageShell>

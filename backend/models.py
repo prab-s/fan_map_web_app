@@ -484,6 +484,13 @@ class Series(Base):
         return first_image.url
 
     @property
+    def public_primary_series_image_url(self):
+        if not self.series_images:
+            return None
+        first_image = sorted(self.series_images, key=lambda img: (img.sort_order, img.id))[0]
+        return first_image.public_url
+
+    @property
     def secondary_series_image_url(self):
         if len(self.series_images or []) < 2:
             return None
@@ -596,6 +603,13 @@ class Product(Base):
             return None
         first_image = sorted(self.product_images, key=lambda img: (img.sort_order, img.id))[0]
         return first_image.url
+
+    @property
+    def public_primary_product_image_url(self):
+        if not self.product_images:
+            return None
+        first_image = sorted(self.product_images, key=lambda img: (img.sort_order, img.id))[0]
+        return first_image.public_url
 
     @property
     def grouped_specs_main_table(self):
@@ -934,6 +948,22 @@ class ProductImage(Base):
             else f"/api/public/media/product_images/{self.product_id}/{self.file_name}"
         )
 
+    @property
+    def public_url(self):
+        """A smaller derivative used only by the customer-facing catalogue."""
+        base_dir = Path(os.path.dirname(os.path.dirname(__file__))) / "data" / "product_images"
+        source_path = base_dir / f"product_{self.product_id}" / self.file_name
+        if not source_path.is_file():
+            source_path = base_dir / self.file_name
+        derivative_name = f"{self.file_name}.webp"
+        derivative_path = base_dir / f"product_{self.product_id}" / derivative_name
+        version = file_mtime_milliseconds(derivative_path) or file_mtime_milliseconds(source_path)
+        return (
+            f"/api/public/media/product_images/{self.product_id}/{derivative_name}?v={version}"
+            if version is not None
+            else f"/api/public/media/product_images/{self.product_id}/{derivative_name}"
+        )
+
 
 class SeriesImage(Base):
     __tablename__ = "series_images"
@@ -958,4 +988,19 @@ class SeriesImage(Base):
             f"/api/public/media/series_images/{self.series_id}/{self.file_name}?v={version}"
             if version is not None
             else f"/api/public/media/series_images/{self.series_id}/{self.file_name}"
+        )
+
+    @property
+    def public_url(self):
+        base_dir = Path(os.path.dirname(os.path.dirname(__file__))) / "data" / "series_images"
+        source_path = base_dir / f"series_{self.series_id}" / self.file_name
+        if not source_path.is_file():
+            source_path = base_dir / self.file_name
+        derivative_name = f"{self.file_name}.webp"
+        derivative_path = base_dir / f"series_{self.series_id}" / derivative_name
+        version = file_mtime_milliseconds(derivative_path) or file_mtime_milliseconds(source_path)
+        return (
+            f"/api/public/media/series_images/{self.series_id}/{derivative_name}?v={version}"
+            if version is not None
+            else f"/api/public/media/series_images/{self.series_id}/{derivative_name}"
         )

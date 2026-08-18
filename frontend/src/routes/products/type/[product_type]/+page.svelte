@@ -36,8 +36,8 @@
       {#each series as item}
         <div class="col-12 col-md-6 col-xl-4">
           <article class="card shadow-sm h-100 border-0 series-card">
-            {#if item.primary_series_image_url}
-              <img class="card-img-top series-image" src={item.primary_series_image_url} alt={item.name} />
+            {#if item.public_primary_series_image_url}
+              <img class="card-img-top series-image" src={item.public_primary_series_image_url} alt={item.name} />
             {/if}
             <div class="card-body p-4 d-flex flex-column gap-3">
               <div>
@@ -57,10 +57,10 @@
     {#each products as product}
       <div class="col-12 col-lg-6 col-xxl-4">
         <article class="card shadow-sm h-100 border-0 product-card">
-          {#if product.primary_product_image_url}
+          {#if product.public_primary_product_image_url}
             <img
               class="card-img-top product-image"
-              src={product.primary_product_image_url}
+              src={product.public_primary_product_image_url}
               alt={`${product.model} product image`}
             />
           {/if}

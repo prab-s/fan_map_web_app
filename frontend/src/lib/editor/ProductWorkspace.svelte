@@ -66,6 +66,8 @@
 
   export let initialMode = "select";
   export let initialProductId = "";
+  export let initialSeriesId = "";
+  export let initialSelectionOnly = false;
 
   let products = [];
   let productTypes = [];
@@ -411,12 +413,27 @@
   function syncEditExistingFiltersFromProduct(product = currentProduct) {
     if (!product) return;
     editExistingProductTypeKey = product.product_type_key || "";
-    editExistingSeriesId = product.series_id == null ? "" : String(product.series_id);
+    const matchingSeries = seriesRecords.find(
+      (series) =>
+        (product.series_id != null &&
+          Number(series.id) === Number(product.series_id)) ||
+        (product.series_name &&
+          String(series.name).trim() === String(product.series_name).trim()),
+    );
+    editExistingSeriesId = product.series_id != null
+      ? Number(product.series_id)
+      : matchingSeries
+        ? matchingSeries.id
+        : "";
   }
 
   function seriesForType(productTypeKey) {
     return seriesRecords
-      .filter((series) => series.product_type_key === productTypeKey)
+      .filter(
+        (series) =>
+          series.product_type_key === productTypeKey ||
+          String(series.id) === String(editExistingSeriesId),
+      )
       .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
   }
 
@@ -3874,7 +3891,24 @@
       loadSeries(),
       loadTemplates(),
     ]);
-    if (selectedProductId) {
+    if (selectedProductId && initialSelectionOnly) {
+      const selectedProduct = products.find(
+        (product) => Number(product.id) === Number(selectedProductId),
+      );
+      if (selectedProduct) {
+        syncEditExistingFiltersFromProduct(selectedProduct);
+      }
+      try {
+        const selectedProductDetail = await getProduct(selectedProductId);
+        syncEditExistingFiltersFromProduct(selectedProductDetail);
+      } catch (e) {
+        // The list response is still sufficient to restore the selection if
+        // the detail request is unavailable.
+      }
+      if (initialSeriesId) {
+        editExistingSeriesId = Number(initialSeriesId);
+      }
+    } else if (selectedProductId) {
       await openSelectedExistingProduct(selectedProductId);
     }
   });
@@ -4041,7 +4075,19 @@
   }
 
   function returnToEditorHome() {
-    goto("/editor");
+    const productId = editingProductId ?? selectedProductId;
+    if (productId) {
+      const seriesId =
+        currentProduct?.series_id ?? productForm.series_id ?? "";
+      const seriesQuery = seriesId
+        ? `&series=${encodeURIComponent(String(seriesId))}`
+        : "";
+      goto(
+        `/editor/edit?product=${encodeURIComponent(String(productId))}${seriesQuery}&selectionOnly=1`,
+      );
+      return;
+    }
+    goto("/editor/edit");
   }
 
   async function deleteCurrentProduct() {

@@ -212,6 +212,7 @@ class CatalogueCache:
                     merged.update(detail)
                     merged["product_count"] = summary.get("product_count", merged.get("product_count"))
                     merged["first_product_image_url"] = summary.get("first_product_image_url", merged.get("first_product_image_url"))
+                    merged["first_product_preview_image_url"] = summary.get("first_product_preview_image_url", merged.get("first_product_preview_image_url"))
                     series_records.append(merged)
                 else:
                     series_records.append(dict(summary))

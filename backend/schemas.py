@@ -470,6 +470,7 @@ class SeriesResponse(BaseModel):
     online_template_id: Optional[str] = None
     product_count: int = 0
     primary_series_image_url: Optional[str] = None
+    public_primary_series_image_url: Optional[str] = None
     secondary_series_image_url: Optional[str] = None
     series_graph_image_url: Optional[str] = None
     series_pdf_url: Optional[str] = None
@@ -491,6 +492,7 @@ class SeriesImageResponse(BaseModel):
     file_name: str
     sort_order: int
     url: str
+    public_url: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -705,6 +707,7 @@ class ProductImageResponse(BaseModel):
     file_name: str
     sort_order: int
     url: str
+    public_url: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
@@ -924,6 +927,7 @@ class CmsProductResponse(BaseModel):
     product_printed_pdf_size_bytes: Optional[int] = None
     product_online_pdf_url: Optional[str] = None
     primary_product_image_url: Optional[str] = None
+    public_primary_product_image_url: Optional[str] = None
     product_images: list["ProductImageResponse"] = Field(default_factory=list)
     parameter_groups: list["ProductParameterGroupResponse"] = Field(default_factory=list)
     rpm_lines: list[RpmLineResponse] = Field(default_factory=list)
@@ -945,6 +949,7 @@ class CmsSeriesProductSummary(BaseModel):
     product_printed_pdf_url: Optional[str] = None
     product_online_pdf_url: Optional[str] = None
     primary_product_image_url: Optional[str] = None
+    public_primary_product_image_url: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -970,6 +975,7 @@ class CmsSeriesResponse(BaseModel):
     series_online_pdf_url: Optional[str] = None
     series_tab_color: Optional[str] = None
     primary_series_image_url: Optional[str] = None
+    public_primary_series_image_url: Optional[str] = None
     secondary_series_image_url: Optional[str] = None
     series_images: list[SeriesImageResponse] = Field(default_factory=list)
     products: list[CmsSeriesProductSummary] = Field(default_factory=list)
