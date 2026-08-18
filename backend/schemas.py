@@ -2,7 +2,7 @@
 Pydantic schemas for request/response validation.
 """
 from typing import Annotated, Literal, Optional
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, confloat, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, confloat, field_validator, model_validator
 
 
 # --- Product ---
@@ -161,6 +161,7 @@ class ProductTypeResponse(BaseModel):
     product_type_pdf_url: Optional[str] = None
     product_type_printed_pdf_url: Optional[str] = None
     product_type_printed_pdf_size_bytes: Optional[int] = None
+    product_type_pdf_series_order: list[int] = Field(default_factory=list)
     supports_graph: bool
     graph_kind: Optional[str] = None
     supports_graph_overlays: bool = False
@@ -186,6 +187,11 @@ class ProductTypeResponse(BaseModel):
     efficiency_point_presets: list[ProductTypeEfficiencyPointPresetResponse] = Field(default_factory=list)
     associated_documents: list["AssociatedDocumentResponse"] = Field(default_factory=list)
 
+    @field_validator("product_type_pdf_series_order", mode="before")
+    @classmethod
+    def _default_missing_pdf_series_order(cls, value):
+        return value or []
+
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -203,6 +209,7 @@ class ProductTypeCreate(BaseModel):
     graph_y_axis_label: Optional[str] = None
     graph_y_axis_unit: Optional[str] = None
     product_type_template_id: Optional[str] = None
+    product_type_pdf_series_order: list[int] = Field(default_factory=list)
     product_template_id: Optional[str] = None
     series_template_id: Optional[str] = None
     printed_product_template_id: Optional[str] = None
@@ -228,6 +235,7 @@ class ProductTypeUpdate(BaseModel):
     graph_y_axis_label: Optional[str] = None
     graph_y_axis_unit: Optional[str] = None
     product_type_template_id: Optional[str] = None
+    product_type_pdf_series_order: Optional[list[int]] = None
     product_template_id: Optional[str] = None
     printed_product_template_id: Optional[str] = None
     online_product_template_id: Optional[str] = None
@@ -388,6 +396,25 @@ class BulkImportResponse(BaseModel):
     created_product_images: int = 0
     warnings: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
+
+
+class BulkActionRequest(BaseModel):
+    action: Literal["pdf_template", "permissible_use_mode", "scale_efficiency_lines"]
+    product_type_key: str
+    series_id: Optional[int] = None
+    template_id: Optional[str] = None
+    template_entity: Literal["products", "series"] = "products"
+    permissible_use_mode: Optional[Literal["dedicated", "upper", "lower", "both", "none"]] = None
+
+
+class BulkActionResponse(BaseModel):
+    action: str
+    product_type_key: str
+    series_id: Optional[int] = None
+    affected_product_count: int = 0
+    changed_product_count: int = 0
+    skipped_product_count: int = 0
+    message: str
 
 
 class BulkImageImportResponse(BaseModel):

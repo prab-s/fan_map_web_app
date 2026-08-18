@@ -3,7 +3,6 @@
   import { goto } from '$app/navigation';
   import { createProductType, deleteProductType, getProductTypes, getTemplates, startRefreshProductTypePdfJob, updateProductType } from '$lib/api.js';
   import JobProgressPanel from '$lib/JobProgressPanel.svelte';
-  import SeriesNamesBadgeList from '$lib/editor/SeriesNamesBadgeList.svelte';
   import AssociatedDocumentsPanel from '$lib/editor/AssociatedDocumentsPanel.svelte';
   import { runMaintenanceJob } from '$lib/maintenanceJobs.js';
 
@@ -71,6 +70,9 @@
       graph_y_axis_label: productType?.graph_y_axis_label ?? '',
       graph_y_axis_unit: productType?.graph_y_axis_unit ?? '',
       product_type_template_id: productType?.product_type_template_id ?? '',
+      product_type_pdf_series_order: Array.isArray(productType?.product_type_pdf_series_order)
+        ? [...productType.product_type_pdf_series_order]
+        : [],
       contents_icon_url: productType?.contents_icon_url ?? '',
       band_graph_background_color: productType?.band_graph_background_color ?? '#ffffff',
       band_graph_label_text_color: productType?.band_graph_label_text_color ?? '#000000',
@@ -83,6 +85,33 @@
   let productTypeDraft = resetDraft();
 
   $: selectedProductType = productTypes.find((item) => String(item.id) === String(selectedProductTypeId)) || null;
+
+  function calculateOrderedSeriesForPdf(productType, configuredOrder) {
+    const series = [...(productType?.series || [])].sort((a, b) =>
+      String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' })
+    );
+    const byId = new Map(series.map((item) => [String(item.id), item]));
+    const order = Array.isArray(configuredOrder) ? configuredOrder : [];
+    const explicit = order
+      .map((id) => byId.get(String(id)))
+      .filter((item, index, items) => item && items.findIndex((candidate) => candidate.id === item.id) === index);
+    const explicitIds = new Set(explicit.map((item) => String(item.id)));
+    return [...explicit, ...series.filter((item) => !explicitIds.has(String(item.id)))];
+  }
+
+  $: orderedPdfSeries = calculateOrderedSeriesForPdf(
+    selectedProductType,
+    productTypeDraft.product_type_pdf_series_order
+  );
+
+  function moveSeriesInPdfOrder(index, direction) {
+    const ordered = orderedPdfSeries;
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= ordered.length) return;
+    const nextOrder = ordered.map((item) => item.id);
+    [nextOrder[index], nextOrder[targetIndex]] = [nextOrder[targetIndex], nextOrder[index]];
+    productTypeDraft = { ...productTypeDraft, product_type_pdf_series_order: nextOrder };
+  }
 
   function hydrateSelectedProductType(productTypeId = selectedProductTypeId) {
     const normalizedProductTypeId = productTypeId == null || productTypeId === '' ? '' : String(productTypeId);
@@ -205,6 +234,7 @@
         graph_y_axis_label: productTypeDraft.graph_y_axis_label || null,
         graph_y_axis_unit: productTypeDraft.graph_y_axis_unit || null,
         product_type_template_id: productTypeDraft.product_type_template_id || null,
+        product_type_pdf_series_order: productTypeDraft.product_type_pdf_series_order || [],
         contents_icon_url: productTypeDraft.contents_icon_url || null,
         band_graph_background_color: productTypeDraft.band_graph_background_color || null,
         band_graph_label_text_color: productTypeDraft.band_graph_label_text_color || null,
@@ -447,11 +477,27 @@
 
         {#if selectedProductType}
           <div class="mt-4">
-            <SeriesNamesBadgeList
-              seriesNames={selectedProductType.series_names || []}
-              title={`Series names for ${selectedProductType.label}`}
-              emptyLabel="This product type does not have any series yet."
-            />
+            <div class="card shadow-sm">
+              <div class="card-body">
+                <h3 class="h6 mb-2">Series order for Product Type PDFs</h3>
+                <p class="text-body-secondary small">Move selected series to the front in the order shown. Any series not explicitly moved remains alphabetical.</p>
+                {#if orderedPdfSeries.length}
+                  <ol class="list-group list-group-numbered">
+                    {#each orderedPdfSeries as series, index (series.id)}
+                      <li class="list-group-item d-flex align-items-center justify-content-between gap-2">
+                        <span>{series.name}</span>
+                        <span class="d-flex gap-1">
+                          <button class="btn btn-outline-secondary btn-sm" type="button" aria-label={`Move ${series.name} up`} on:click={() => moveSeriesInPdfOrder(index, -1)} disabled={index === 0}>↑</button>
+                          <button class="btn btn-outline-secondary btn-sm" type="button" aria-label={`Move ${series.name} down`} on:click={() => moveSeriesInPdfOrder(index, 1)} disabled={index === orderedPdfSeries.length - 1}>↓</button>
+                        </span>
+                      </li>
+                    {/each}
+                  </ol>
+                {:else}
+                  <p class="text-body-secondary mb-0">This product type does not have any series yet.</p>
+                {/if}
+              </div>
+            </div>
           </div>
           <div class="d-flex flex-wrap gap-2 mt-3">
             <button class="btn btn-outline-secondary btn-sm" type="button" on:click={generateProductTypePdf} disabled={refreshingPdfJob?.status === 'running'}>

@@ -38,7 +38,7 @@
   $: editorActive = currentPath === '/editor' || currentPath.startsWith('/editor/');
   $: viewerActive = currentPath === '/viewer' || currentPath.startsWith('/viewer/');
   $: templateBuilderActive = currentPath === '/template-builder' || currentPath.startsWith('/template-builder/');
-  $: bulkImportActive = currentPath === '/bulk-import' || currentPath.startsWith('/bulk-import/');
+  $: bulkImportActive = currentPath === '/bulk-actions' || currentPath.startsWith('/bulk-actions/');
   $: setupActive = currentPath === '/setup' || currentPath.startsWith('/setup/');
   $: enquiriesActive = currentPath === '/enquiries' || currentPath.startsWith('/enquiries/');
 
@@ -276,7 +276,7 @@
           <div>
             <p class="small text-uppercase text-body-secondary fw-semibold mb-1"><strong>Internal Facing</strong></p>
           </div>
-          <span class="small text-body-secondary">{#if enquiriesActive}Enquiries{:else if editorActive}Editor{:else if viewerActive}Viewer{:else if currentPath.startsWith('/template-builder-v2')}Template Builder V2{:else if templateBuilderActive}Template Builder{:else if setupActive}Setup{:else if bulkImportActive}Bulk Import{:else}Overview{/if}</span>
+          <span class="small text-body-secondary">{#if enquiriesActive}Enquiries{:else if editorActive}Editor{:else if viewerActive}Viewer{:else if currentPath.startsWith('/template-builder-v2')}Template Builder V2{:else if templateBuilderActive}Template Builder{:else if setupActive}Setup{:else if bulkImportActive}Bulk Actions{:else}Overview{/if}</span>
         </div>
 
         <nav class="nav nav-underline justify-content-center mx-auto" aria-label="Primary">
@@ -286,7 +286,7 @@
           <a class={`nav-link ${viewerActive ? 'active text-body fw-medium' : 'text-body-secondary'}`} href="/viewer" aria-current={viewerActive ? 'page' : undefined}>Viewer</a>
           <a class={`nav-link ${templateBuilderActive ? 'active text-body fw-medium' : 'text-body-secondary'}`} href="/template-builder" aria-current={templateBuilderActive ? 'page' : undefined}>Template Builder</a>
           {#if $auth.authenticated}
-            <a class={`nav-link ${bulkImportActive ? 'active text-body fw-medium' : 'text-body-secondary'}`} href="/bulk-import" aria-current={bulkImportActive ? 'page' : undefined}>Bulk Import</a>
+            <a class={`nav-link ${bulkImportActive ? 'active text-body fw-medium' : 'text-body-secondary'}`} href="/bulk-actions" aria-current={bulkImportActive ? 'page' : undefined}>Bulk Actions</a>
           {/if}
           <a class={`nav-link ${setupActive ? 'active text-body fw-medium' : 'text-body-secondary'}`} href="/setup" aria-current={setupActive ? 'page' : undefined}>Setup</a>
         </nav>

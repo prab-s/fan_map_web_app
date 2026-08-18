@@ -13,6 +13,7 @@ from backend.main import (
     load_graph_import_rows,
     normalize_bulk_import_rows,
     normalize_bulk_import_name,
+    ordered_product_type_pdf_series,
     product_matches_parameter_filters,
 )
 
@@ -27,6 +28,35 @@ class AssociatedDocumentOwnerTypeTests(unittest.TestCase):
     def test_non_product_type_owner_types_are_unchanged(self):
         self.assertEqual(_canonical_associated_document_owner_type("product"), "product")
         self.assertEqual(_canonical_associated_document_owner_type("series"), "series")
+
+
+class ProductTypePdfSeriesOrderTests(unittest.TestCase):
+    def test_explicit_series_order_is_followed_and_unlisted_series_remain_alphabetical(self):
+        series_a = SimpleNamespace(id=1, name="Alpha")
+        series_b = SimpleNamespace(id=2, name="Bravo")
+        series_c = SimpleNamespace(id=3, name="Charlie")
+        product_type = SimpleNamespace(
+            series=[series_c, series_a, series_b],
+            product_type_pdf_series_order=[3],
+        )
+
+        self.assertEqual(
+            [series.name for series in ordered_product_type_pdf_series(product_type)],
+            ["Charlie", "Alpha", "Bravo"],
+        )
+
+    def test_invalid_or_duplicate_series_ids_are_ignored(self):
+        series_a = SimpleNamespace(id=1, name="Alpha")
+        series_b = SimpleNamespace(id=2, name="Bravo")
+        product_type = SimpleNamespace(
+            series=[series_a, series_b],
+            product_type_pdf_series_order=[999, 2, 2, "invalid"],
+        )
+
+        self.assertEqual(
+            [series.name for series in ordered_product_type_pdf_series(product_type)],
+            ["Bravo", "Alpha"],
+        )
 
 
 def make_parameter(group_name: str, parameter_name: str, value_number=None, value_string=None):

@@ -7,11 +7,11 @@ import { f as fallback } from "./equality.js";
 import "@sveltejs/kit/internal/server";
 import "./root.js";
 import "./state.svelte.js";
-import { S as SeriesNamesBadgeList, J as JobProgressPanel } from "./SeriesNamesBadgeList.js";
+import { J as JobProgressPanel } from "./JobProgressPanel.js";
 import { A as AssociatedDocumentsPanel } from "./AssociatedDocumentsPanel.js";
 function ProductTypeWorkspace($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
-    let selectedProductType;
+    let selectedProductType, orderedPdfSeries;
     let initialMode = fallback($$props["initialMode"], "create");
     let initialProductTypeId = fallback($$props["initialProductTypeId"], "");
     let productTypes = [];
@@ -44,6 +44,7 @@ function ProductTypeWorkspace($$renderer, $$props) {
         graph_y_axis_label: productType?.graph_y_axis_label ?? "",
         graph_y_axis_unit: productType?.graph_y_axis_unit ?? "",
         product_type_template_id: productType?.product_type_template_id ?? "",
+        product_type_pdf_series_order: Array.isArray(productType?.product_type_pdf_series_order) ? [...productType.product_type_pdf_series_order] : [],
         contents_icon_url: productType?.contents_icon_url ?? "",
         band_graph_background_color: productType?.band_graph_background_color ?? "#ffffff",
         band_graph_label_text_color: productType?.band_graph_label_text_color ?? "#000000",
@@ -52,6 +53,17 @@ function ProductTypeWorkspace($$renderer, $$props) {
       };
     }
     let productTypeDraft = resetDraft();
+    function calculateOrderedSeriesForPdf(productType, configuredOrder) {
+      const series = [...productType?.series || []].sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), void 0, { sensitivity: "base" }));
+      const byId = new Map(series.map((item) => [String(item.id), item]));
+      const order = Array.isArray(configuredOrder) ? configuredOrder : [];
+      const explicit = order.map((id) => byId.get(String(id))).filter((item, index, items) => item && items.findIndex((candidate) => candidate.id === item.id) === index);
+      const explicitIds = new Set(explicit.map((item) => String(item.id)));
+      return [
+        ...explicit,
+        ...series.filter((item) => !explicitIds.has(String(item.id)))
+      ];
+    }
     function hydrateSelectedProductType(productTypeId = selectedProductTypeId) {
       const normalizedProductTypeId = productTypeId == null || productTypeId === "" ? "" : String(productTypeId);
       if (!normalizedProductTypeId) {
@@ -91,6 +103,7 @@ function ProductTypeWorkspace($$renderer, $$props) {
       }
     }
     selectedProductType = productTypes.find((item) => String(item.id) === String(selectedProductTypeId)) || null;
+    orderedPdfSeries = calculateOrderedSeriesForPdf(selectedProductType, productTypeDraft.product_type_pdf_series_order);
     if (mode === "edit" && selectedProductTypeId) {
       hydrateSelectedProductType();
     }
@@ -161,13 +174,21 @@ function ProductTypeWorkspace($$renderer, $$props) {
     $$renderer2.push(`</div> <div class="col-12 col-md-6"><label class="form-label" for="product-type-contents-icon">Contents icon URL</label> <input class="form-control" id="product-type-contents-icon"${attr("value", productTypeDraft.contents_icon_url)} placeholder="https://... or data:image/svg+xml,..."/></div> <div class="col-12"><hr class="my-2"/> <p class="text-body-secondary mb-0">Band graph style defaults</p></div> <div class="col-12 col-md-4"><label class="form-label" for="product-type-band-graph-background">Background colour</label> <div class="input-group"><input class="form-control form-control-color" id="product-type-band-graph-background" type="color"${attr("value", productTypeDraft.band_graph_background_color)}/> <input class="form-control" type="text"${attr("value", productTypeDraft.band_graph_background_color)} placeholder="#ffffff"/></div></div> <div class="col-12 col-md-4"><label class="form-label" for="product-type-band-graph-label">Label text colour</label> <div class="input-group"><input class="form-control form-control-color" id="product-type-band-graph-label" type="color"${attr("value", productTypeDraft.band_graph_label_text_color)}/> <input class="form-control" type="text"${attr("value", productTypeDraft.band_graph_label_text_color)} placeholder="#000000"/></div></div> <div class="col-12 col-md-4"><label class="form-label" for="product-type-band-graph-permissible">Permissible label colour</label> <div class="input-group"><input class="form-control form-control-color" id="product-type-band-graph-permissible" type="color"${attr("value", productTypeDraft.band_graph_permissible_label_color)}/> <input class="form-control" type="text"${attr("value", productTypeDraft.band_graph_permissible_label_color)} placeholder="#000000"/></div></div> <div class="col-12 col-md-4"><label class="form-label" for="product-type-band-graph-opacity">Faded area opacity</label> <input class="form-control" id="product-type-band-graph-opacity" type="number" min="0" max="1" step="0.01"${attr("value", productTypeDraft.band_graph_faded_opacity)}/></div> <div class="col-12 col-md-4"><label class="form-label" for="product-type-graph-kind">Graph kind</label> <input class="form-control" id="product-type-graph-kind"${attr("value", productTypeDraft.graph_kind)} placeholder="e.g. fan_map"/></div> <div class="col-12 col-md-4"><label class="form-label" for="product-type-line-label">Line value label</label> <input class="form-control" id="product-type-line-label"${attr("value", productTypeDraft.graph_line_value_label)}/></div> <div class="col-12 col-md-4"><label class="form-label" for="product-type-line-unit">Line value unit</label> <input class="form-control" id="product-type-line-unit"${attr("value", productTypeDraft.graph_line_value_unit)}/></div> <div class="col-12 col-md-3"><label class="form-label" for="product-type-x-label">X axis label</label> <input class="form-control" id="product-type-x-label"${attr("value", productTypeDraft.graph_x_axis_label)}/></div> <div class="col-12 col-md-3"><label class="form-label" for="product-type-x-unit">X axis unit</label> <input class="form-control" id="product-type-x-unit"${attr("value", productTypeDraft.graph_x_axis_unit)}/></div> <div class="col-12 col-md-3"><label class="form-label" for="product-type-y-label">Y axis label</label> <input class="form-control" id="product-type-y-label"${attr("value", productTypeDraft.graph_y_axis_label)}/></div> <div class="col-12 col-md-3"><label class="form-label" for="product-type-y-unit">Y axis unit</label> <input class="form-control" id="product-type-y-unit"${attr("value", productTypeDraft.graph_y_axis_unit)}/></div></div> `);
     if (selectedProductType) {
       $$renderer2.push("<!--[0-->");
-      $$renderer2.push(`<div class="mt-4">`);
-      SeriesNamesBadgeList($$renderer2, {
-        seriesNames: selectedProductType.series_names || [],
-        title: `Series names for ${selectedProductType.label}`,
-        emptyLabel: "This product type does not have any series yet."
-      });
-      $$renderer2.push(`<!----></div> <div class="d-flex flex-wrap gap-2 mt-3"><button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", refreshingPdfJob?.status === "running", true)}>${escape_html("Generate Product Type PDF")}</button> `);
+      $$renderer2.push(`<div class="mt-4"><div class="card shadow-sm"><div class="card-body"><h3 class="h6 mb-2">Series order for Product Type PDFs</h3> <p class="text-body-secondary small">Move selected series to the front in the order shown. Any series not explicitly moved remains alphabetical.</p> `);
+      if (orderedPdfSeries.length) {
+        $$renderer2.push("<!--[0-->");
+        $$renderer2.push(`<ol class="list-group list-group-numbered"><!--[-->`);
+        const each_array_2 = ensure_array_like(orderedPdfSeries);
+        for (let index = 0, $$length = each_array_2.length; index < $$length; index++) {
+          let series = each_array_2[index];
+          $$renderer2.push(`<li class="list-group-item d-flex align-items-center justify-content-between gap-2"><span>${escape_html(series.name)}</span> <span class="d-flex gap-1"><button class="btn btn-outline-secondary btn-sm" type="button"${attr("aria-label", `Move ${series.name} up`)}${attr("disabled", index === 0, true)}>↑</button> <button class="btn btn-outline-secondary btn-sm" type="button"${attr("aria-label", `Move ${series.name} down`)}${attr("disabled", index === orderedPdfSeries.length - 1, true)}>↓</button></span></li>`);
+        }
+        $$renderer2.push(`<!--]--></ol>`);
+      } else {
+        $$renderer2.push("<!--[-1-->");
+        $$renderer2.push(`<p class="text-body-secondary mb-0">This product type does not have any series yet.</p>`);
+      }
+      $$renderer2.push(`<!--]--></div></div></div> <div class="d-flex flex-wrap gap-2 mt-3"><button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", refreshingPdfJob?.status === "running", true)}>${escape_html("Generate Product Type PDF")}</button> `);
       JobProgressPanel($$renderer2, { job: refreshingPdfJob, label: "Product type PDF generation" });
       $$renderer2.push(`<!----> `);
       if (selectedProductType.product_type_pdf_url) {

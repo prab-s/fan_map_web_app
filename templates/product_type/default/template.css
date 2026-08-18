@@ -219,6 +219,68 @@ body.product-type-template {
   object-fit: contain;
 }
 
+/* Contents pages are emitted as complete A4 sheets when a product type has
+   more series than can fit on its first contents sheet. */
+.pdf-page {
+  position: relative;
+  width: 210mm;
+  height: 297mm;
+  min-height: 297mm;
+  margin: 0 auto;
+  padding: 0 7mm 6mm;
+  background: #fff;
+  break-after: page;
+  page-break-after: always;
+}
+
+.pdf-page:last-of-type {
+  break-after: auto;
+  page-break-after: auto;
+}
+
+.contents-page__header {
+  min-height: 22mm;
+  margin: 0 -7mm 6mm;
+  padding: 4mm 17mm;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #fff;
+  background: linear-gradient(90deg, #21406f, #5276a9);
+}
+
+.contents-page__section-label {
+  display: inline-block;
+  padding: 1mm;
+  margin-bottom: 1mm;
+  background: #f6c400;
+  color: #000;
+  font-size: 2.8mm;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.contents-page__header h1 {
+  margin: 0 10mm;
+  font-size: 8mm;
+  line-height: 1;
+}
+
+.contents-page__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16mm;
+  height: 16mm;
+}
+
+.contents-page__icon-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
 .series-tile__placeholder {
   width: 100%;
   height: 26mm;

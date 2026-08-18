@@ -31,11 +31,7 @@
         <div class="series-panel__content">{{product_type.series_names_html}}</div>
       </section>
 
-      <section class="contents-panel">
-        <h2>Contents</h2>
-        <p class="contents-panel__summary">Each series block below is rendered from the product type context, so the PDF stays aligned with the linked series and products.</p>
-        <div class="contents-panel__content">{{product_type.series_groups_html}}</div>
-      </section>
     </main>
+    {{product_type.contents_pages_html}}
   </body>
 </html>

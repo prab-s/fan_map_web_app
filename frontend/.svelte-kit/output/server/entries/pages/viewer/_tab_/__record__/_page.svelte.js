@@ -11,9 +11,9 @@ import { B as getProductChartData, y as getSeries, i as getSeriesById, C as getP
 import { E as ECharts, g as getChartTheme, b as buildFullChartOption } from "../../../../../chunks/fullChart.js";
 import { t as theme } from "../../../../../chunks/config.js";
 import { a as getDescriptionSections } from "../../../../../chunks/descriptionSections.js";
-import { J as JobProgressPanel, S as SeriesNamesBadgeList } from "../../../../../chunks/SeriesNamesBadgeList.js";
+import { J as JobProgressPanel } from "../../../../../chunks/JobProgressPanel.js";
+import { S as SeriesNamesBadgeList, f as fanAcousticVariant } from "../../../../../chunks/fanAcoustic.js";
 import { A as AssociatedDocumentsPanel } from "../../../../../chunks/AssociatedDocumentsPanel.js";
-import { f as fanAcousticVariant } from "../../../../../chunks/fanAcoustic.js";
 import { h as html } from "../../../../../chunks/html.js";
 function _page($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
@@ -451,15 +451,18 @@ function _page($$renderer, $$props) {
     }
     selectedProductTypeRecord = productTypes.find((productType) => String(productType.id) === String(selectedProductTypeId) || String(productType.key) === String(selectedProductTypeId)) || null;
     if (String(selectedProductTypeId || "") !== String(previousSelectedProductTypeId || "")) {
+      const hadPreviousProductType = Boolean(previousSelectedProductTypeId);
       previousSelectedProductTypeId = selectedProductTypeId || "";
-      selectedProductTypeContext = null;
-      if (selectedProductTypeId && activeViewerTab === "product-type") {
+      if (hadPreviousProductType) {
+        selectedProductTypeContext = null;
+      }
+      if (selectedProductTypeId && activeViewerTab === "product-type" && !selectedProductTypeContext) {
         loadProductTypeContext(selectedProductTypeId);
       }
     }
     if (activeViewerTab !== previousActiveViewerTab) {
       previousActiveViewerTab = activeViewerTab;
-      if (activeViewerTab === "product-type" && selectedProductTypeId) {
+      if (activeViewerTab === "product-type" && selectedProductTypeId && !selectedProductTypeContext) {
         loadProductTypeContext(selectedProductTypeId);
       }
     }

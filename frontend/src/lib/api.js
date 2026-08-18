@@ -137,6 +137,15 @@ export async function getProducts(params = {}) {
   return r.json();
 }
 
+export async function applyBulkAction(body) {
+  const r = await apiFetch('/bulk-actions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  return r.json();
+}
+
 export async function getProductTypes() {
   const r = await apiFetch('/product-types');
   return r.json();

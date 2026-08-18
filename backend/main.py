@@ -145,6 +145,8 @@ from backend.schemas import (
     BulkImportTableSummaryResponse,
     BulkImportManifestSheetResponse,
     BulkImageImportResponse,
+    BulkActionRequest,
+    BulkActionResponse,
     ProductTypePdfResponse,
     SetupLogEntryResponse,
     PublicAccessLogEntryResponse,
@@ -168,6 +170,8 @@ IMPORTS_DIR = Path(DEFAULT_DATA_DIR) / "bulk_imports"
 PRODUCT_PDFS_DIR = Path(DEFAULT_DATA_DIR) / "product_pdfs"
 PRODUCT_TYPE_PDFS_DIR = Path(DEFAULT_DATA_DIR) / "product_type_pdfs"
 ALL_PRODUCT_TYPES_PDF_FILE_NAME = "product_type_printed_all.pdf"
+PRODUCT_TYPE_PDF_CONTEXT_CACHE: dict[int, tuple[tuple, ProductTypePdfResponse]] = {}
+PRODUCT_TYPE_PDF_CONTEXT_CACHE_LOCK = threading.Lock()
 SERIES_GRAPHS_DIR = Path(DEFAULT_DATA_DIR) / "series_graphs"
 SERIES_PDFS_DIR = Path(DEFAULT_DATA_DIR) / "series_pdfs"
 ASSOCIATED_DOCUMENTS_DIR = Path(DEFAULT_DATA_DIR) / "associated_documents"
@@ -2663,6 +2667,7 @@ def bulk_import_process_payloads(
             sync_product_image_files(product)
         for series in touched_series.values():
             sync_series_image_files(series)
+            refresh_series_graph(series)
         db.commit()
         for product in touched_products.values():
             db.refresh(product)
@@ -5311,6 +5316,35 @@ def build_product_type_series_legend_html(series_summaries: list[dict], include_
     return '<ul class="series-legend">' + "".join(items) + "</ul>"
 
 
+def ordered_product_type_pdf_series(product_type: ProductType) -> list[Series]:
+    """Return linked series in the product-type PDF order.
+
+    Explicitly ordered series are placed first in the saved sequence. Any
+    linked series not in that sequence are retained in alphabetical order.
+    """
+    alphabetical_series = sorted(
+        product_type.series or [],
+        key=lambda item: ((item.name or "").casefold(), item.id or 0),
+    )
+    series_by_id = {int(series.id): series for series in alphabetical_series if series.id is not None}
+    ordered_ids: list[int] = []
+    for raw_id in (getattr(product_type, "product_type_pdf_series_order", None) or []):
+        try:
+            series_id = int(raw_id)
+        except (TypeError, ValueError):
+            continue
+        if series_id in series_by_id and series_id not in ordered_ids:
+            ordered_ids.append(series_id)
+
+    explicitly_ordered = [series_by_id[series_id] for series_id in ordered_ids]
+    remaining = [series for series in alphabetical_series if int(series.id) not in ordered_ids]
+    return explicitly_ordered + remaining
+
+
+def product_type_pdf_series_names(product_type: ProductType) -> list[str]:
+    return [series.name for series in ordered_product_type_pdf_series(product_type) if series.name]
+
+
 def build_product_type_series_groups_html(
     product_type: ProductType,
     series_summaries: list[dict],
@@ -5361,6 +5395,51 @@ def build_product_type_series_groups_html(
     return "".join(parts)
 
 
+PRODUCT_TYPE_CONTENTS_TILES_PER_PAGE = 12
+
+
+def product_type_contents_page_chunks(series_summaries: list[dict]) -> list[list[dict]]:
+    """Split contents tiles into bounded groups so each group fits an A4 page."""
+    if not series_summaries:
+        return [[]]
+    return [
+        series_summaries[index:index + PRODUCT_TYPE_CONTENTS_TILES_PER_PAGE]
+        for index in range(0, len(series_summaries), PRODUCT_TYPE_CONTENTS_TILES_PER_PAGE)
+    ]
+
+
+def build_product_type_contents_pages_html(
+    product_type: ProductType,
+    series_summaries: list[dict],
+) -> str:
+    """Render one complete, repeatable contents page per tile group."""
+    chunks = product_type_contents_page_chunks(series_summaries)
+    pages: list[str] = []
+    for index, chunk in enumerate(chunks, start=1):
+        page_label = "Product Type" if len(chunks) == 1 else f"Product Type · Contents {index} of {len(chunks)}"
+        pages.append(
+            '<section class="pdf-page pdf-page--portrait contents-page">'
+            '<header class="contents-page__header">'
+            '<div>'
+            f'<div class="contents-page__section-label">{html.escape(page_label)}</div>'
+            f'<h1>{html.escape(product_type.label or "")}</h1>'
+            '</div>'
+            '<div class="contents-page__icon">'
+            f'<img src="{html.escape(build_product_type_contents_icon_url(product_type))}" '
+            f'alt="{html.escape(product_type.label or "")} contents icon" class="contents-page__icon-image" />'
+            '</div>'
+            '</header>'
+            '<section class="contents-panel">'
+            '<h2>Series groups</h2>'
+            '<div class="contents-panel__content product-type-contents">'
+            f'{build_product_type_series_groups_html(product_type, chunk, include_page_ranges=True)}'
+            '</div>'
+            '</section>'
+            '</section>'
+        )
+    return "".join(pages)
+
+
 def resolve_product_type_series_pdf_source(series: Series) -> Path | None:
     printed_path = series_pdf_path(series)
     if printed_path.is_file():
@@ -5374,7 +5453,7 @@ def build_product_type_series_pdf_summaries(
     strict: bool = True,
     progress_callback=None,
 ) -> tuple[list[dict], list[Path]]:
-    ordered_series = sorted(product_type.series or [], key=lambda item: (item.name or "").casefold())
+    ordered_series = ordered_product_type_pdf_series(product_type)
     series_summaries: list[dict] = []
     source_paths: list[Path] = []
 
@@ -5581,6 +5660,7 @@ def render_product_type_intro_with_page_ranges(
         rendered_series_groups_html,
         series_legend_html,
         series_collage_image_uri,
+        build_product_type_contents_pages_html(product_type, series_summaries),
     )
     if progress_callback:
         progress_callback(f"Rendering product type intro for {product_type.label}", 1, 2)
@@ -5612,6 +5692,7 @@ def render_product_type_intro_with_page_ranges(
         rendered_series_groups_html,
         series_legend_html,
         series_collage_image_uri,
+        build_product_type_contents_pages_html(product_type, series_summaries),
     )
     if progress_callback:
         progress_callback(f"Rendering product type intro with page ranges for {product_type.label}", 2, 2)
@@ -5632,6 +5713,7 @@ def build_product_type_pdf_html(
     series_groups_html: str,
     series_legend_html: str,
     series_collage_image_uri: str,
+    contents_pages_html: str | None = None,
 ) -> tuple[str, str]:
     template_id = resolve_product_type_pdf_template_id(product_type) or "product_type-default"
     template_definition = get_template_definition(template_id, "product_type")
@@ -5663,6 +5745,7 @@ def build_product_type_pdf_html(
         "{{product_type.series_legend_html}}": series_legend_html,
         "{{product_type.series_groups_html}}": series_groups_html,
         "{{product_type.contents_html}}": series_groups_html,
+        "{{product_type.contents_pages_html}}": contents_pages_html or build_product_type_contents_pages_html(product_type, []),
     }
 
     rendered = html_template
@@ -5676,7 +5759,7 @@ def build_product_type_pdf_base(product_type: ProductType, temp_dir: Path, progr
         product_type,
         progress_callback=_make_progress_window(progress_callback, 1, 20) if progress_callback else None,
     )
-    series_names_html = build_product_type_series_names_html(product_type.series_names or [])
+    series_names_html = build_product_type_series_names_html(product_type_pdf_series_names(product_type))
     series_legend_html = build_product_type_series_legend_html(series_summaries)
     series_collage_image_uri = build_product_type_series_collage_image_uri(series_summaries, temp_dir)
     intro_base_path, intro_page_count, series_groups_html, _ = render_product_type_intro_with_page_ranges(
@@ -5724,7 +5807,7 @@ def build_product_type_pdf_base(product_type: ProductType, temp_dir: Path, progr
 
 def build_product_type_pdf_context_metadata(product_type: ProductType, temp_dir: Path) -> dict:
     series_summaries, _ = build_product_type_series_pdf_summaries(product_type, strict=False)
-    series_names_html = build_product_type_series_names_html(product_type.series_names or [])
+    series_names_html = build_product_type_series_names_html(product_type_pdf_series_names(product_type))
     series_legend_html = build_product_type_series_legend_html(series_summaries)
     series_collage_image_uri = build_product_type_series_collage_image_uri(series_summaries, temp_dir)
     _, intro_page_count, series_groups_html, _ = render_product_type_intro_with_page_ranges(
@@ -5752,6 +5835,50 @@ def build_product_type_pdf_context_metadata(product_type: ProductType, temp_dir:
         "series_legend_html": series_legend_html,
         "series_collage_image_uri": series_collage_image_uri,
     }
+
+
+def product_type_pdf_context_cache_key(product_type: ProductType) -> tuple:
+    """Build a cheap fingerprint for data used by the PDF context preview."""
+    series_fingerprints = []
+    for series in sorted(product_type.series or [], key=lambda item: int(item.id or 0)):
+        source_path = resolve_product_type_series_pdf_source(series)
+        try:
+            source_fingerprint = (
+                str(source_path),
+                source_path.stat().st_mtime_ns,
+                source_path.stat().st_size,
+            ) if source_path is not None else None
+        except OSError:
+            source_fingerprint = None
+
+        products = sorted(series.products or [], key=lambda item: ((item.model or "").casefold(), item.id or 0))
+        series_fingerprints.append(
+            (
+                series.id,
+                series.name,
+                series.contents_description,
+                series.description1_html,
+                series_primary_image_uri(series),
+                source_fingerprint,
+                tuple(
+                    (
+                        product.id,
+                        product.model,
+                        product_primary_image_uri(product),
+                    )
+                    for product in products
+                ),
+            )
+        )
+
+    return (
+        product_type.id,
+        product_type.key,
+        product_type.label,
+        product_type.contents_icon_url,
+        tuple(product_type.product_type_pdf_series_order or []),
+        tuple(series_fingerprints),
+    )
 
 
 def build_product_type_page_decorations(metadata: dict, decorations: list[dict] | None = None) -> list[dict]:
@@ -5843,8 +5970,13 @@ def _product_type_pdf_intro_page_count(
     series_pages = sum(pdf_page_count(path) for path in series_paths)
     remaining_pages = max(total_pages - series_pages, 0)
     template_id = resolve_product_type_pdf_template_id(product_type) or "product_type-default"
+    contents_page_count = len(product_type_contents_page_chunks(
+        build_product_type_series_pdf_summaries(product_type, strict=False)[0]
+    ))
     if template_id in {"product_type-printed_type_1", "product_type-printed_type_2"}:
-        return min(4, remaining_pages)
+        return min(3 + contents_page_count, remaining_pages)
+    if template_id == "product_type-default":
+        return min(1 + contents_page_count, remaining_pages)
     if series_paths and remaining_pages > 1 and remaining_pages % 2 == 0:
         return remaining_pages - 1
     return remaining_pages
@@ -5865,13 +5997,14 @@ def _render_combined_product_type_contents_page(
     page_count_before_contents: int,
     temp_dir: Path,
 ) -> tuple[Path, int]:
-    """Render a product-type intro and return its final contents page.
+    """Render a product-type intro containing all required contents pages.
 
     Rendering the existing product-type template lets the combined catalogue
-    retain the configured visual contents layout.  Only its final page is used;
-    the shared cover/contact pages are supplied once by the combined catalogue.
+    retain the configured visual contents layout. The caller keeps every
+    contents page and supplies the shared cover/contact pages separately.
     """
-    series_page_cursor = page_count_before_contents + 1
+    contents_page_count = len(product_type_contents_page_chunks(series_summaries))
+    series_page_cursor = page_count_before_contents + contents_page_count
     if series_summaries and series_page_cursor % 2 == 1:
         series_page_cursor += 1
     for summary in series_summaries:
@@ -5881,12 +6014,9 @@ def _render_combined_product_type_contents_page(
         if page_count:
             series_page_cursor += page_count
 
-    series_names_html = build_product_type_series_names_html(product_type.series_names or [])
-    series_groups_html = build_product_type_series_groups_html(
-        product_type,
-        series_summaries,
-        include_page_ranges=True,
-    )
+    series_names_html = build_product_type_series_names_html(product_type_pdf_series_names(product_type))
+    series_groups_html = build_product_type_series_groups_html(product_type, series_summaries, include_page_ranges=True)
+    contents_pages_html = build_product_type_contents_pages_html(product_type, series_summaries)
     series_legend_html = build_product_type_series_legend_html(
         series_summaries,
         include_page_ranges=True,
@@ -5898,6 +6028,7 @@ def _render_combined_product_type_contents_page(
         series_groups_html,
         series_legend_html,
         collage_uri,
+        contents_pages_html,
     )
     rendered_path = temp_dir / f"combined_{sanitize_name(product_type.key or product_type.label or 'unknown')}_intro.pdf"
     render_pdf_from_html(intro_html, rendered_path, stylesheet_text)
@@ -5959,7 +6090,8 @@ def generate_all_product_types_pdf(
         temp_dir = Path(temp_dir_name)
         writer = PdfWriter()
         shared_intro_count = shared["intro_page_count"]
-        shared_page_count = max(shared_intro_count - 1, 0)
+        shared_contents_page_count = len(product_type_contents_page_chunks(shared["series_summaries"]))
+        shared_page_count = max(shared_intro_count - shared_contents_page_count, 0)
         _append_pdf_page_slice(writer, shared["source_path"], 0)
         # Remove the shared source's product-type contents page; it is replaced
         # below by one contents page for each product type.
@@ -5980,11 +6112,14 @@ def generate_all_product_types_pdf(
                 current_page_count,
                 temp_dir,
             )
-            # The contents page is the final page in every registered product-
-            # type template, including the compact/default fallback.
+            # Keep every generated contents page; long product types can need
+            # multiple pages before their series PDFs begin.
             contents_reader = PdfReader(str(contents_path))
-            writer.add_page(contents_reader.pages[-1])
-            current_page_count += 1
+            contents_page_count = len(product_type_contents_page_chunks(item["series_summaries"]))
+            contents_start_index = max(len(contents_reader.pages) - contents_page_count, 0)
+            for page in contents_reader.pages[contents_start_index:]:
+                writer.add_page(page)
+            current_page_count += contents_page_count
 
             if item["series_paths"]:
                 if current_page_count % 2 == 1:
@@ -6433,9 +6568,25 @@ def delete_product_assets(product: Product):
         remove_file(product.graph_image_path)
 
 
+def refresh_series_graph(series: Series):
+    series_graph_path_value = series_graph_path(series)
+    if series.product_type and series.product_type.supports_graph and series_has_graph_capable_line_data(series):
+        generate_series_graph(series)
+    else:
+        remove_file(series_graph_path_value)
+
+
 def refresh_graph_for_product(db: Session, product: Product):
     db.refresh(product)
     sync_graph_image(product, list(product.rpm_lines), list(product.efficiency_points))
+    series = product.series
+    if series is None:
+        return
+
+    # A series graph is derived from the linked products' graph data. Keep it
+    # in sync whenever a product graph is refreshed, including point/line
+    # edits that do not go through the product save endpoint.
+    refresh_series_graph(series)
 
 
 def sync_fan_acoustic_table_for_product(db: Session, product: Product):
@@ -7581,7 +7732,7 @@ async def client_telemetry(request: Request):
     telemetry = {
         "event": "browser-telemetry",
         "site": "internal",
-        "route_group": "internal-browser-telemetry" if parsed_page.path.startswith(("/editor", "/viewer", "/template-builder", "/bulk-import", "/setup")) else "public-browser-telemetry",
+        "route_group": "internal-browser-telemetry" if parsed_page.path.startswith(("/editor", "/viewer", "/template-builder", "/bulk-import", "/bulk-actions", "/setup")) else "public-browser-telemetry",
         "logged_at": datetime.datetime.now(tz=APP_TIMEZONE).isoformat(timespec="seconds"),
         **_extract_public_client(request),
         "telemetry": {
@@ -7735,6 +7886,7 @@ def create_product_type(body: ProductTypeCreate, db: Session = Depends(get_db)):
         graph_y_axis_label=(body.graph_y_axis_label or "").strip() or None,
         graph_y_axis_unit=(body.graph_y_axis_unit or "").strip() or None,
         product_type_template_id=validate_template_id(body.product_type_template_id, "product_type"),
+        product_type_pdf_series_order=[int(series_id) for series_id in (body.product_type_pdf_series_order or [])],
         series_template_id=validate_template_id(body.series_template_id, "series"),
         printed_product_template_id=printed_product_template_id,
         online_product_template_id=online_product_template_id,
@@ -7759,6 +7911,7 @@ def update_product_type(product_type_id: int, body: ProductTypeUpdate, db: Sessi
         raise HTTPException(status_code=404, detail="Product type not found.")
 
     updates = body.model_dump(exclude_unset=True)
+    pdf_series_order_changed = "product_type_pdf_series_order" in updates
 
     if "key" in updates:
         new_key = sanitize_name((updates.get("key") or "").strip())
@@ -7796,6 +7949,18 @@ def update_product_type(product_type_id: int, body: ProductTypeUpdate, db: Sessi
 
     if "product_type_template_id" in updates:
         product_type.product_type_template_id = validate_template_id(updates["product_type_template_id"], "product_type")
+    if "product_type_pdf_series_order" in updates:
+        requested_order = updates["product_type_pdf_series_order"] or []
+        linked_series_ids = {int(series.id) for series in (product_type.series or []) if series.id is not None}
+        normalized_order = []
+        for series_id in requested_order:
+            try:
+                series_id = int(series_id)
+            except (TypeError, ValueError):
+                continue
+            if series_id in linked_series_ids and series_id not in normalized_order:
+                normalized_order.append(series_id)
+        product_type.product_type_pdf_series_order = normalized_order
     if "contents_icon_url" in updates:
         product_type.contents_icon_url = (updates["contents_icon_url"] or "").strip() or None
 
@@ -7824,6 +7989,10 @@ def update_product_type(product_type_id: int, body: ProductTypeUpdate, db: Sessi
             elif field == "band_graph_faded_opacity":
                 value = None if value is None else max(0, min(1, float(value)))
             setattr(product_type, field, value)
+
+    if pdf_series_order_changed:
+        remove_file(product_type_pdf_path(product_type))
+        remove_file(all_product_types_pdf_path())
 
     db.commit()
     db.refresh(product_type)
@@ -7922,11 +8091,18 @@ def get_product_type_pdf_context(product_type_id: int, db: Session = Depends(get
     if not product_type:
         raise HTTPException(status_code=404, detail="Product type not found.")
 
+    cache_key = product_type_pdf_context_cache_key(product_type)
+    with PRODUCT_TYPE_PDF_CONTEXT_CACHE_LOCK:
+        cached_context = PRODUCT_TYPE_PDF_CONTEXT_CACHE.get(product_type.id)
+        if cached_context and cached_context[0] == cache_key:
+            logger.info("[product-type-pdf] context cache hit product_type=%s", product_type.label)
+            return cached_context[1]
+
     with tempfile.TemporaryDirectory(prefix="product-type-context-") as temp_dir_name:
         temp_dir = Path(temp_dir_name)
         metadata = build_product_type_pdf_context_metadata(product_type, temp_dir)
 
-    return ProductTypePdfResponse(
+    response = ProductTypePdfResponse(
         id=product_type.id,
         key=product_type.key,
         label=product_type.label,
@@ -7941,6 +8117,9 @@ def get_product_type_pdf_context(product_type_id: int, db: Session = Depends(get
         product_type_printed_pdf_url=product_type.product_type_printed_pdf_url,
         series=metadata["series_summaries"],
     )
+    with PRODUCT_TYPE_PDF_CONTEXT_CACHE_LOCK:
+        PRODUCT_TYPE_PDF_CONTEXT_CACHE[product_type.id] = (cache_key, response)
+    return response
 
 
 @app.post(
@@ -8543,8 +8722,7 @@ def update_series(series_id: int, body: SeriesUpdate, db: Session = Depends(get_
     # image when the series has graph-capable data.
     for product in list(series.products):
         sync_graph_image(product, list(product.rpm_lines), list(product.efficiency_points))
-    if series.product_type and series.product_type.supports_graph and series_has_graph_capable_line_data(series):
-        generate_series_graph(series)
+    refresh_series_graph(series)
     db.commit()
     assign_series_product_counts([series], load_series_product_counts(db, [series.id]))
     notify_public_catalogue_cache_refresh()
@@ -8579,13 +8757,7 @@ def refresh_series_graph_image(series_id: int, db: Session = Depends(get_db)):
 def refresh_series_pdf(series_id: int, db: Session = Depends(get_db)):
     series = load_series_graph_ready_series(db, series_id)
     try:
-        if series.product_type and series.product_type.supports_graph and series_has_graph_capable_line_data(series):
-            generate_series_graph(series)
-        else:
-            logger.info(
-                "[series_pdf:%s] graph generation skipped because there is no graph-capable line data to plot",
-                series_id,
-            )
+        refresh_series_graph(series)
         generate_series_pdfs(series)
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=f"Unable to generate series PDF: {exc}") from exc
@@ -9201,6 +9373,135 @@ def list_products(
     return [product for product in results if product_matches_parameter_filters(product, parsed_parameter_filters)]
 
 
+@app.post(
+    "/api/bulk-actions",
+    response_model=BulkActionResponse,
+    dependencies=[Depends(get_current_user)],
+    tags=["Maintenance"],
+    summary="Apply an action to every product in a series or product type",
+)
+def apply_bulk_action(body: BulkActionRequest, db: Session = Depends(get_db)):
+    product_type = get_product_type_by_key(db, body.product_type_key)
+    if not product_type:
+        raise HTTPException(status_code=404, detail="Product type not found")
+    if body.series_id is not None:
+        series = db.get(Series, body.series_id)
+        if not series or series.product_type_key != body.product_type_key:
+            raise HTTPException(status_code=404, detail="Series not found for the selected product type")
+
+    if body.action == "pdf_template" and body.template_entity == "series":
+        if not body.template_id:
+            raise HTTPException(status_code=400, detail="Choose a PDF template")
+        template_id = validate_template_id(body.template_id, "series")
+        series_items = db.query(Series).filter(Series.product_type_id == product_type.id).all()
+        changed_count = 0
+        for series_item in series_items:
+            if series_item.printed_template_id != template_id or series_item.template_id != template_id:
+                changed_count += 1
+            series_item.printed_template_id = template_id
+            series_item.template_id = template_id
+        db.commit()
+        notify_public_catalogue_cache_refresh()
+        count = len(series_items)
+        return BulkActionResponse(
+            action=body.action,
+            product_type_key=body.product_type_key,
+            affected_product_count=count,
+            changed_product_count=changed_count,
+            skipped_product_count=count - changed_count,
+            message=f"Applied PDF template to {changed_count} of {count} series in product type {body.product_type_key}.",
+        )
+
+    query = (
+        db.query(Product)
+        .options(
+            joinedload(Product.product_type),
+            selectinload(Product.rpm_lines).selectinload(RpmLine.points),
+            selectinload(Product.efficiency_points),
+        )
+        .join(ProductType)
+        .filter(ProductType.key == body.product_type_key)
+    )
+    if body.series_id is not None:
+        query = query.filter(Product.series_id == body.series_id)
+    products = query.order_by(Product.model).all()
+
+    if body.action == "pdf_template":
+        if not body.template_id:
+            raise HTTPException(status_code=400, detail="Choose a PDF template")
+        template_id = validate_template_id(body.template_id, "product")
+        changed_product_count = 0
+        for product in products:
+            if product.printed_template_id != template_id or product.template_id != template_id:
+                changed_product_count += 1
+            product.printed_template_id = template_id
+            product.template_id = template_id
+    elif body.action == "permissible_use_mode":
+        if not body.permissible_use_mode:
+            raise HTTPException(status_code=400, detail="Choose a permissible-use shading mode")
+        changed_product_count = 0
+        for product in products:
+            if product.permissible_use_mode != body.permissible_use_mode:
+                changed_product_count += 1
+            product.permissible_use_mode = body.permissible_use_mode
+            refresh_graph_for_product(db, product)
+    elif body.action == "scale_efficiency_lines":
+        changed_product_count = 0
+        for product in products:
+            rpm_lines = [{"id": line.id, "rpm": line.rpm} for line in product.rpm_lines]
+            rpm_points = [
+                {"rpm_line_id": point.rpm_line_id, "airflow": point.airflow, "pressure": point.pressure}
+                for line in product.rpm_lines
+                for point in line.points
+            ]
+            points = [
+                {
+                    "airflow": point.airflow,
+                    "efficiency_centre": point.efficiency_centre,
+                    "efficiency_lower_end": point.efficiency_lower_end,
+                    "efficiency_higher_end": point.efficiency_higher_end,
+                    "permissible_use": point.permissible_use,
+                }
+                for point in product.efficiency_points
+            ]
+            scaled_points = bulk_import_scale_overlay_points_to_highest_rpm_line(points, rpm_lines, rpm_points)
+            product_changed = any(
+                any(
+                    scaled.get(key) != original.get(key)
+                    for key in ("efficiency_centre", "efficiency_lower_end", "efficiency_higher_end", "permissible_use")
+                )
+                for original, scaled in zip(points, scaled_points)
+            )
+            for point, scaled in zip(product.efficiency_points, scaled_points):
+                for key in ("efficiency_centre", "efficiency_lower_end", "efficiency_higher_end", "permissible_use"):
+                    setattr(point, key, scaled.get(key))
+            if product_changed:
+                changed_product_count += 1
+            db.flush()
+            refresh_graph_for_product(db, product)
+
+    db.commit()
+    notify_public_catalogue_cache_refresh()
+    scope = f"series {body.series_id}" if body.series_id is not None else f"product type {body.product_type_key}"
+    skipped_product_count = len(products) - changed_product_count
+    if body.action == "scale_efficiency_lines" and skipped_product_count:
+        message = (
+            f"Scaled efficiency lines for {changed_product_count} of {len(products)} product(s) in {scope}; "
+            f"{skipped_product_count} had no usable scaling change."
+        )
+    else:
+        message = f"Applied {body.action.replace('_', ' ')} to {changed_product_count} of {len(products)} product(s) in {scope}."
+    return BulkActionResponse(
+        action=body.action,
+        product_type_key=body.product_type_key,
+        series_id=body.series_id,
+        affected_product_count=len(products),
+        changed_product_count=changed_product_count,
+        skipped_product_count=skipped_product_count,
+        message=message,
+    )
+
+
 @app.post("/api/fans", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Products"], include_in_schema=False)
 @app.post("/api/products", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Products"], summary="Create a product")
 def create_product(body: ProductCreate, db: Session = Depends(get_db)):
@@ -9295,7 +9596,7 @@ def create_product(body: ProductCreate, db: Session = Depends(get_db)):
         product.fan_acoustic_table = fan_acoustic_table
         db.commit()
         db.refresh(product)
-    sync_graph_image(product, created_rpm_lines or list(product.rpm_lines), list(product.efficiency_points))
+    refresh_graph_for_product(db, product)
     db.commit()
     db.refresh(product)
     notify_public_catalogue_cache_refresh()
@@ -9326,6 +9627,7 @@ def get_product(product_id: int, db: Session = Depends(get_db)):
 @app.put("/api/products/{product_id}", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Products"], summary="Replace a product")
 def update_product(product_id: int, body: ProductUpdate, db: Session = Depends(get_db)):
     product = require_product(db, product_id)
+    previous_series = product.series
     updates = body.model_dump(exclude_unset=True)
     fan_acoustic_table_specified = "fan_acoustic_table" in body.model_fields_set
     fan_acoustic_table = updates.pop("fan_acoustic_table", None) if fan_acoustic_table_specified else None
@@ -9384,7 +9686,9 @@ def update_product(product_id: int, body: ProductUpdate, db: Session = Depends(g
     # Product metadata (including the series name, graph mode, and graph
     # styling) is part of the rendered graph payload, so every product save
     # must refresh the stored graph image rather than only graph-style saves.
-    sync_graph_image(product, list(product.rpm_lines), list(product.efficiency_points))
+    refresh_graph_for_product(db, product)
+    if previous_series is not None and previous_series is not product.series:
+        refresh_series_graph(previous_series)
     db.commit()
     db.refresh(product)
     notify_public_catalogue_cache_refresh()
@@ -9470,6 +9774,8 @@ def replace_product_graph_data_endpoint(product_id: int, body: ProductGraphDataR
     replace_product_graph_data(db, product, body.rpm_lines, body.efficiency_points)
     db.commit()
     db.refresh(product)
+    refresh_graph_for_product(db, product)
+    db.commit()
     notify_public_catalogue_cache_refresh()
     return product
 
@@ -9733,8 +10039,7 @@ def refresh_product_graph_image(product_id: int, db: Session = Depends(get_db)):
 @app.post("/api/products/{product_id}/pdf/refresh", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"], summary="Generate a product PDF")
 def refresh_product_pdf(product_id: int, db: Session = Depends(get_db)):
     product = require_product(db, product_id)
-    graph_path = Path(product.graph_image_path) if product.graph_image_path else None
-    if product.product_type and product.product_type.supports_graph and not (graph_path and graph_path.is_file()):
+    if product.product_type and product.product_type.supports_graph:
         refresh_graph_for_product(db, product)
     try:
         generate_product_pdfs(product)
@@ -9760,8 +10065,7 @@ def start_refresh_product_pdf_job(product_id: int):
         with SessionLocal() as db:
             product = require_product(db, product_id)
             progress(f"Loading product data for {product_label}", 1, 100)
-            graph_path = Path(product.graph_image_path) if product.graph_image_path else None
-            if product.product_type and product.product_type.supports_graph and not (graph_path and graph_path.is_file()):
+            if product.product_type and product.product_type.supports_graph:
                 try:
                     progress(f"Refreshing product graph image for {product_label}", 10, 100)
                     refresh_graph_for_product(db, product)

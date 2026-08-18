@@ -50,7 +50,7 @@ function _layout($$renderer, $$props) {
     editorActive = currentPath === "/editor" || currentPath.startsWith("/editor/");
     viewerActive = currentPath === "/viewer" || currentPath.startsWith("/viewer/");
     templateBuilderActive = currentPath === "/template-builder" || currentPath.startsWith("/template-builder/");
-    bulkImportActive = currentPath === "/bulk-import" || currentPath.startsWith("/bulk-import/");
+    bulkImportActive = currentPath === "/bulk-actions" || currentPath.startsWith("/bulk-actions/");
     setupActive = currentPath === "/setup" || currentPath.startsWith("/setup/");
     enquiriesActive = currentPath === "/enquiries" || currentPath.startsWith("/enquiries/");
     $$renderer2.push(`<div class="app-shell">`);
@@ -99,7 +99,7 @@ function _layout($$renderer, $$props) {
         $$renderer2.push(`Setup`);
       } else if (bulkImportActive) {
         $$renderer2.push("<!--[6-->");
-        $$renderer2.push(`Bulk Import`);
+        $$renderer2.push(`Bulk Actions`);
       } else {
         $$renderer2.push("<!--[-1-->");
         $$renderer2.push(`Overview`);
@@ -107,7 +107,7 @@ function _layout($$renderer, $$props) {
       $$renderer2.push(`<!--]--></span></div> <nav class="nav nav-underline justify-content-center mx-auto" aria-label="Primary"><a${attr_class(`nav-link ${homeActive ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/"${attr("aria-current", homeActive ? "page" : void 0)}>Home</a> <a${attr_class(`nav-link ${enquiriesActive ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/enquiries"${attr("aria-current", enquiriesActive ? "page" : void 0)}>Enquiries</a> <a${attr_class(`nav-link ${editorActive ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/editor"${attr("aria-current", editorActive ? "page" : void 0)}>Editor</a> <a${attr_class(`nav-link ${viewerActive ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/viewer"${attr("aria-current", viewerActive ? "page" : void 0)}>Viewer</a> <a${attr_class(`nav-link ${templateBuilderActive ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/template-builder"${attr("aria-current", templateBuilderActive ? "page" : void 0)}>Template Builder</a> `);
       if (store_get($$store_subs ??= {}, "$auth", auth).authenticated) {
         $$renderer2.push("<!--[0-->");
-        $$renderer2.push(`<a${attr_class(`nav-link ${bulkImportActive ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/bulk-import"${attr("aria-current", bulkImportActive ? "page" : void 0)}>Bulk Import</a>`);
+        $$renderer2.push(`<a${attr_class(`nav-link ${bulkImportActive ? "active text-body fw-medium" : "text-body-secondary"}`)} href="/bulk-actions"${attr("aria-current", bulkImportActive ? "page" : void 0)}>Bulk Actions</a>`);
       } else {
         $$renderer2.push("<!--[-1-->");
       }

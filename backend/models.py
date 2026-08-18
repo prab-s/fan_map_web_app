@@ -272,6 +272,7 @@ class ProductType(Base):
     graph_y_axis_label = Column(String(128), nullable=True)
     graph_y_axis_unit = Column(String(64), nullable=True)
     product_type_template_id = Column(String(128), nullable=True)
+    product_type_pdf_series_order = Column(JSON, nullable=True, default=list)
     product_template_id = Column(String(128), nullable=True)
     series_template_id = Column(String(128), nullable=True)
     printed_product_template_id = Column(String(128), nullable=True)

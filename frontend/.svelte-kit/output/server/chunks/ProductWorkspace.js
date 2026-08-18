@@ -9,12 +9,12 @@ import "./root.js";
 import "./state.svelte.js";
 import { u as updateProduct, g as getProducts, s as startRefreshProductPdfJob, r as refreshGraphImage, d as deleteProductImage, a as reorderProductImages, b as uploadProductImages, c as getProduct, e as getRpmLines, f as getRpmPoints, h as getEfficiencyPoints } from "./api.js";
 import { g as getChartTheme, b as buildFullChartOption, E as ECharts, R as RPM_BAND_FALLBACK_COLORS, F as FULL_CHART_LINE_DEFINITIONS } from "./fullChart.js";
-import { J as JobProgressPanel, S as SeriesNamesBadgeList, r as runMaintenanceJob } from "./SeriesNamesBadgeList.js";
+import { J as JobProgressPanel, r as runMaintenanceJob } from "./JobProgressPanel.js";
 import { A as AssociatedDocumentsPanel } from "./AssociatedDocumentsPanel.js";
 import { R as RichTextEditor } from "./RichTextEditor.js";
+import { S as SeriesNamesBadgeList, F as FAN_ACOUSTIC_VARIANT_MODES, f as fanAcousticVariant } from "./fanAcoustic.js";
 import { F as FAN_ACOUSTIC_DEFAULT_SOUND_POWER_COLUMNS, t as theme, e as emptyProductForm, P as PERMISSIBLE_USE_MODE_OPTIONS, G as GLOBAL_UNIT_OPTIONS } from "./config.js";
 import { c as createDescriptionSectionDrafts, g as getDescriptionFieldCount } from "./descriptionSections.js";
-import { F as FAN_ACOUSTIC_VARIANT_MODES, f as fanAcousticVariant } from "./fanAcoustic.js";
 function AccordionCard($$renderer, $$props) {
   let title = fallback($$props["title"], "");
   let description = fallback($$props["description"], "");

@@ -834,16 +834,19 @@
     ) || null;
 
   $: if (String(selectedProductTypeId || '') !== String(previousSelectedProductTypeId || '')) {
+    const hadPreviousProductType = Boolean(previousSelectedProductTypeId);
     previousSelectedProductTypeId = selectedProductTypeId || '';
-    selectedProductTypeContext = null;
-    if (selectedProductTypeId && activeViewerTab === 'product-type') {
+    if (hadPreviousProductType) {
+      selectedProductTypeContext = null;
+    }
+    if (selectedProductTypeId && activeViewerTab === 'product-type' && !selectedProductTypeContext) {
       loadProductTypeContext(selectedProductTypeId);
     }
   }
 
   $: if (activeViewerTab !== previousActiveViewerTab) {
     previousActiveViewerTab = activeViewerTab;
-    if (activeViewerTab === 'product-type' && selectedProductTypeId) {
+    if (activeViewerTab === 'product-type' && selectedProductTypeId && !selectedProductTypeContext) {
       loadProductTypeContext(selectedProductTypeId);
     }
   }

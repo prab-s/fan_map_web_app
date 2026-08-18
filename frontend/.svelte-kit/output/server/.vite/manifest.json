@@ -19,6 +19,16 @@
       "_equality.js"
     ]
   },
+  "_JobProgressPanel.js": {
+    "file": "chunks/JobProgressPanel.js",
+    "name": "JobProgressPanel",
+    "imports": [
+      "_index2.js",
+      "_index-server.js",
+      "_api.js",
+      "_equality.js"
+    ]
+  },
   "_ManagePageShell.js": {
     "file": "chunks/ManagePageShell.js",
     "name": "ManagePageShell",
@@ -38,7 +48,7 @@
       "_equality.js",
       "_root.js",
       "_state.svelte.js",
-      "_SeriesNamesBadgeList.js",
+      "_JobProgressPanel.js",
       "_AssociatedDocumentsPanel.js"
     ]
   },
@@ -55,12 +65,12 @@
       "_state.svelte.js",
       "_api.js",
       "_fullChart.js",
-      "_SeriesNamesBadgeList.js",
+      "_JobProgressPanel.js",
       "_AssociatedDocumentsPanel.js",
       "_RichTextEditor.js",
+      "_fanAcoustic.js",
       "_config.js",
-      "_descriptionSections.js",
-      "_fanAcoustic.js"
+      "_descriptionSections.js"
     ],
     "css": [
       "_app/immutable/assets/ProductWorkspace.Cdp6zMrW.css"
@@ -75,16 +85,6 @@
     ],
     "css": [
       "_app/immutable/assets/RichTextEditor.B1D0py3-.css"
-    ]
-  },
-  "_SeriesNamesBadgeList.js": {
-    "file": "chunks/SeriesNamesBadgeList.js",
-    "name": "SeriesNamesBadgeList",
-    "imports": [
-      "_index2.js",
-      "_index-server.js",
-      "_api.js",
-      "_equality.js"
     ]
   },
   "_SeriesWorkspace.js": {
@@ -155,7 +155,11 @@
   },
   "_fanAcoustic.js": {
     "file": "chunks/fanAcoustic.js",
-    "name": "fanAcoustic"
+    "name": "fanAcoustic",
+    "imports": [
+      "_index2.js",
+      "_equality.js"
+    ]
   },
   "_fullChart.js": {
     "file": "chunks/fullChart.js",
@@ -295,10 +299,10 @@
       "_state.svelte.js"
     ]
   },
-  "src/routes/bulk-import/+page.svelte": {
-    "file": "entries/pages/bulk-import/_page.svelte.js",
-    "name": "entries/pages/bulk-import/_page.svelte",
-    "src": "src/routes/bulk-import/+page.svelte",
+  "src/routes/bulk-actions/+page.svelte": {
+    "file": "entries/pages/bulk-actions/_page.svelte.js",
+    "name": "entries/pages/bulk-actions/_page.svelte",
+    "src": "src/routes/bulk-actions/+page.svelte",
     "isEntry": true,
     "imports": [
       "_index2.js",
@@ -311,8 +315,14 @@
       "_state.svelte.js"
     ],
     "css": [
-      "_app/immutable/assets/_page.CFIodOV5.css"
+      "_app/immutable/assets/_page.BJnAChqV.css"
     ]
+  },
+  "src/routes/bulk-import/+page.js": {
+    "file": "entries/pages/bulk-import/_page.js",
+    "name": "entries/pages/bulk-import/_page",
+    "src": "src/routes/bulk-import/+page.js",
+    "isEntry": true
   },
   "src/routes/catalogue/+page.svelte": {
     "file": "entries/pages/catalogue/_page.svelte.js",
@@ -753,9 +763,9 @@
       "_fullChart.js",
       "_config.js",
       "_descriptionSections.js",
-      "_SeriesNamesBadgeList.js",
-      "_AssociatedDocumentsPanel.js",
+      "_JobProgressPanel.js",
       "_fanAcoustic.js",
+      "_AssociatedDocumentsPanel.js",
       "_html.js"
     ],
     "css": [

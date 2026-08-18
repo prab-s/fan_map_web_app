@@ -1,10 +1,8 @@
-import * as universal from '../entries/pages/editor/series/edit/_page.js';
+
 
 export const index = 16;
 let component_cache;
-export const component = async () => component_cache ??= (await import('../entries/pages/editor/series/edit/_page.svelte.js')).default;
-export { universal };
-export const universal_id = "src/routes/editor/series/edit/+page.js";
-export const imports = ["_app/immutable/nodes/16.BM5zjfIn.js","_app/immutable/chunks/pfMRWl6z.js","_app/immutable/chunks/BUApaBEI.js","_app/immutable/chunks/CWj6FrbW.js","_app/immutable/chunks/CPZoAzom.js","_app/immutable/chunks/Bg_I6oEs.js","_app/immutable/chunks/Ba14pz6o.js","_app/immutable/chunks/COW419Hb.js","_app/immutable/chunks/CH9oVkyW.js","_app/immutable/chunks/ghHN6Zjl.js","_app/immutable/chunks/BwKtEPYy.js","_app/immutable/chunks/DCLvmrAU.js","_app/immutable/chunks/B_x9cG8t.js","_app/immutable/chunks/MJvokQ6W.js","_app/immutable/chunks/D56o_zzZ.js","_app/immutable/chunks/R88ZLPHK.js","_app/immutable/chunks/BMInMK86.js","_app/immutable/chunks/CLdLv54g.js","_app/immutable/chunks/DmPYqO2l.js","_app/immutable/chunks/B5xf_oRu.js","_app/immutable/chunks/5pcDWxd5.js","_app/immutable/chunks/D_ElazGu.js","_app/immutable/chunks/BWcXtBt6.js","_app/immutable/chunks/CesW363w.js","_app/immutable/chunks/TrSy1nQ4.js","_app/immutable/chunks/BqFzl4y2.js","_app/immutable/chunks/D7IEACvO.js","_app/immutable/chunks/Bfc47y5P.js"];
+export const component = async () => component_cache ??= (await import('../entries/pages/editor/series/create/_page.svelte.js')).default;
+export const imports = ["_app/immutable/nodes/16.rVovEY2y.js","_app/immutable/chunks/CWj6FrbW.js","_app/immutable/chunks/DyTZ4wJ-.js","_app/immutable/chunks/Dks1g1x5.js","_app/immutable/chunks/Ci80-ZQr.js","_app/immutable/chunks/BefxZq58.js","_app/immutable/chunks/CzwjxviM.js","_app/immutable/chunks/DQSWdVF-.js","_app/immutable/chunks/DdyaIqXy.js","_app/immutable/chunks/CTHzR-yQ.js","_app/immutable/chunks/9OcqGCMa.js","_app/immutable/chunks/BzZWsFGv.js","_app/immutable/chunks/CU2XiG24.js","_app/immutable/chunks/HlxcyvEL.js","_app/immutable/chunks/CL3eOxbG.js","_app/immutable/chunks/Cs896Fhh.js","_app/immutable/chunks/B5xf_oRu.js","_app/immutable/chunks/DL65Noq6.js","_app/immutable/chunks/BL-QYQqR.js","_app/immutable/chunks/6DXJX3RH.js","_app/immutable/chunks/BUApaBEI.js","_app/immutable/chunks/BWcXtBt6.js","_app/immutable/chunks/DBFOpWuS.js","_app/immutable/chunks/i7X3QgVe.js","_app/immutable/chunks/BzTRM4g1.js","_app/immutable/chunks/DG6VEMQ9.js","_app/immutable/chunks/Bfc47y5P.js"];
 export const stylesheets = ["_app/immutable/assets/RichTextEditor.B1D0py3-.css"];
 export const fonts = [];

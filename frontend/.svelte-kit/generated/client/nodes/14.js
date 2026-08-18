@@ -1,3 +1,3 @@
-import * as universal from "../../../../src/routes/editor/series/+page.js";
+import * as universal from "../../../../src/routes/editor/quote-requests/+page.js";
 export { universal };
-export { default as component } from "../../../../src/routes/editor/series/+page.svelte";
+export { default as component } from "../../../../src/routes/editor/quote-requests/+page.svelte";
