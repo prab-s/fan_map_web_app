@@ -241,6 +241,18 @@ async function deleteProductImage(productId, imageId) {
   });
   return r.json();
 }
+async function startRegenerateEverythingJob() {
+  const r = await apiFetch("/maintenance/jobs/regenerate-everything", {
+    method: "POST"
+  });
+  return r.json();
+}
+async function startDeleteAllGraphImagesJob() {
+  const r = await apiFetch("/maintenance/jobs/graph-images/clear", {
+    method: "POST"
+  });
+  return r.json();
+}
 async function getMaintenanceJob(jobId) {
   const r = await apiFetch(`/maintenance/jobs/${jobId}`);
   return r.json();
@@ -250,9 +262,11 @@ async function getUsers() {
   return r.json();
 }
 export {
-  getProductTypes as A,
-  getProductChartData as B,
-  getProductTypePdfContext as C,
+  getSeries as A,
+  getUsers as B,
+  getProductTypes as C,
+  getProductChartData as D,
+  getProductTypePdfContext as E,
   reorderProductImages as a,
   uploadProductImages as b,
   getProduct as c,
@@ -277,6 +291,6 @@ export {
   getPublicProducts as v,
   getPublicProduct as w,
   getPublicSeries as x,
-  getSeries as y,
-  getUsers as z
+  startRegenerateEverythingJob as y,
+  startDeleteAllGraphImagesJob as z
 };

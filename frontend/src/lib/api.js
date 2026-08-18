@@ -725,6 +725,13 @@ export async function startRegenerateAllProductTypePdfsJob() {
   return r.json();
 }
 
+export async function startRegenerateEverythingJob() {
+  const r = await apiFetch('/maintenance/jobs/regenerate-everything', {
+    method: 'POST'
+  });
+  return r.json();
+}
+
 export async function startRefreshAllProductTypesPdfJob() {
   const r = await apiFetch('/maintenance/jobs/all-product-types-pdf/refresh', {
     method: 'POST'

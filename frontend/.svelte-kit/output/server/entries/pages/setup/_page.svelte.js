@@ -4,7 +4,7 @@ import { o as onDestroy } from "../../../chunks/index-server.js";
 import { a as auth } from "../../../chunks/auth.js";
 import { G as GLOBAL_UNIT_OPTIONS } from "../../../chunks/config.js";
 import { f as fallback } from "../../../chunks/equality.js";
-import { g as getProducts, y as getSeries, z as getUsers, A as getProductTypes } from "../../../chunks/api.js";
+import { y as startRegenerateEverythingJob, z as startDeleteAllGraphImagesJob, g as getProducts, A as getSeries, B as getUsers, C as getProductTypes } from "../../../chunks/api.js";
 function FileManager($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
     let currentPath, pathSegments, canModifyCurrentFolder;
@@ -170,6 +170,7 @@ function _page($$renderer, $$props) {
     let sendingSmtpTest = false;
     let maintenanceLoading = false;
     let maintenanceErrorToast = "";
+    let pendingMaintenanceConfirmation = null;
     let products = [];
     let productsLoaded = false;
     let loadingProducts = false;
@@ -533,7 +534,25 @@ function _page($$renderer, $$props) {
         title: "Template File Manager",
         description: "Browse and manage template folders and files in the deployment volume. This covers the live template tree used for PDF generation."
       });
-      $$renderer2.push(`<!----></div> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Product Graph Images</h3> <p class="mb-0 text-body-secondary">Generate all product graph images in one pass, or clear them so they can be regenerated later.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Regenerate Product Graphs</button> <button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Clear Graph Images</button></div></div> `);
+      $$renderer2.push(`<!----></div> <div class="card border mb-3"><div class="card-body"><div class="mb-3"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Generation</p> <h3 class="h5 mb-1">Graphs and PDFs</h3> <p class="mb-0 text-body-secondary">Regenerate individual output groups, or run the complete graph and PDF generation workflow in one pass.</p></div> <div class="card border mb-3"><div class="card-body bg-primary-subtle bg-opacity-25"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h4 class="h6 mb-1">Regenerate Everything</h4> <p class="mb-0 text-body-secondary">Regenerate all product and series graph images, every PDF type, and the combined catalogue PDF in one long-running job.</p></div> <button class="btn btn-primary btn-sm" type="button"${attr("disabled", pendingMaintenanceConfirmation, true)}>Regenerate Everything</button></div> `);
+      if (pendingMaintenanceConfirmation?.starter === startRegenerateEverythingJob) {
+        $$renderer2.push("<!--[0-->");
+        $$renderer2.push(`<div class="alert alert-warning mt-3 mb-0 py-2"><div class="small mb-2">Regenerate all graph images and PDFs? This may take a long time.</div> <div class="d-flex gap-2"><button class="btn btn-warning btn-sm" type="button">Confirm regeneration</button> <button class="btn btn-outline-secondary btn-sm" type="button">Cancel</button></div></div>`);
+      } else {
+        $$renderer2.push("<!--[-1-->");
+      }
+      $$renderer2.push(`<!--]--> `);
+      {
+        $$renderer2.push("<!--[-1-->");
+      }
+      $$renderer2.push(`<!--]--></div></div> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Product Graph Images</h3> <p class="mb-0 text-body-secondary">Generate all product graph images in one pass, or clear them so they can be regenerated later.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Regenerate Product Graphs</button> <button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", pendingMaintenanceConfirmation, true)}>Clear Graph Images</button></div></div> `);
+      if (pendingMaintenanceConfirmation?.starter === startDeleteAllGraphImagesJob) {
+        $$renderer2.push("<!--[0-->");
+        $$renderer2.push(`<div class="alert alert-warning mt-3 mb-0 py-2"><div class="small mb-2">Delete all generated graph images and clear their saved paths?</div> <div class="d-flex gap-2"><button class="btn btn-warning btn-sm" type="button">Confirm clearing</button> <button class="btn btn-outline-secondary btn-sm" type="button">Cancel</button></div></div>`);
+      } else {
+        $$renderer2.push("<!--[-1-->");
+      }
+      $$renderer2.push(`<!--]--> `);
       {
         $$renderer2.push("<!--[-1-->");
       }
@@ -553,7 +572,7 @@ function _page($$renderer, $$props) {
       {
         $$renderer2.push("<!--[-1-->");
       }
-      $$renderer2.push(`<!--]--></div></div> <div class="card border"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-2"><div><h3 class="h6 mb-1">Type Presets</h3> <p class="mb-0 text-body-secondary">Edit the grouped specification presets, RPM line presets, and efficiency/permissible presets that
+      $$renderer2.push(`<!--]--></div></div></div></div> <div class="card border"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-2"><div><h3 class="h6 mb-1">Type Presets</h3> <p class="mb-0 text-body-secondary">Edit the grouped specification presets, RPM line presets, and efficiency/permissible presets that
                     flow into the product editor.</p></div> <button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", loadingProductTypes, true)}>${escape_html(loadingProductTypes ? "Refreshing..." : "Reload types")}</button></div> `);
       if (typePresetError) {
         $$renderer2.push("<!--[0-->");

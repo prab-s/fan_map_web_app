@@ -26,6 +26,7 @@
     startRegenerateAllProductPdfsJob,
     startRegenerateAllSeriesPdfsJob,
     startRegenerateAllProductTypePdfsJob,
+    startRegenerateEverythingJob,
     startRefreshAllProductTypesPdfJob,
     startRefreshCustomerFacingCacheJob,
     startRestoreDataBackupBundleJob,
@@ -66,6 +67,7 @@
   let mediaBackupFile = null;
   let maintenanceJob = null;
   let maintenancePollTimeout = null;
+  let pendingMaintenanceConfirmation = null;
   let products = [];
   let productsLoaded = false;
   let loadingProducts = false;
@@ -96,6 +98,7 @@
   let isHttpOrigin = false;
   let seriesByIdMap = new Map();
   let productsByIdMap = new Map();
+  const MAINTENANCE_JOB_STORAGE_KEY = 'fan-graphs.active-maintenance-job';
 
   function clearSuccessToast() {
     successMessages = [];
@@ -147,6 +150,7 @@
       loadSeries();
       loadProductTypes();
       loadTemplates();
+      restoreMaintenanceJob();
     }
   });
 
@@ -834,15 +838,33 @@
       maintenancePollTimeout = setTimeout(() => pollMaintenanceJob(jobId, options), 1500);
     } catch (error) {
       maintenanceLoading = false;
+      if (error?.status === 404 && browser) {
+        window.localStorage.removeItem(MAINTENANCE_JOB_STORAGE_KEY);
+      }
       addMaintenanceError(error?.message || options.errorMessage || 'Unable to read maintenance job status.');
     }
   }
 
-  async function runMaintenanceJob(starter, options = {}) {
-    if (options.confirmMessage && !window.confirm(options.confirmMessage)) {
-      return;
-    }
+  async function restoreMaintenanceJob() {
+    if (!browser) return;
+    const savedJobId = window.localStorage.getItem(MAINTENANCE_JOB_STORAGE_KEY);
+    if (!savedJobId || maintenanceLoading) return;
 
+    maintenanceLoading = true;
+    clearMaintenanceErrorToast();
+    try {
+      await pollMaintenanceJob(savedJobId, {
+        successMessage: 'Maintenance task completed while this page was closed.'
+      });
+    } finally {
+      if (!maintenanceLoading && maintenancePollTimeout) {
+        clearTimeout(maintenancePollTimeout);
+        maintenancePollTimeout = null;
+      }
+    }
+  }
+
+  async function runMaintenanceJob(starter, options = {}) {
     maintenanceLoading = true;
     clearMaintenanceErrorToast();
     maintenanceJob = null;
@@ -850,6 +872,9 @@
     try {
       const job = await starter();
       maintenanceJob = job;
+      if (browser && job?.id) {
+        window.localStorage.setItem(MAINTENANCE_JOB_STORAGE_KEY, job.id);
+      }
       await pollMaintenanceJob(job.id, options);
     } catch (error) {
       addMaintenanceError(error?.message || options.errorMessage || 'Unable to run maintenance task.');
@@ -860,6 +885,21 @@
         maintenancePollTimeout = null;
       }
     }
+  }
+
+  function requestMaintenanceConfirmation(starter, options = {}) {
+    pendingMaintenanceConfirmation = { starter, options };
+  }
+
+  async function confirmPendingMaintenance() {
+    const pending = pendingMaintenanceConfirmation;
+    pendingMaintenanceConfirmation = null;
+    if (!pending) return;
+    await runMaintenanceJob(pending.starter, { ...pending.options, confirmMessage: '' });
+  }
+
+  function cancelPendingMaintenance() {
+    pendingMaintenanceConfirmation = null;
   }
 
   async function handleDatabaseBackupDownload() {
@@ -1424,6 +1464,56 @@
 
           <div class="card border mb-3">
             <div class="card-body">
+              <div class="mb-3">
+                <p class="small text-uppercase text-body-secondary fw-semibold mb-1">Generation</p>
+                <h3 class="h5 mb-1">Graphs and PDFs</h3>
+                <p class="mb-0 text-body-secondary">
+                  Regenerate individual output groups, or run the complete graph and PDF generation workflow in one pass.
+                </p>
+              </div>
+
+              <div class="card border mb-3">
+                <div class="card-body bg-primary-subtle bg-opacity-25">
+                  <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                    <div>
+                      <h4 class="h6 mb-1">Regenerate Everything</h4>
+                      <p class="mb-0 text-body-secondary">
+                        Regenerate all product and series graph images, every PDF type, and the combined catalogue PDF in one long-running job.
+                      </p>
+                    </div>
+                    <button
+                      class="btn btn-primary btn-sm"
+                      type="button"
+                      on:click={() => requestMaintenanceConfirmation(startRegenerateEverythingJob, {
+                        confirmMessage: 'Regenerate all graph images and PDFs? This may take a long time.',
+                        successMessage: 'Everything regenerated.'
+                      })}
+                      disabled={maintenanceLoading || pendingMaintenanceConfirmation}
+                    >
+                      Regenerate Everything
+                    </button>
+                  </div>
+                  {#if pendingMaintenanceConfirmation?.starter === startRegenerateEverythingJob}
+                    <div class="alert alert-warning mt-3 mb-0 py-2">
+                      <div class="small mb-2">Regenerate all graph images and PDFs? This may take a long time.</div>
+                      <div class="d-flex gap-2">
+                        <button class="btn btn-warning btn-sm" type="button" on:click={confirmPendingMaintenance}>
+                          Confirm regeneration
+                        </button>
+                        <button class="btn btn-outline-secondary btn-sm" type="button" on:click={cancelPendingMaintenance}>
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  {/if}
+                  {#if maintenanceJob && maintenanceJob.job_type === 'regenerate_everything'}
+                    <JobProgressPanel job={maintenanceJob} label="Regenerate everything" />
+                  {/if}
+                </div>
+              </div>
+
+              <div class="card border mb-3">
+            <div class="card-body">
               <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
                 <div>
                   <h3 class="h6 mb-1">Product Graph Images</h3>
@@ -1444,16 +1534,29 @@
                     class="btn btn-outline-danger btn-sm"
                     type="button"
                     on:click={() =>
-                      runMaintenanceJob(startDeleteAllGraphImagesJob, {
+                      requestMaintenanceConfirmation(startDeleteAllGraphImagesJob, {
                         confirmMessage: 'Delete all generated graph images and clear their saved paths?',
                         successMessage: 'Graph images cleared.'
                       })}
-                    disabled={maintenanceLoading}
+                    disabled={maintenanceLoading || pendingMaintenanceConfirmation}
                   >
                     Clear Graph Images
                   </button>
                 </div>
               </div>
+              {#if pendingMaintenanceConfirmation?.starter === startDeleteAllGraphImagesJob}
+                <div class="alert alert-warning mt-3 mb-0 py-2">
+                  <div class="small mb-2">Delete all generated graph images and clear their saved paths?</div>
+                  <div class="d-flex gap-2">
+                    <button class="btn btn-warning btn-sm" type="button" on:click={confirmPendingMaintenance}>
+                      Confirm clearing
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm" type="button" on:click={cancelPendingMaintenance}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              {/if}
               {#if maintenanceJob && isGraphImageMaintenanceJob()}
                 <JobProgressPanel job={maintenanceJob} label="Product Graph Images" />
               {/if}
@@ -1564,6 +1667,9 @@
               {#if maintenanceJob && maintenanceJobTypeIncludes('all_product_types_pdf')}
                 <JobProgressPanel job={maintenanceJob} label="Combined catalogue PDF" />
               {/if}
+            </div>
+          </div>
+
             </div>
           </div>
 

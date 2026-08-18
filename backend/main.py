@@ -79,7 +79,7 @@ from backend.models import (
     InternalDeviceActivity,
 )
 from backend.models import AppSettings
-from backend.timezone import APP_TIMEZONE, backend_now, backend_now_iso
+from backend.timezone import APP_TIMEZONE, backend_now, backend_now_iso, file_mtime_milliseconds, generated_file_timestamp
 from backend.security import sanitize_rich_text, sanitizer_status, validate_zip_members
 
 PERMISSIBLE_USE_MODES = {"dedicated", "upper", "lower", "both", "none"}
@@ -2981,66 +2981,99 @@ def find_chromium_binary() -> str:
     raise RuntimeError("No Chromium-compatible browser was found for PDF rendering.")
 
 
+def _timestamped_generated_name(stem: str, extension: str) -> str:
+    return f"{stem}_{generated_file_timestamp()}{extension}"
+
+
+def _latest_generated_path(directory: Path, stem: str, extension: str) -> Path | None:
+    candidates = list(directory.glob(f"{stem}_????????_??????{extension}"))
+    legacy_path = directory / f"{stem}{extension}"
+    if legacy_path.is_file():
+        candidates.append(legacy_path)
+    return max(candidates, key=lambda path: path.stat().st_mtime_ns) if candidates else None
+
+
 def product_image_file_name(product: Product, index: int, extension: str) -> str:
     ext = extension.lower()
     if not ext.startswith("."):
         ext = f".{ext}"
-    return f"pic_{product_slug(product)}_{index}{ext}"
+    return _timestamped_generated_name(f"pic_{product_slug(product)}_{index}", ext)
 
 
 def series_image_file_name(series: Series, index: int, extension: str) -> str:
     ext = extension.lower()
     if not ext.startswith("."):
         ext = f".{ext}"
-    return f"series_pic_{series_slug(series)}_{index}{ext}"
+    return _timestamped_generated_name(f"series_pic_{series_slug(series)}_{index}", ext)
 
 
 def graph_file_name(product: Product) -> str:
-    return f"graph_{product_slug(product)}.png"
+    return _timestamped_generated_name(f"graph_{product_slug(product)}", ".png")
 
 
 def product_pdf_file_name(product: Product) -> str:
-    return f"product_printed_{product_slug(product)}.pdf"
+    return _timestamped_generated_name(f"product_printed_{product_slug(product)}", ".pdf")
 
 
 def product_pdf_path(product: Product) -> Path:
+    return _latest_generated_path(PRODUCT_PDFS_DIR, f"product_printed_{product_slug(product)}", ".pdf") or PRODUCT_PDFS_DIR / f"product_printed_{product_slug(product)}.pdf"
+
+
+def new_product_pdf_path(product: Product) -> Path:
     return PRODUCT_PDFS_DIR / product_pdf_file_name(product)
 
 
 def series_graph_file_name(series: Series) -> str:
-    return f"series_graph_{series_slug(series)}.png"
+    return _timestamped_generated_name(f"series_graph_{series_slug(series)}", ".png")
 
 
 def series_pdf_file_name(series: Series) -> str:
-    return f"series_printed_{series_slug(series)}.pdf"
+    return _timestamped_generated_name(f"series_printed_{series_slug(series)}", ".pdf")
 
 
 def series_graph_path(series: Series) -> Path:
+    return _latest_generated_path(SERIES_GRAPHS_DIR, f"series_graph_{series_slug(series)}", ".png") or SERIES_GRAPHS_DIR / f"series_graph_{series_slug(series)}.png"
+
+
+def new_series_graph_path(series: Series) -> Path:
     return SERIES_GRAPHS_DIR / series_graph_file_name(series)
 
 
 def series_pdf_path(series: Series) -> Path:
+    return _latest_generated_path(SERIES_PDFS_DIR, f"series_printed_{series_slug(series)}", ".pdf") or SERIES_PDFS_DIR / f"series_printed_{series_slug(series)}.pdf"
+
+
+def new_series_pdf_path(series: Series) -> Path:
     return SERIES_PDFS_DIR / series_pdf_file_name(series)
 
 
 def product_type_pdf_file_name(product_type: ProductType) -> str:
-    return f"product_type_printed_{sanitize_name(product_type.key or product_type.label or 'unknown')}.pdf"
+    return _timestamped_generated_name(
+        f"product_type_printed_{sanitize_name(product_type.key or product_type.label or 'unknown')}",
+        ".pdf",
+    )
 
 
 def product_type_pdf_path(product_type: ProductType) -> Path:
+    stem = f"product_type_printed_{sanitize_name(product_type.key or product_type.label or 'unknown')}"
+    return _latest_generated_path(PRODUCT_TYPE_PDFS_DIR, stem, ".pdf") or PRODUCT_TYPE_PDFS_DIR / f"{stem}.pdf"
+
+
+def new_product_type_pdf_path(product_type: ProductType) -> Path:
     return PRODUCT_TYPE_PDFS_DIR / product_type_pdf_file_name(product_type)
 
 
 def all_product_types_pdf_path() -> Path:
-    return PRODUCT_TYPE_PDFS_DIR / ALL_PRODUCT_TYPES_PDF_FILE_NAME
+    return _latest_generated_path(PRODUCT_TYPE_PDFS_DIR, "product_type_printed_all", ".pdf") or PRODUCT_TYPE_PDFS_DIR / ALL_PRODUCT_TYPES_PDF_FILE_NAME
+
+
+def new_all_product_types_pdf_path() -> Path:
+    return PRODUCT_TYPE_PDFS_DIR / _timestamped_generated_name("product_type_printed_all", ".pdf")
 
 
 def all_product_types_pdf_public_url(file_path: Path | None = None) -> str:
     target = file_path or all_product_types_pdf_path()
-    try:
-        version = str(target.stat().st_mtime_ns)
-    except OSError:
-        version = ""
+    version = file_mtime_milliseconds(target) or ""
     suffix = f"?v={version}" if version else ""
     return f"/api/public/media/all-product-types-pdf{suffix}"
 
@@ -3107,6 +3140,22 @@ def remove_file(path: str | os.PathLike | None):
         Path(path).unlink(missing_ok=True)
     except OSError:
         pass
+
+
+def remove_generated_variants(directory: Path, stem: str, extension: str):
+    """Remove timestamped and legacy variants of a generated asset."""
+    for path in directory.glob(f"{stem}_????????_??????{extension}"):
+        remove_file(path)
+    remove_file(directory / f"{stem}{extension}")
+
+
+def remove_all_product_types_pdf_files():
+    remove_generated_variants(PRODUCT_TYPE_PDFS_DIR, "product_type_printed_all", ".pdf")
+
+
+def remove_product_type_pdf_files(product_type: ProductType):
+    stem = f"product_type_printed_{sanitize_name(product_type.key or product_type.label or 'unknown')}"
+    remove_generated_variants(PRODUCT_TYPE_PDFS_DIR, stem, ".pdf")
 
 
 def normalize_color_value(value: str | None) -> str | None:
@@ -3631,6 +3680,28 @@ def stamp_pdf_file(input_path: Path, output_path: Path, page_decorations: list[d
 
 def pdf_page_count(pdf_path: Path) -> int:
     return len(PdfReader(str(pdf_path)).pages)
+
+
+def add_pdf_outline_items(writer: PdfWriter, entries: list[dict], parent=None):
+    """Add nested native PDF outline/bookmark entries to a writer."""
+    for entry in entries:
+        bookmark = writer.add_outline_item(
+            str(entry["title"]),
+            int(entry.get("page", 0)),
+            parent=parent,
+        )
+        add_pdf_outline_items(writer, entry.get("children") or [], parent=bookmark)
+
+
+def add_pdf_outline_to_file(input_path: Path, output_path: Path, entries: list[dict]) -> None:
+    reader = PdfReader(str(input_path))
+    writer = PdfWriter()
+    for page in reader.pages:
+        writer.add_page(page)
+    add_pdf_outline_items(writer, entries)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("wb") as handle:
+        writer.write(handle)
 
 
 def get_product_type_by_key(db: Session, product_type_key: str | None) -> ProductType:
@@ -4340,7 +4411,7 @@ def generate_product_pdf(
     output_path: Path | None = None,
     progress_callback=None,
 ) -> Path:
-    output_path = output_path or product_pdf_path(product)
+    output_path = output_path or new_product_pdf_path(product)
     with tempfile.TemporaryDirectory(prefix="product-pdf-") as temp_dir_name:
         temp_dir = Path(temp_dir_name)
         base_path = temp_dir / f"product_printed_{product_slug(product)}_base.pdf"
@@ -4359,7 +4430,7 @@ def generate_product_pdf(
 
 def generate_product_pdfs(product: Product, progress_callback=None) -> Path:
     output_path = generate_product_pdf(product, progress_callback=progress_callback)
-    remove_file(all_product_types_pdf_path())
+    remove_all_product_types_pdf_files()
     return output_path
 
 
@@ -5028,8 +5099,8 @@ def generate_series_graph(series: Series) -> Path:
     if payload is None:
         raise RuntimeError("No graph-capable products with line data are linked to this series.")
 
-    final_path = series_graph_path(series)
-    tmp_path = SERIES_GRAPHS_DIR / f"tmp_{series_graph_file_name(series)}"
+    final_path = new_series_graph_path(series)
+    tmp_path = SERIES_GRAPHS_DIR / f"tmp_{final_path.name}"
     final_path.parent.mkdir(parents=True, exist_ok=True)
     if tmp_path.exists():
         tmp_path.unlink()
@@ -5129,7 +5200,7 @@ def build_series_pdf_html(series: Series, temp_dir: Path) -> tuple[str, str]:
     return remove_empty_richtext_sections(rendered), stylesheet_text
 
 
-def build_series_pdf_base(series: Series, temp_dir: Path, progress_callback=None) -> tuple[Path, int]:
+def build_series_pdf_base(series: Series, temp_dir: Path, progress_callback=None) -> tuple[Path, int, dict]:
     cover_base_path = temp_dir / f"series_printed_{series_slug(series)}_cover.pdf"
     cover_html, cover_stylesheet_text = build_series_pdf_html(series, temp_dir)
     if progress_callback:
@@ -5159,6 +5230,8 @@ def build_series_pdf_base(series: Series, temp_dir: Path, progress_callback=None
         progress_callback(f"Merging printed product PDFs for {series.name or 'series'}", len(ordered_products) + 2, total_steps)
     merge_pdf_files([cover_base_path, *product_pdf_paths], merged_base_path)
     page_count = pdf_page_count(merged_base_path)
+    cover_page_count = pdf_page_count(cover_base_path)
+    product_page_counts = [pdf_page_count(path) for path in product_pdf_paths]
     if page_count % 2 == 1:
         aligned_base_path = temp_dir / f"series_printed_{series_slug(series)}_aligned.pdf"
         if progress_callback:
@@ -5172,7 +5245,20 @@ def build_series_pdf_base(series: Series, temp_dir: Path, progress_callback=None
         page_count += 1
     if progress_callback:
         progress_callback(f"Finalising series PDF for {series.name or 'series'}", len(ordered_products) + 4, total_steps)
-    return merged_base_path, page_count
+    return merged_base_path, page_count, {
+        "cover_page_count": cover_page_count,
+        "products": [
+            {"title": product.model or "Product", "page_count": product_page_count}
+            for product, product_page_count in zip(ordered_products, product_page_counts)
+        ],
+    }
+
+
+def _series_product_outline_pages(outline_metadata: dict):
+    page = int(outline_metadata.get("cover_page_count") or 0)
+    for product in outline_metadata.get("products") or []:
+        yield product, page
+        page += int(product.get("page_count") or 0)
 
 
 def generate_series_pdf(
@@ -5180,18 +5266,43 @@ def generate_series_pdf(
     output_path: Path | None = None,
     progress_callback=None,
 ) -> Path:
-    output_path = output_path or series_pdf_path(series)
+    output_path = output_path or new_series_pdf_path(series)
     with tempfile.TemporaryDirectory(prefix="series-pdf-") as temp_dir_name:
         temp_dir = Path(temp_dir_name)
-        base_path, _ = build_series_pdf_base(series, temp_dir, progress_callback=progress_callback)
-        shutil.copyfile(base_path, output_path)
+        base_path, _, outline_metadata = build_series_pdf_base(series, temp_dir, progress_callback=progress_callback)
+        product_entries = [
+            {"title": product["title"], "page": page}
+            for product, page in _series_product_outline_pages(outline_metadata)
+        ]
+        series_children = [
+            {"title": "Overview", "page": 0},
+            *([{"title": "Performance and specifications", "page": 1}] if pdf_page_count(base_path) > 1 else []),
+        ]
+        if product_entries:
+            series_children.append(
+                {
+                    "title": "Products",
+                    "page": product_entries[0]["page"],
+                    "children": product_entries,
+                }
+            )
+        outline_entries = [
+            {
+                "title": series.name or "Series",
+                "page": 0,
+                "children": series_children,
+            }
+        ]
+        outlined_path = temp_dir / "series_with_outline.pdf"
+        add_pdf_outline_to_file(base_path, outlined_path, outline_entries)
+        shutil.copyfile(outlined_path, output_path)
 
     return output_path
 
 
 def generate_series_pdfs(series: Series, progress_callback=None) -> Path:
     output_path = generate_series_pdf(series, progress_callback=progress_callback)
-    remove_file(all_product_types_pdf_path())
+    remove_all_product_types_pdf_files()
     return output_path
 
 
@@ -5471,6 +5582,16 @@ def build_product_type_series_pdf_summaries(
         else:
             source_paths.append(source_path)
 
+        product_page_counts = [
+            pdf_page_count(product_pdf_path(product)) if product_pdf_path(product).is_file() else 0
+            for product in ordered_products
+        ]
+        series_page_count = pdf_page_count(source_path) if source_path is not None else 0
+        series_body_page_count = sum(product_page_counts)
+        series_cover_page_count = max(series_page_count - series_body_page_count, 0)
+        if series_cover_page_count % 2 == 1 and series_cover_page_count > 0:
+            series_cover_page_count -= 1
+
         series_summaries.append(
             {
                 "id": series.id,
@@ -5482,6 +5603,7 @@ def build_product_type_series_pdf_summaries(
                 "contents_description": series.contents_description,
                 "first_product_image_uri": product_primary_image_uri(ordered_products[0]) if ordered_products else "",
                 "page_count": pdf_page_count(source_path) if source_path is not None else 0,
+                "cover_page_count": series_cover_page_count,
                 "product_count": series.product_count,
                 "products": [
                     {
@@ -5492,8 +5614,9 @@ def build_product_type_series_pdf_summaries(
                         "product_type_key": product.product_type_key,
                         "product_type_label": product.product_type_label,
                         "primary_product_image_uri": product_primary_image_uri(product),
+                        "page_count": product_page_count,
                     }
-                    for product in ordered_products
+                    for product, product_page_count in zip(ordered_products, product_page_counts)
                 ],
             }
         )
@@ -5934,8 +6057,54 @@ def build_product_type_page_decorations(metadata: dict, decorations: list[dict] 
     return decorations
 
 
+def build_product_type_series_outline_entries(
+    series_summaries: list[dict],
+    page_offset: int = 0,
+    source_front_matter_count: int = 0,
+) -> list[dict]:
+    series_entries = []
+    for summary in series_summaries:
+        page_start = int(summary.get("page_start") or 0)
+        if not page_start:
+            continue
+        series_page = page_offset + page_start - 1 - source_front_matter_count
+        product_page = series_page + int(summary.get("cover_page_count") or 0)
+        product_entries = []
+        for product in summary.get("products") or []:
+            product_entries.append(
+                {
+                    "title": product.get("model") or "Product",
+                    "page": product_page,
+                }
+            )
+            product_page += int(product.get("page_count") or 0)
+        series_entry = {
+            "title": summary.get("name") or "Series",
+            "page": series_page,
+        }
+        if product_entries:
+            series_entry["children"] = product_entries
+        series_entries.append(
+            series_entry
+        )
+    return series_entries
+
+
+def build_product_type_pdf_outline(product_type: ProductType, metadata: dict) -> list[dict]:
+    series_entries = build_product_type_series_outline_entries(metadata.get("series_summaries") or [])
+    children = [{"title": "Contents", "page": 0}]
+    children.extend(series_entries)
+    return [
+        {
+            "title": product_type.label or product_type.key or "Product Type",
+            "page": 0,
+            "children": children,
+        }
+    ]
+
+
 def generate_product_type_pdf_with_metadata(product_type: ProductType, progress_callback=None) -> tuple[Path, dict]:
-    output_path = product_type_pdf_path(product_type)
+    output_path = new_product_type_pdf_path(product_type)
     with tempfile.TemporaryDirectory(prefix="product-type-pdf-") as temp_dir_name:
         temp_dir = Path(temp_dir_name)
         base_path, metadata = build_product_type_pdf_base(
@@ -5945,12 +6114,19 @@ def generate_product_type_pdf_with_metadata(product_type: ProductType, progress_
         )
         page_decorations = build_product_type_page_decorations(metadata)
         stamp_pdf_file(base_path, output_path, page_decorations)
+        outlined_path = temp_dir / "product_type_with_outline.pdf"
+        add_pdf_outline_to_file(
+            output_path,
+            outlined_path,
+            build_product_type_pdf_outline(product_type, metadata),
+        )
+        shutil.copyfile(outlined_path, output_path)
     return output_path, metadata
 
 
 def generate_product_type_pdf(product_type: ProductType, progress_callback=None) -> Path:
     output_path, _ = generate_product_type_pdf_with_metadata(product_type, progress_callback=progress_callback)
-    remove_file(all_product_types_pdf_path())
+    remove_all_product_types_pdf_files()
     return output_path
 
 
@@ -6039,7 +6215,12 @@ def generate_all_product_types_pdf(
     product_types: list[ProductType],
     progress_callback=None,
 ) -> Path:
-    """Build one catalogue from the existing product-type/series PDFs."""
+    """Build one catalogue by joining complete product-type PDF sections.
+
+    Product-type PDFs already contain the correctly rendered contents pages,
+    series pages, tabs, and separator pages.  Only their common front matter
+    is shared by the combined catalogue and should be emitted once.
+    """
     ordered_types = sorted(product_types, key=lambda item: (getattr(item, "sort_order", 0) or 0, item.id or 0))
     if not ordered_types:
         raise RuntimeError("No product types are available for the combined catalogue.")
@@ -6078,59 +6259,65 @@ def generate_all_product_types_pdf(
         if progress_callback:
             progress_callback(f"Inspecting product type {index} of {len(ordered_types)}: {product_type.label}", index, len(ordered_types))
 
-    # Use one existing designed product-type intro as the shared front matter.
+    # Use one existing designed product-type PDF for the shared front matter.
     # Prefer the four-page printed layouts; fall back to the first available PDF.
     shared = next(
         (item for item in prepared if item["intro_page_count"] >= 4),
         prepared[0],
     )
 
-    output_path = all_product_types_pdf_path()
-    with tempfile.TemporaryDirectory(prefix="all-product-types-pdf-") as temp_dir_name:
-        temp_dir = Path(temp_dir_name)
-        writer = PdfWriter()
-        shared_intro_count = shared["intro_page_count"]
-        shared_contents_page_count = len(product_type_contents_page_chunks(shared["series_summaries"]))
-        shared_page_count = max(shared_intro_count - shared_contents_page_count, 0)
-        _append_pdf_page_slice(writer, shared["source_path"], 0)
-        # Remove the shared source's product-type contents page; it is replaced
-        # below by one contents page for each product type.
-        if len(writer.pages) > shared_page_count:
-            writer = PdfWriter()
-            reader = PdfReader(str(shared["source_path"]))
-            for page in reader.pages[:shared_page_count]:
-                writer.add_page(page)
-        current_page_count = len(writer.pages)
+    output_path = new_all_product_types_pdf_path()
+    writer = PdfWriter()
+    shared_contents_page_count = len(product_type_contents_page_chunks(shared["series_summaries"]))
+    shared_front_matter_count = max(shared["intro_page_count"] - shared_contents_page_count, 0)
+    reader = PdfReader(str(shared["source_path"]))
+    for page in reader.pages[:shared_front_matter_count]:
+        writer.add_page(page)
+    current_page_count = len(writer.pages)
+    all_outline_children = [{"title": "Shared introduction", "page": 0}]
 
-        for index, item in enumerate(prepared, start=1):
-            product_type = item["product_type"]
-            if progress_callback:
-                progress_callback(f"Rendering contents page {index} of {len(prepared)}: {product_type.label}", index, len(prepared))
-            contents_path, rendered_intro_count = _render_combined_product_type_contents_page(
-                product_type,
-                item["series_summaries"],
-                current_page_count,
-                temp_dir,
-            )
-            # Keep every generated contents page; long product types can need
-            # multiple pages before their series PDFs begin.
-            contents_reader = PdfReader(str(contents_path))
-            contents_page_count = len(product_type_contents_page_chunks(item["series_summaries"]))
-            contents_start_index = max(len(contents_reader.pages) - contents_page_count, 0)
-            for page in contents_reader.pages[contents_start_index:]:
-                writer.add_page(page)
-            current_page_count += contents_page_count
+    for index, item in enumerate(prepared, start=1):
+        product_type = item["product_type"]
+        if progress_callback:
+            progress_callback(f"Appending product type {index} of {len(prepared)}: {product_type.label}", index, len(prepared))
 
-            if item["series_paths"]:
-                if current_page_count % 2 == 1:
-                    writer.add_blank_page(width=SEPARATOR_PAGE_WIDTH_PT, height=SEPARATOR_PAGE_HEIGHT_PT)
-                    current_page_count += 1
-                for series_path in item["series_paths"]:
-                    current_page_count += _append_pdf_pages(writer, series_path)
+        contents_page_count = len(product_type_contents_page_chunks(item["series_summaries"]))
+        product_type_front_matter_count = max(item["intro_page_count"] - contents_page_count, 0)
+        section_start_page = current_page_count
+        source_series_cursor = item["intro_page_count"]
+        if item["series_paths"] and source_series_cursor % 2 == 1:
+            source_series_cursor += 1
+        for summary in item["series_summaries"]:
+            page_count = int(summary.get("page_count") or 0)
+            summary["page_start"] = source_series_cursor + 1 if page_count else 0
+            summary["page_end"] = source_series_cursor + page_count if page_count else 0
+            if page_count:
+                source_series_cursor += page_count
+        series_entries = build_product_type_series_outline_entries(
+            item["series_summaries"],
+            page_offset=section_start_page,
+            source_front_matter_count=product_type_front_matter_count,
+        )
+        all_outline_children.append(
+            {
+                "title": product_type.label or product_type.key or "Product Type",
+                "page": section_start_page,
+                "children": [{"title": "Contents", "page": section_start_page}, *series_entries],
+            }
+        )
+        current_page_count += _append_pdf_page_slice(
+            writer,
+            item["source_path"],
+            product_type_front_matter_count,
+        )
 
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        with output_path.open("wb") as handle:
-            writer.write(handle)
+    add_pdf_outline_items(
+        writer,
+        [{"title": "All Product Types", "page": 0, "children": all_outline_children}],
+    )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("wb") as handle:
+        writer.write(handle)
     logger.info("[all-product-types-pdf] pages=%d output=%s", current_page_count, output_path)
     return output_path
 
@@ -6151,12 +6338,10 @@ def delete_associated_document_files(owner):
 
 
 def delete_product_type_assets(product_type: ProductType):
-    safe_key = re.sub(r"[^a-z0-9]+", "_", (product_type.key or "").strip().lower()).strip("_") or "unknown"
-    for pdf_path in PRODUCT_TYPE_PDFS_DIR.glob(f"product_type_*_{safe_key}.pdf"):
-        remove_file(pdf_path)
+    remove_product_type_pdf_files(product_type)
     # The combined catalogue contains this product type and must not survive
     # as a silently stale public download after the type is removed.
-    remove_file(all_product_types_pdf_path())
+    remove_all_product_types_pdf_files()
     delete_associated_document_files(product_type)
 
 
@@ -6491,7 +6676,7 @@ def sync_graph_image(product: Product, rpm_lines: list[RpmLine], efficiency_poin
         return
 
     final_path = PRODUCT_GRAPHS_DIR / graph_file_name(product)
-    tmp_path = PRODUCT_GRAPHS_DIR / f"tmp_{graph_file_name(product)}"
+    tmp_path = PRODUCT_GRAPHS_DIR / f"tmp_{final_path.name}"
     if tmp_path.exists():
         tmp_path.unlink()
 
@@ -7991,8 +8176,8 @@ def update_product_type(product_type_id: int, body: ProductTypeUpdate, db: Sessi
             setattr(product_type, field, value)
 
     if pdf_series_order_changed:
-        remove_file(product_type_pdf_path(product_type))
-        remove_file(all_product_types_pdf_path())
+        remove_product_type_pdf_files(product_type)
+        remove_all_product_types_pdf_files()
 
     db.commit()
     db.refresh(product_type)
@@ -10259,6 +10444,102 @@ def start_regenerate_all_product_type_pdfs_job():
         }
 
     return serialize_maintenance_job(start_maintenance_job("regenerate_all_product_type_pdfs", work))
+
+
+@app.post(
+    "/api/maintenance/jobs/regenerate-everything",
+    response_model=MaintenanceJobResponse,
+    dependencies=[Depends(get_current_user)],
+    tags=["Maintenance"],
+    summary="Regenerate all graph images and PDFs",
+)
+def start_regenerate_everything_job():
+    def work(progress):
+        product_graphs = 0
+        product_pdfs = 0
+        series_pdfs = 0
+        product_type_pdfs = 0
+
+        # Regenerate product graph images first so every subsequent PDF phase
+        # uses the current graph output.
+        with SessionLocal() as db:
+            products = db.query(Product).options(joinedload(Product.product_type)).all()
+            phase_progress = _make_progress_window(progress, 0, 20)
+            total = len(products)
+            for index, product in enumerate(products, start=1):
+                phase_progress(f"Generating product graph {index} of {total}: {product.model}", index, total)
+                refresh_graph_for_product(db, product)
+                product_graphs += 1
+            db.commit()
+
+        with SessionLocal() as db:
+            products = db.query(Product).options(joinedload(Product.product_type)).all()
+            phase_progress = _make_progress_window(progress, 20, 50)
+            total = len(products)
+            for index, product in enumerate(products, start=1):
+                item_progress = _make_indexed_progress_window(phase_progress, index, total)
+                item_progress(f"Loading product {index} of {total}: {product.model}", 1, 100)
+                item_progress(f"Rendering printed PDF for {product.model}", 20, 100)
+                try:
+                    generate_product_pdfs(product, progress_callback=_make_progress_window(item_progress, 20, 90))
+                except Exception as exc:
+                    raise_job_phase_error(f"Product {product.model}", "PDF rendering", exc)
+                item_progress(f"Printed PDF generated for {product.model}", 95, 100)
+                product_pdfs += 1
+            db.commit()
+
+        with SessionLocal() as db:
+            series_records = db.query(Series).options(joinedload(Series.product_type)).all()
+            phase_progress = _make_progress_window(progress, 50, 80)
+            total = len(series_records)
+            for index, series in enumerate(series_records, start=1):
+                item_progress = _make_indexed_progress_window(phase_progress, index, total)
+                item_progress(f"Loading series {index} of {total}: {series.name}", 1, 100)
+                if series.product_type and series.product_type.supports_graph and series_has_graph_capable_line_data(series):
+                    generate_series_graph(series)
+                item_progress(f"Generating printed series PDF for {series.name}", 20, 100)
+                try:
+                    generate_series_pdfs(series, progress_callback=_make_progress_window(item_progress, 20, 90))
+                except Exception as exc:
+                    raise_job_phase_error(f"Series {series.name}", "PDF rendering", exc)
+                item_progress(f"Printed series PDF generated for {series.name}", 95, 100)
+                series_pdfs += 1
+            db.commit()
+
+        with SessionLocal() as db:
+            product_types = (
+                db.query(ProductType)
+                .options(selectinload(ProductType.series).selectinload(Series.products).joinedload(Product.product_type))
+                .order_by(ProductType.sort_order, ProductType.id)
+                .all()
+            )
+            phase_progress = _make_progress_window(progress, 80, 100)
+            total = len(product_types)
+            for index, product_type in enumerate(product_types, start=1):
+                item_progress = _make_indexed_progress_window(phase_progress, index, max(total, 1))
+                item_progress(f"Generating product type PDF {index} of {total}: {product_type.label}", 1, 100)
+                try:
+                    generate_product_type_pdf(product_type, progress_callback=_make_progress_window(item_progress, 10, 80))
+                except Exception as exc:
+                    raise_job_phase_error(f"Product type {product_type.label}", "PDF rendering", exc)
+                item_progress(f"Product type PDF generated for {product_type.label}", 95, 100)
+                product_type_pdfs += 1
+            progress("Building combined all-product-types catalogue", 100, 100)
+            try:
+                generate_all_product_types_pdf(product_types, progress_callback=_make_progress_window(progress, 96, 100))
+            except Exception as exc:
+                raise_job_phase_error("All product types", "PDF rendering", exc)
+            db.commit()
+
+        return {
+            "result_message": "All graph images and PDFs regenerated.",
+            "products_processed": product_pdfs,
+            "series_processed": series_pdfs,
+            "product_types_processed": product_type_pdfs,
+            "graph_images_processed": product_graphs,
+        }
+
+    return serialize_maintenance_job(start_maintenance_job("regenerate_everything", work))
 
 
 @app.post(

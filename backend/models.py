@@ -3,6 +3,7 @@ SQLAlchemy models for the internal product catalogue.
 """
 import os
 import re
+from pathlib import Path
 import hashlib
 import colorsys
 import json
@@ -12,15 +13,24 @@ from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, JS
 from sqlalchemy.orm import relationship
 
 from backend.database import Base
-from backend.timezone import file_mtime_token
+from backend.timezone import file_mtime_milliseconds
 
 
 def _versioned_media_url(file_path: str, route_prefix: str, file_name: str) -> str | None:
     if not os.path.isfile(file_path):
         return None
 
-    version = file_mtime_token(file_path)
+    version = file_mtime_milliseconds(file_path)
     return f"{route_prefix}/{file_name}?v={version}" if version is not None else f"{route_prefix}/{file_name}"
+
+
+def _latest_generated_media_file(directory: str, stem: str, extension: str) -> Path | None:
+    base = Path(directory)
+    candidates = list(base.glob(f"{stem}_????????_??????{extension}"))
+    legacy = base / f"{stem}{extension}"
+    if legacy.is_file():
+        candidates.append(legacy)
+    return max(candidates, key=lambda path: path.stat().st_mtime_ns) if candidates else None
 
 
 def _media_file_size_bytes(file_path: str) -> int | None:
@@ -333,15 +343,16 @@ class ProductType(Base):
     @property
     def product_type_printed_pdf_url(self):
         safe_key = re.sub(r"[^a-z0-9]+", "_", (self.key or "").strip().lower()).strip("_")
-        file_name = f"product_type_printed_{safe_key or 'unknown'}.pdf"
-        file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "product_type_pdfs", file_name)
-        return _versioned_media_url(file_path, "/api/public/media/product_type_pdfs", file_name)
+        directory = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "product_type_pdfs")
+        file_path = _latest_generated_media_file(directory, f"product_type_printed_{safe_key or 'unknown'}", ".pdf")
+        return _versioned_media_url(str(file_path), "/api/public/media/product_type_pdfs", file_path.name) if file_path else None
 
     @property
     def product_type_printed_pdf_size_bytes(self):
         safe_key = re.sub(r"[^a-z0-9]+", "_", (self.key or "").strip().lower()).strip("_")
-        file_name = f"product_type_printed_{safe_key or 'unknown'}.pdf"
-        return _media_file_size_bytes(os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "product_type_pdfs", file_name))
+        directory = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "product_type_pdfs")
+        file_path = _latest_generated_media_file(directory, f"product_type_printed_{safe_key or 'unknown'}", ".pdf")
+        return _media_file_size_bytes(str(file_path)) if file_path else None
 
 
 class ProductTypeParameterGroupPreset(Base):
@@ -482,9 +493,9 @@ class Series(Base):
     @property
     def series_graph_image_url(self):
         safe_name = re.sub(r"[^a-z0-9]+", "_", (f"{self.product_type_key or 'series'}_{(self.name or '').strip().lower()}")).strip("_")
-        file_name = f"series_graph_{safe_name or 'unknown'}.png"
-        file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "series_graphs", file_name)
-        return _versioned_media_url(file_path, "/api/public/media/series_graphs", file_name)
+        directory = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "series_graphs")
+        file_path = _latest_generated_media_file(directory, f"series_graph_{safe_name or 'unknown'}", ".png")
+        return _versioned_media_url(str(file_path), "/api/public/media/series_graphs", file_path.name) if file_path else None
 
     @property
     def series_pdf_url(self):
@@ -493,31 +504,32 @@ class Series(Base):
     @property
     def legacy_series_pdf_url(self):
         safe_name = re.sub(r"[^a-z0-9]+", "_", (f"{self.product_type_key or 'series'}_{(self.name or '').strip().lower()}")).strip("_")
-        file_name = f"series_{safe_name or 'unknown'}.pdf"
-        file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "series_pdfs", file_name)
-        return _versioned_media_url(file_path, "/api/public/media/series_pdfs", file_name)
+        directory = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "series_pdfs")
+        file_path = _latest_generated_media_file(directory, f"series_{safe_name or 'unknown'}", ".pdf")
+        return _versioned_media_url(str(file_path), "/api/public/media/series_pdfs", file_path.name) if file_path else None
 
     @property
     def series_printed_pdf_url(self):
         safe_name = re.sub(r"[^a-z0-9]+", "_", (f"{self.product_type_key or 'series'}_{(self.name or '').strip().lower()}")).strip("_")
-        file_name = f"series_printed_{safe_name or 'unknown'}.pdf"
-        file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "series_pdfs", file_name)
-        return _versioned_media_url(file_path, "/api/public/media/series_pdfs", file_name)
+        directory = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "series_pdfs")
+        file_path = _latest_generated_media_file(directory, f"series_printed_{safe_name or 'unknown'}", ".pdf")
+        return _versioned_media_url(str(file_path), "/api/public/media/series_pdfs", file_path.name) if file_path else None
 
     @property
     def series_online_pdf_url(self):
         safe_name = re.sub(r"[^a-z0-9]+", "_", (f"{self.product_type_key or 'series'}_{(self.name or '').strip().lower()}")).strip("_")
-        file_name = f"series_online_{safe_name or 'unknown'}.pdf"
-        file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "series_pdfs", file_name)
-        return _versioned_media_url(file_path, "/api/public/media/series_pdfs", file_name)
+        directory = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "series_pdfs")
+        file_path = _latest_generated_media_file(directory, f"series_online_{safe_name or 'unknown'}", ".pdf")
+        return _versioned_media_url(str(file_path), "/api/public/media/series_pdfs", file_path.name) if file_path else None
 
     @property
     def series_printed_pdf_size_bytes(self):
         safe_name = re.sub(
             r"[^a-z0-9]+", "_", f"{self.product_type_key or 'series'}_{(self.name or '').strip().lower()}"
         ).strip("_")
-        file_name = f"series_printed_{safe_name or 'unknown'}.pdf"
-        return _media_file_size_bytes(os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "series_pdfs", file_name))
+        directory = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "series_pdfs")
+        file_path = _latest_generated_media_file(directory, f"series_printed_{safe_name or 'unknown'}", ".pdf")
+        return _media_file_size_bytes(str(file_path)) if file_path else None
 
 
 class Product(Base):
@@ -570,12 +582,8 @@ class Product(Base):
         if not self.graph_image_path:
             return None
         file_path = self.graph_image_path
-        version = None
-        try:
-            version = int(os.path.getmtime(file_path))
-        except OSError:
-            version = None
         file_name = os.path.basename(file_path)
+        version = file_mtime_milliseconds(file_path)
         return (
             f"/api/public/media/product_graphs/{file_name}?v={version}"
             if version is not None
@@ -628,37 +636,38 @@ class Product(Base):
     @property
     def legacy_product_pdf_url(self):
         safe_model = re.sub(r"[^a-z0-9]+", "_", (self.model or "").strip().lower()).strip("_")
-        file_name = f"product_{safe_model or 'unknown'}.pdf" if self.model is not None else None
-        if not file_name:
+        if self.model is None:
             return None
-        file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "product_pdfs", file_name)
-        return _versioned_media_url(file_path, "/api/public/media/product_pdfs", file_name)
+        directory = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "product_pdfs")
+        file_path = _latest_generated_media_file(directory, f"product_{safe_model or 'unknown'}", ".pdf")
+        return _versioned_media_url(str(file_path), "/api/public/media/product_pdfs", file_path.name) if file_path else None
 
     @property
     def product_printed_pdf_url(self):
         safe_model = re.sub(r"[^a-z0-9]+", "_", (self.model or "").strip().lower()).strip("_")
-        file_name = f"product_printed_{safe_model or 'unknown'}.pdf" if self.model is not None else None
-        if not file_name:
+        if self.model is None:
             return None
-        file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "product_pdfs", file_name)
-        return _versioned_media_url(file_path, "/api/public/media/product_pdfs", file_name)
+        directory = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "product_pdfs")
+        file_path = _latest_generated_media_file(directory, f"product_printed_{safe_model or 'unknown'}", ".pdf")
+        return _versioned_media_url(str(file_path), "/api/public/media/product_pdfs", file_path.name) if file_path else None
 
     @property
     def product_online_pdf_url(self):
         safe_model = re.sub(r"[^a-z0-9]+", "_", (self.model or "").strip().lower()).strip("_")
-        file_name = f"product_online_{safe_model or 'unknown'}.pdf" if self.model is not None else None
-        if not file_name:
+        if self.model is None:
             return None
-        file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "product_pdfs", file_name)
-        return _versioned_media_url(file_path, "/api/public/media/product_pdfs", file_name)
+        directory = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "product_pdfs")
+        file_path = _latest_generated_media_file(directory, f"product_online_{safe_model or 'unknown'}", ".pdf")
+        return _versioned_media_url(str(file_path), "/api/public/media/product_pdfs", file_path.name) if file_path else None
 
     @property
     def product_printed_pdf_size_bytes(self):
         safe_model = re.sub(r"[^a-z0-9]+", "_", (self.model or "").strip().lower()).strip("_")
-        file_name = f"product_printed_{safe_model or 'unknown'}.pdf" if self.model is not None else None
-        if not file_name:
+        if self.model is None:
             return None
-        return _media_file_size_bytes(os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "product_pdfs", file_name))
+        directory = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "product_pdfs")
+        file_path = _latest_generated_media_file(directory, f"product_printed_{safe_model or 'unknown'}", ".pdf")
+        return _media_file_size_bytes(str(file_path)) if file_path else None
 
     @property
     def product_type_key(self):
@@ -918,11 +927,7 @@ class ProductImage(Base):
             legacy_path = os.path.join(base_dir, self.file_name)
             if os.path.exists(legacy_path):
                 file_path = legacy_path
-        version = None
-        try:
-            version = int(os.path.getmtime(file_path))
-        except OSError:
-            version = None
+        version = file_mtime_milliseconds(file_path)
         return (
             f"/api/public/media/product_images/{self.product_id}/{self.file_name}?v={version}"
             if version is not None
@@ -948,11 +953,7 @@ class SeriesImage(Base):
             legacy_path = os.path.join(base_dir, self.file_name)
             if os.path.exists(legacy_path):
                 file_path = legacy_path
-        version = None
-        try:
-            version = int(os.path.getmtime(file_path))
-        except OSError:
-            version = None
+        version = file_mtime_milliseconds(file_path)
         return (
             f"/api/public/media/series_images/{self.series_id}/{self.file_name}?v={version}"
             if version is not None

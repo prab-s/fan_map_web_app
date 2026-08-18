@@ -29,3 +29,17 @@ def file_mtime_token(file_path: str | Path) -> str | None:
 
     modified_at = datetime.datetime.fromtimestamp(stat.st_mtime, tz=APP_TIMEZONE)
     return modified_at.strftime("%Y%m%d_%H%M%S")
+
+
+def generated_file_timestamp() -> str:
+    """Return the application-local timestamp used in generated filenames."""
+    return backend_now().strftime("%Y%m%d_%H%M%S")
+
+
+def file_mtime_milliseconds(file_path: str | Path) -> str | None:
+    """Return a cache-busting file modification token in epoch milliseconds."""
+    try:
+        stat = Path(file_path).stat()
+    except OSError:
+        return None
+    return str(stat.st_mtime_ns // 1_000_000)
