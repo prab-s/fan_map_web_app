@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 from fastapi.templating import Jinja2Templates
 
@@ -21,6 +22,14 @@ def format_numeric_value(value):
     return f"{numeric_value:g}"
 
 
+def phone_href(value):
+    """Convert a displayed NZ phone number into a dialling-safe href value."""
+    digits = re.sub(r"\D", "", str(value or ""))
+    if digits.startswith("0"):
+        digits = "64" + digits[1:]
+    return f"+{digits}" if digits else ""
+
+
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 templates.env.globals["product_url"] = product_url
 templates.env.globals["series_url"] = series_url
@@ -35,12 +44,17 @@ templates.env.globals["quote_request_endpoint_url"] = "/api/quote-requests"
 templates.env.globals["fan_acoustic_table_variant"] = fan_acoustic_table_variant
 templates.env.globals["site_contact"] = {
     "address": "576c Fergusson Drive, Upper Hutt 5018, Wellington",
-    "gerald_email": "gerald@venttech.co.nz",
-    "mahendra_email": "mahendra@venttech.co.nz",
+    "admin_phone": "04 595 1403",
     "admin_email": "admin@venttech.co.nz",
     "gerald_phone": "022 0697 270",
+    "gerald_email": "gerald@venttech.co.nz",
     "mahendra_phone": "027 5560 197",
-    "admin_phone": "04 595 1403",
+    "mahendra_email": "mahendra@venttech.co.nz",
+    "alex_phone": "027 815 9924",
+    "alex_email": "alex@venttech.co.nz",
+    "nilesh_phone": "021 088 969 55",
+    "nilesh_email": "nilesh@venttech.co.nz",
     "request_quote_url": "#quoteRequestModal",
 }
 templates.env.filters["format_numeric_value"] = format_numeric_value
+templates.env.filters["phone_href"] = phone_href

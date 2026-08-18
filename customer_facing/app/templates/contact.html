@@ -40,8 +40,14 @@
     <div class="card shadow-sm h-100">
       <div class="card-body">
         <p class="section-kicker text-uppercase fw-semibold mb-2">Address</p>
-        <h2 class="h4 mb-3">Vent-Tech 2018 Ltd.</h2>
-        <p class="mb-0">{{ site_contact.address }}</p>
+        <h2 class="h6 mb-3">Vent-Tech 2018 Ltd.</h2>
+        <a
+          class="h5 mb-0"
+          href="https://www.google.com/maps/search/?api=1&amp;query={{ site_contact.address|urlencode }}"
+          target="_blank"
+          rel="noopener noreferrer"
+        >{{ site_contact.address }}</a>
+        <img src="/static/media/venttech_shop_front.jpg" class="img-fluid mt-3" alt="Shop front">
       </div>
     </div>
   </div>
@@ -50,28 +56,37 @@
       <div class="card-body">
         <p class="section-kicker text-uppercase fw-semibold mb-2">Direct contacts</p>
         <div class="row g-3">
+
+          <div class="col-md-4">
+            <div class="contact-block">
+              <div class="fw-semibold mb-1">Admin</div>
+              <div class="small text-muted mb-1">Shop - general</div>
+              <a href="mailto:{{ site_contact.admin_email }}">{{ site_contact.admin_email }}</a><br>
+              <a href="tel:{{ site_contact.admin_phone|phone_href }}" class="text-muted">{{ site_contact.admin_phone }}</a>
+            </div>
+          </div>
           <div class="col-md-4">
             <div class="contact-block">
               <div class="fw-semibold mb-1">Gerald Keown</div>
               <div class="small text-muted mb-1">Managing Director</div>
               <a href="mailto:{{ site_contact.gerald_email }}">{{ site_contact.gerald_email }}</a><br>
-              <a href="tel:+64220697270" class="text-muted">{{ site_contact.gerald_phone }}</a>
+              <a href="tel:{{ site_contact.gerald_phone|phone_href }}" class="text-muted">{{ site_contact.gerald_phone }}</a>
             </div>
           </div>
           <div class="col-md-4">
             <div class="contact-block">
               <div class="fw-semibold mb-1">Nilesh Patel</div>
               <div class="small text-muted mb-1">Design / Technical / Sales</div>
-              <a href="mailto:{{ site_contact.admin_email }}">{{ site_contact.admin_email }}</a><br>
-              <a href="tel:+6445951403" class="text-muted">{{ site_contact.admin_phone }}</a>
+              <a href="mailto:{{ site_contact.nilesh_email }}">{{ site_contact.nilesh_email }}</a><br>
+              <a href="tel:{{ site_contact.nilesh_phone|phone_href }}" class="text-muted">{{ site_contact.nilesh_phone }}</a>
             </div>
           </div>
           <div class="col-md-4">
             <div class="contact-block">
               <div class="fw-semibold mb-1">Alex Keown</div>
               <div class="small text-muted mb-1">Operations Manager</div>
-              <a href="mailto:{{ site_contact.admin_email }}">{{ site_contact.admin_email }}</a><br>
-              <a href="tel:+6445951403" class="text-muted">{{ site_contact.admin_phone }}</a>
+              <a href="mailto:{{ site_contact.alex_email }}">{{ site_contact.alex_email }}</a><br>
+              <a href="tel:{{ site_contact.alex_phone|phone_href }}" class="text-muted">{{ site_contact.alex_phone }}</a>
             </div>
           </div>
           <div class="col-md-4">
@@ -79,7 +94,7 @@
               <div class="fw-semibold mb-1">Mahendra Dahya</div>
               <div class="small text-muted mb-1">Technical / Sales</div>
               <a href="mailto:{{ site_contact.mahendra_email }}">{{ site_contact.mahendra_email }}</a><br>
-              <a href="tel:+64275560197" class="text-muted">{{ site_contact.mahendra_phone }}</a>
+              <a href="tel:{{ site_contact.mahendra_phone|phone_href }}" class="text-muted">{{ site_contact.mahendra_phone }}</a>
             </div>
           </div>
         </div>
