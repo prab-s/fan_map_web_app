@@ -396,6 +396,44 @@ function getSeriesGraphLabelPadding(rpmLine, resolvedLabelTextScale) {
   const paddingRight = (rpmLine?.line_role === "high" ? 2 : 5) * safeScale;
   return { paddingY, paddingLeft, paddingRight };
 }
+function buildSeriesGraphLegendGraphics(rpmLines, graphConfig, chartTheme, legendX = 1300) {
+  const firstRowY = 86;
+  const rowHeight = 22;
+  const lineWidth = 30;
+  const labelGap = 10;
+  return rpmLines.filter((line) => line?.display_label || line?.rpm != null).flatMap((line, index) => {
+    const color = resolveBandColor(line);
+    const y = firstRowY + index * rowHeight;
+    return [
+      {
+        type: "line",
+        left: legendX,
+        top: y,
+        shape: { x1: 0, y1: 0, x2: lineWidth, y2: 0 },
+        style: {
+          stroke: color,
+          lineWidth: 3,
+          lineDash: line?.line_role === "low" ? [7, 5] : void 0
+        },
+        silent: true
+      },
+      {
+        type: "text",
+        left: legendX + lineWidth + labelGap,
+        top: y,
+        style: {
+          text: formatGraphLineValue(line.rpm, graphConfig, line),
+          x: 0,
+          y: 0,
+          fill: chartTheme.text,
+          font: `16px ${chartTheme.fontFamily ?? "sans-serif"}`,
+          textVerticalAlign: "middle"
+        },
+        silent: true
+      }
+    ];
+  });
+}
 function buildSmoothedCurveSamples(lineData, samplesPerSegment = 14) {
   if (lineData.length <= 2) return lineData.slice();
   const xs = lineData.map(([x]) => x);
@@ -1138,7 +1176,7 @@ function buildRpmBandPolygonSeries(rpmCurveEntries, rpmLines, chartTheme, permis
     return series;
   });
 }
-function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, permissibleBoundaryData, lowerPermissibleBoundaryData, permissibleUseMode, clipRpmAreaToPermissibleUse, showRpmBandShading, maximumVisibleFlow = null, pressureAxisMax = null, rpmBandLabelColor = null, fadedBandOpacity = CHART_STYLE.rpmBandFadedOpacity, graphConfig = DEFAULT_GRAPH_CONFIG, labelTextScale = 1, graphMode = "product", colorRpmLinesByBand = false) {
+function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, permissibleBoundaryData, lowerPermissibleBoundaryData, permissibleUseMode, clipRpmAreaToPermissibleUse, showRpmBandShading, maximumVisibleFlow = null, pressureAxisMax = null, rpmBandLabelColor = null, fadedBandOpacity = CHART_STYLE.rpmBandFadedOpacity, graphConfig = DEFAULT_GRAPH_CONFIG, labelTextScale = 1, graphMode = "product", colorRpmLinesByBand = false, showSeriesGraphLineLabels = true, showSeriesGraphLegend = false, seriesGraphLegendX = 1300, seriesGraphGridRight = "20%") {
   const resolvedLabelTextScale = Number.isFinite(Number(labelTextScale)) && Number(labelTextScale) > 0 ? Number(labelTextScale) : 1;
   const normalizedGraphMode = String(graphMode || "").trim().toLowerCase();
   function buildBandLabelAnchorData(lineData) {
@@ -1199,8 +1237,8 @@ function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, per
       smooth: false,
       data: displayLineData,
       label: { show: false },
-      showSymbol: !includeDragHandles,
-      symbol: "circle",
+      showSymbol: showSeriesGraphLegend ? false : !includeDragHandles,
+      symbol: showSeriesGraphLegend ? "none" : "circle",
       symbolSize: !includeDragHandles ? SERIES_GRAPH_POINT_SIZE : 0,
       lineStyle: {
         width: hasMultiplePoints ? 2 : includeDragHandles ? 0 : 1,
@@ -1226,7 +1264,7 @@ function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, per
       z: includeDragHandles ? idx * 2 : rpms.length - idx
     });
     if (!includeDragHandles && displayLineData.length) {
-      if (isSeriesGraphLine) {
+      if (isSeriesGraphLine && showSeriesGraphLineLabels) {
         const labelText = formatGraphLineValue(rpm, graphConfig, rpmLine);
         series.push({
           name: `${labelText} label`,
@@ -1234,6 +1272,7 @@ function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, per
           coordinateSystem: "cartesian2d",
           silent: true,
           tooltip: { show: false },
+          showInLegend: false,
           emphasis: { disabled: true },
           data: [{ value: [0] }],
           renderItem(params, api) {
@@ -1272,7 +1311,7 @@ function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, per
           },
           z: 2e4
         });
-      } else if (normalizedGraphMode === "series") {
+      } else if (normalizedGraphMode === "series" && showSeriesGraphLineLabels) {
         const labelUsesBandStyling = showRpmBandShading;
         const reversedLineData = displayLineData.slice().reverse();
         const labelAnchorData = labelUsesBandStyling ? buildBandLabelAnchorData(reversedLineData) : reversedLineData;
@@ -1285,6 +1324,7 @@ function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, per
           coordinateSystem: "cartesian2d",
           silent: true,
           tooltip: { show: false },
+          showInLegend: false,
           lineStyle: { width: 0, opacity: 0 },
           data: [{ value: labelAnchorData[labelAnchorData.length - 1] ?? reversedLineData[0] ?? [0, 0] }],
           renderItem(params, api) {
@@ -1336,7 +1376,7 @@ function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, per
           },
           z: 2e4
         });
-      } else {
+      } else if (normalizedGraphMode !== "series") {
         const reversedLineData = displayLineData.slice().reverse();
         const labelAnchorData = buildBandLabelAnchorData(reversedLineData);
         const labelPoint = labelAnchorData[labelAnchorData.length - 1] ?? reversedLineData[0] ?? [0, 0];
@@ -1346,6 +1386,7 @@ function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, per
           coordinateSystem: "cartesian2d",
           silent: true,
           tooltip: { show: false },
+          showInLegend: false,
           emphasis: { disabled: true },
           data: [{ value: labelPoint }],
           renderItem(params, api) {
@@ -1624,7 +1665,11 @@ function buildFullChartOption({
   labelTextScale = 1,
   permissibleLabelOffset = null,
   graphMode = "product",
-  colorRpmLinesByBand = false
+  colorRpmLinesByBand = false,
+  showSeriesGraphLineLabels = true,
+  showSeriesGraphLegend = false,
+  seriesGraphLegendX = 1300,
+  seriesGraphGridRight = "20%"
 }) {
   const resolvedLabelTextScale = Number.isFinite(Number(labelTextScale)) && Number(labelTextScale) > 0 ? Number(labelTextScale) : 1;
   const resolvedGraphConfig = resolveGraphConfig(graphConfig);
@@ -1690,7 +1735,9 @@ function buildFullChartOption({
     resolvedGraphConfig,
     resolvedLabelTextScale,
     graphMode,
-    colorRpmLinesByBand
+    colorRpmLinesByBand,
+    showSeriesGraphLineLabels,
+    showSeriesGraphLegend
   );
   const chartFontFamily = chartTheme.fontFamily ?? "sans-serif";
   const chartTitleFontSize = CHART_STYLE.titleFontSize - 6;
@@ -1715,7 +1762,24 @@ function buildFullChartOption({
     },
     tooltip: tooltip ?? buildCursorTooltipOption(chartTheme, resolvedGraphConfig),
     graphic: [buildCursorPointGraphic(chartTheme, chartFontFamily, resolvedLabelTextScale)],
-    grid: { left: "7%", right: "5%", top: "6%", bottom: "8%", z: -1 },
+    grid: {
+      left: "7%",
+      right: showSeriesGraphLegend ? seriesGraphGridRight : "5%",
+      top: "6%",
+      bottom: "8%",
+      z: -1
+    },
+    ...showSeriesGraphLegend ? {
+      graphic: [
+        buildCursorPointGraphic(chartTheme, chartFontFamily, resolvedLabelTextScale),
+        ...buildSeriesGraphLegendGraphics(
+          rpmLines,
+          resolvedGraphConfig,
+          chartTheme,
+          seriesGraphLegendX
+        )
+      ]
+    } : {},
     xAxis: {
       type: "value",
       axisPointer: {

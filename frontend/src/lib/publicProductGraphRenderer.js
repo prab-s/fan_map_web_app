@@ -1,5 +1,6 @@
 import { getChartTheme } from './chartTheme.js';
 import { buildFullChartOption } from './fullChart.js';
+import { filterSeriesGraphPayload, seriesGraphFilterRanges } from './seriesGraphFilters.js';
 
 const PUBLIC_BROWSER_GRAPH_RENDER_OPTIONS = {
   labelTextScale: 0.8,
@@ -179,18 +180,55 @@ export function renderPublicProductGraph({ host, payload, echarts, themeName }) 
   return chart;
 }
 
+function mountSeriesGraph({ host, payload, echarts, themeName }) {
+  const controls = document.querySelector('[data-series-graph-controls]');
+  if (!controls) return renderPublicProductGraph({ host, payload, echarts, themeName });
+
+  const modeSelect = controls.querySelector('[data-series-line-mode]');
+  const airflowSelect = controls.querySelector('[data-series-airflow]');
+  const pressureSelect = controls.querySelector('[data-series-pressure]');
+  const status = controls.querySelector('[data-series-filter-status]');
+  const ranges = seriesGraphFilterRanges(payload);
+  if (airflowSelect) airflowSelect.placeholder = `${ranges.airflow.min ?? ''}–${ranges.airflow.max ?? ''}`;
+  if (pressureSelect) pressureSelect.placeholder = `${ranges.pressure.min ?? ''}–${ranges.pressure.max ?? ''}`;
+
+  let chart = null;
+  const update = () => {
+    const filteredPayload = filterSeriesGraphPayload(
+      payload,
+      modeSelect?.value || 'both',
+      airflowSelect?.value || '',
+      pressureSelect?.value || ''
+    );
+    if (chart) chart.dispose();
+    host.replaceChildren();
+    chart = filteredPayload?.rpmLines?.length
+      ? renderPublicProductGraph({ host, payload: filteredPayload, echarts, themeName })
+      : null;
+    if (status) {
+      status.textContent = chart
+        ? `${filteredPayload.rpmLines.length} matching line${filteredPayload.rpmLines.length === 1 ? '' : 's'}`
+        : 'No graph lines match the selected filters.';
+    }
+  };
+
+  modeSelect?.addEventListener('change', update);
+  airflowSelect?.addEventListener('input', update);
+  pressureSelect?.addEventListener('input', update);
+  update();
+}
+
 function bootstrapPublicProductGraph() {
   const host = document.querySelector('[data-product-graph-host]');
   const payload = window.__PRODUCT_GRAPH_DATA__ || null;
   if (!host || !payload || !window.echarts) return;
 
   const themeName = document.documentElement.dataset.bsTheme === 'dark' ? 'dark' : 'light';
-  renderPublicProductGraph({
-    host,
-    payload,
-    echarts: window.echarts,
-    themeName
-  });
+  if (String(payload.graphMode || '').toLowerCase() === 'series') {
+    mountSeriesGraph({ host, payload, echarts: window.echarts, themeName });
+  } else {
+    renderPublicProductGraph({ host, payload, echarts: window.echarts, themeName });
+  }
 }
 
 bootstrapPublicProductGraph();

@@ -490,6 +490,20 @@ async def past_projects_page(request: Request):
     return templates.TemplateResponse(request, "past_projects.html", context)
 
 
+@router.get("/about-us")
+async def about_us_page(request: Request):
+    context = await common_context()
+    context.update({
+        "request": request,
+        "seo": seo_meta(
+            "About Us",
+            "Learn more about Vent-Tech, our placeholder company story, values, capabilities, and team.",
+            "/about-us",
+        ),
+    })
+    return templates.TemplateResponse(request, "about_us.html", context)
+
+
 @router.get("/products")
 async def products_page(request: Request):
     search = request.query_params.get("search", "").strip()

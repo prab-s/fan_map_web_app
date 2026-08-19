@@ -4510,6 +4510,44 @@ SERIES_PERFORMANCE_EXCLUDED_GROUP_NAMES = {
 }
 SERIES_PERFORMANCE_COLUMN_LIMIT = 3
 
+PERFORMANCE_HEADER_ICONS = {
+    "model": '<path d="M12 3 20 7.5v9L12 21l-8-4.5v-9L12 3Z"/><path d="m4.5 7.8 7.5 4.3 7.5-4.3M12 12.1V21"/>',
+    "rpm": '<path d="M4 13a8 8 0 1 1 16 0"/><path d="m12 13 4-4M8 19h8"/>',
+    "pressure": '<path d="M4 14a8 8 0 1 1 16 0"/><path d="M12 14 15.5 9.5M8 19h8"/>',
+    "airflow": '<path d="M3 8h13M12 5l4 3-4 3M3 16h13M12 13l4 3-4 3"/>',
+    "power": '<path d="m13 2-8 11h6l-1 9 8-12h-6l1-8Z"/>',
+    "flc": '<path d="M4 17h16M6 13h12M8 9h8M10 5h4"/>',
+    "spec": '<path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/>',
+}
+
+
+def _performance_header_icon_key(label: str) -> str:
+    normalized = str(label or "").strip().casefold()
+    if normalized == "model":
+        return "model"
+    if normalized == "rpm":
+        return "rpm"
+    if normalized in {"flc", "current"}:
+        return "flc"
+    if "pressure" in normalized:
+        return "pressure"
+    if "airflow" in normalized or "flow" in normalized or "discharge" in normalized:
+        return "airflow"
+    if "power" in normalized:
+        return "power"
+    return "spec"
+
+
+def _performance_header(label: str, icon_key: str | None = None) -> str:
+    safe_label = html.escape(str(label or "—"))
+    icon = PERFORMANCE_HEADER_ICONS.get(icon_key or _performance_header_icon_key(label), PERFORMANCE_HEADER_ICONS["spec"])
+    return (
+        '<th scope="col">'
+        f'<span class="performance-table__header-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false">{icon}</svg></span>'
+        f'<span class="performance-table__header-label">{safe_label}</span>'
+        '</th>'
+    )
+
 
 def _series_performance_candidate_columns(series: Series) -> list[tuple[str, str, str]]:
     ordered_products = sorted(series.products or [], key=lambda product: (product.model or "").lower())
@@ -4631,8 +4669,9 @@ def _format_range(values: list[float], unit: str = "", precision: int = 0) -> st
 def _product_performance_ranges(product: Product) -> dict[str, str]:
     airflow_values: list[float] = []
     pressure_values: list[float] = []
-    power_values: list[float] = []
-    swl_values: list[float] = []
+    motor_power = ""
+    motor_flc = ""
+    motor_rpm = ""
 
     for line in sorted(product.rpm_lines or [], key=lambda item: item.rpm):
         for point in getattr(line, "points", []) or []:
@@ -4641,40 +4680,37 @@ def _product_performance_ranges(product: Product) -> dict[str, str]:
             if point.pressure is not None:
                 pressure_values.append(float(point.pressure))
 
-    fan_table = product.fan_acoustic_table or {}
-    for row in fan_table.get("rows") or []:
-        if not isinstance(row, dict):
+    for group in product.parameter_groups or []:
+        if str(group.group_name or "").strip().casefold() != "motor":
             continue
-        if row.get("peak_power_kw") not in {None, ""}:
-            try:
-                power_values.append(float(row["peak_power_kw"]))
-            except (TypeError, ValueError):
-                pass
-        sound_power_levels = row.get("sound_power_levels") or {}
-        if isinstance(sound_power_levels, dict):
-            for value in sound_power_levels.values():
-                if value in {None, ""}:
-                    continue
-                try:
-                    swl_values.append(float(value))
-                except (TypeError, ValueError):
-                    continue
+        for parameter in group.parameters or []:
+            parameter_name = str(parameter.parameter_name or "").strip().casefold()
+            if parameter_name == "power":
+                motor_power = format_parameter_value(parameter) or "—"
+            elif parameter_name == "flc":
+                motor_flc = format_parameter_value(parameter) or "—"
+            elif parameter_name == "speed":
+                motor_rpm = format_parameter_value(parameter) or "—"
 
     return {
         "pressure_range": _format_range(pressure_values, "Pa"),
         "airflow_range": _format_range(airflow_values, "L/s"),
-        "swl_range": _format_range(swl_values, "dB"),
-        "power_range": _format_range(power_values, "kW", precision=2),
+        "flc": motor_flc or "—",
+        "power": motor_power or "—",
+        "rpm": motor_rpm or "—",
     }
 
 
 def render_series_performance_table_rows(
     series: Series,
     selected_columns: list[tuple[str, str, str]] | None = None,
+    include_product_links: bool = False,
+    include_rpm: bool = False,
 ) -> str:
     ordered_products = sorted(series.products or [], key=lambda product: (product.model or "").lower())
     if not ordered_products:
-        return '<tr><td colspan="8" class="placeholder">No products are linked to this series yet.</td></tr>'
+        column_count = 1 + int(include_rpm) + SERIES_PERFORMANCE_COLUMN_LIMIT + 4
+        return f'<tr><td colspan="{column_count}" class="placeholder">No products are linked to this series yet.</td></tr>'
 
     candidate_columns = (selected_columns or _series_performance_candidate_columns(series))[:SERIES_PERFORMANCE_COLUMN_LIMIT]
     while len(candidate_columns) < SERIES_PERFORMANCE_COLUMN_LIMIT:
@@ -4683,16 +4719,26 @@ def render_series_performance_table_rows(
     for product in ordered_products:
         values = _series_performance_value_map(product)
         ranges = _product_performance_ranges(product)
+        model_label = "-".join(
+            value for value in (series.name, product.model) if value
+        ) or "-"
+        model_text = html.escape(model_label)
+        if include_product_links and product.model:
+            model_text = (
+                f'<a href="/products/{html.escape(public_product_slug(product), quote=True)}">'
+                f"{model_text}</a>"
+            )
         cells = [
-            f"<td>{html.escape(product.model or '—')}</td>",
+            f"<td>{model_text}</td>",
+            *([f"<td>{html.escape(ranges['rpm'])}</td>"] if include_rpm else []),
             *[
                 f"<td>{html.escape(values.get((group_name, parameter_name), '—'))}</td>"
                 for group_name, parameter_name, _ in candidate_columns
             ],
             f"<td>{html.escape(ranges['pressure_range'])}</td>",
             f"<td>{html.escape(ranges['airflow_range'])}</td>",
-            f"<td>{html.escape(ranges['swl_range'])}</td>",
-            f"<td>{html.escape(ranges['power_range'])}</td>",
+            f"<td>{html.escape(ranges['flc'])}</td>",
+            f"<td>{html.escape(ranges['power'])}</td>",
         ]
         body_rows.append("<tr>" + "".join(cells) + "</tr>")
 
@@ -5049,28 +5095,35 @@ def render_series_performance_table_html(series: Series) -> str:
     while len(performance_column_labels) < SERIES_PERFORMANCE_COLUMN_LIMIT:
         performance_column_labels.append("—")
 
-    table_rows = render_series_performance_table_rows(series, performance_columns)
+    table_rows = render_series_performance_table_rows(
+        series,
+        performance_columns,
+        include_product_links=True,
+        include_rpm=True,
+    )
     return (
         '<div class="performance-table">'
         '<table class="performance-table__table">'
         '<colgroup>'
         '<col class="performance-table__col performance-table__col--model" />'
+        '<col class="performance-table__col performance-table__col--rpm" />'
         + "".join(
             '<col class="performance-table__col performance-table__col--spec" />'
             for _ in performance_column_labels
         )
-        + '<col class="performance-table__col performance-table__col--range" />'
-        + '<col class="performance-table__col performance-table__col--range" />'
-        + '<col class="performance-table__col performance-table__col--range" />'
-        + '<col class="performance-table__col performance-table__col--range" />'
+        + '<col class="performance-table__col performance-table__col--pressure" />'
+        + '<col class="performance-table__col performance-table__col--airflow" />'
+        + '<col class="performance-table__col performance-table__col--flc" />'
+        + '<col class="performance-table__col performance-table__col--power" />'
         + '</colgroup>'
         "<thead><tr>"
-        "<th>Model</th>"
-        + "".join(f"<th>{html.escape(label)}</th>" for label in performance_column_labels)
-        + "<th>Pressure Range</th>"
-        + "<th>Airflow Range</th>"
-        + "<th>SWL Range</th>"
-        + "<th>Power Range</th>"
+        + _performance_header("Model", "model")
+        + _performance_header("RPM", "rpm")
+        + "".join(_performance_header(label) for label in performance_column_labels)
+        + _performance_header("Pressure Range", "pressure")
+        + _performance_header("Airflow Range", "airflow")
+        + _performance_header("FLC", "flc")
+        + _performance_header("Power", "power")
         + "</tr></thead>"
         + "<tbody>"
         + table_rows
@@ -5139,6 +5192,7 @@ def build_series_graph_payload(series: Series) -> dict | None:
 
     return {
         "hasGraphData": True,
+        "graphMode": "series",
         "title": f"{series.name} Series Graph",
         "graphTitle": f"{series.name} Series Graph",
         "showRpmBandShading": False,
@@ -5335,8 +5389,9 @@ def generate_series_pdf(
             for product, page in _series_product_outline_pages(outline_metadata)
         ]
         series_children = [
-            {"title": "Overview", "page": 0},
-            *([{"title": "Performance and specifications", "page": 1}] if pdf_page_count(base_path) > 1 else []),
+            # Series templates reserve the first two pages for cover artwork;
+            # the overview begins on page three (zero-based index 2).
+            *([{"title": "Overview", "page": 2}] if pdf_page_count(base_path) > 2 else []),
         ]
         if product_entries:
             series_children.append(
@@ -5349,7 +5404,7 @@ def generate_series_pdf(
         outline_entries = [
             {
                 "title": series.name or "Series",
-                "page": 0,
+                "page": 2 if pdf_page_count(base_path) > 2 else 0,
                 "children": series_children,
             }
         ]
@@ -6152,12 +6207,19 @@ def build_product_type_series_outline_entries(
 
 def build_product_type_pdf_outline(product_type: ProductType, metadata: dict) -> list[dict]:
     series_entries = build_product_type_series_outline_entries(metadata.get("series_summaries") or [])
-    children = [{"title": "Contents", "page": 0}]
+    intro_page_count = int(metadata.get("intro_page_count") or 0)
+    children = []
+    if intro_page_count > 1:
+        children.append({"title": "Company information", "page": 1})
+    if intro_page_count > 2:
+        children.append({"title": "Contact details", "page": 2})
+    if intro_page_count > 3:
+        children.append({"title": "Contents", "page": 3})
     children.extend(series_entries)
     return [
         {
             "title": product_type.label or product_type.key or "Product Type",
-            "page": 0,
+            "page": 1 if intro_page_count > 1 else 0,
             "children": children,
         }
     ]
@@ -6334,7 +6396,11 @@ def generate_all_product_types_pdf(
     for page in reader.pages[:shared_front_matter_count]:
         writer.add_page(page)
     current_page_count = len(writer.pages)
-    all_outline_children = [{"title": "Shared introduction", "page": 0}]
+    all_outline_children = []
+    if shared_front_matter_count > 1:
+        all_outline_children.append({"title": "Company information", "page": 1})
+    if shared_front_matter_count > 2:
+        all_outline_children.append({"title": "Contact details", "page": 2})
 
     for index, item in enumerate(prepared, start=1):
         product_type = item["product_type"]
@@ -6373,7 +6439,7 @@ def generate_all_product_types_pdf(
 
     add_pdf_outline_items(
         writer,
-        [{"title": "All Product Types", "page": 0, "children": all_outline_children}],
+        [{"title": "All Product Types", "page": 1 if shared_front_matter_count > 1 else 0, "children": all_outline_children}],
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("wb") as handle:

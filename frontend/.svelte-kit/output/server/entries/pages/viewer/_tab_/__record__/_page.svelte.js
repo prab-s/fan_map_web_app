@@ -18,7 +18,7 @@ import { h as html } from "../../../../../chunks/html.js";
 function _page($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
     var $$store_subs;
-    let selectedProductTypeRecord, selectedProductTypeContextMissingSeries, selectedProductTypeContextWarning;
+    let selectedSeriesPerformanceTableHtml, selectedProductTypeRecord, selectedProductTypeContextMissingSeries, selectedProductTypeContextWarning;
     let data = fallback($$props["data"], () => ({}), true);
     let products = [];
     let productTypes = [];
@@ -83,6 +83,9 @@ function _page($$renderer, $$props) {
     let refreshingProductTypePdfJob = null;
     let refreshingSeriesGraphId = null;
     let refreshingSeriesPdfJob = null;
+    function internalPerformanceTableHtml(value) {
+      return String(value || "").replace(/href=(['"])\/products?\/(\d+)(?:-[^"']*)?\1/g, (_match, quote, productId) => `href=${quote}/viewer/product/${productId}${quote}`);
+    }
     function productEditorUrl(productId) {
       const params = new URLSearchParams();
       if (productId != null && productId !== "") {
@@ -429,6 +432,13 @@ function _page($$renderer, $$props) {
     }
     selectedSeriesRecord = seriesTabOptions.find((series) => Number(series.id) === Number(seriesTabSeriesId)) || null;
     seriesDescriptionSections = getDescriptionSections(selectedSeriesRecord || {});
+    if (String(selectedSeriesRecord?.id || "") !== String(previousSelectedSeriesId || "")) {
+      previousSelectedSeriesId = selectedSeriesRecord?.id ?? null;
+      selectedSeriesGraphRecord = null;
+      seriesChartOption = {};
+      loadSelectedSeriesGraph();
+    }
+    selectedSeriesPerformanceTableHtml = internalPerformanceTableHtml(selectedSeriesGraphRecord?.performance_table_html);
     if (store_get($$store_subs ??= {}, "$theme", theme), productTypes) {
       buildChartOptions();
     }
@@ -436,12 +446,6 @@ function _page($$renderer, $$props) {
       previousSelectedProductId = selectedProductId;
       loadSelectedProduct();
       loadChartData();
-    }
-    if (String(selectedSeriesRecord?.id || "") !== String(previousSelectedSeriesId || "")) {
-      previousSelectedSeriesId = selectedSeriesRecord?.id ?? null;
-      selectedSeriesGraphRecord = null;
-      seriesChartOption = {};
-      loadSelectedSeriesGraph();
     }
     if (productTypes.length > 0 && selectedProductTypeId) {
       const normalizedProductType = productTypes.find((productType) => String(productType.id) === String(selectedProductTypeId) || String(productType.key) === String(selectedProductTypeId));
@@ -916,9 +920,9 @@ function _page($$renderer, $$props) {
           $$renderer2.push(`<p class="text-body-secondary mb-0">No series graph data is available yet.</p>`);
         }
         $$renderer2.push(`<!--]--></div></div> `);
-        if (selectedSeriesGraphRecord?.performance_table_html) {
+        if (selectedSeriesPerformanceTableHtml) {
           $$renderer2.push("<!--[0-->");
-          $$renderer2.push(`<div class="card shadow-sm series-performance-card mb-3 svelte-36khdd"><div class="card-body"><div class="d-flex flex-wrap align-items-center gap-2 mb-3"><div><h4 class="h6 mb-1">Performance Table</h4> <div class="small text-body-secondary">Model variants, key specification columns, and performance ranges for this series.</div></div></div> <div class="performance-table-host svelte-36khdd">${html(selectedSeriesGraphRecord.performance_table_html)}</div></div></div>`);
+          $$renderer2.push(`<div class="card shadow-sm series-performance-card mb-3 svelte-36khdd"><div class="card-body"><div class="d-flex flex-wrap align-items-center gap-2 mb-3"><div><h4 class="h6 mb-1">Performance Table</h4> <div class="small text-body-secondary">Model variants, key specification columns, and performance ranges for this series.</div></div></div> <div class="performance-table-host svelte-36khdd">${html(selectedSeriesPerformanceTableHtml)}</div></div></div>`);
         } else {
           $$renderer2.push("<!--[-1-->");
         }

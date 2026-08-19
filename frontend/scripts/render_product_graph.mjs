@@ -39,14 +39,47 @@ async function main() {
     tooltip: { show: false },
     graphStyle: payload.graphStyle ?? null,
     labelTextScale: 1.25,
-    permissibleLabelOffset: { x: 20, y: -15 }
+    permissibleLabelOffset: { x: 20, y: -15 },
+    showSeriesGraphLineLabels: payload.graphMode !== 'series',
+    showSeriesGraphLegend: payload.graphMode === 'series',
+    seriesGraphLegendX: 1300,
+    seriesGraphGridRight: '20%'
   });
 
   option.animation = false;
   const outputBackground = option.backgroundColor || LIGHT_CHART_THEME.background;
 
   const width = 1600;
-  const height = 960;
+  const legendLabels = payload.graphMode === 'series'
+    ? (payload.rpmLines ?? [])
+      .filter((line) => line?.display_label || line?.rpm != null)
+      .map((line) => String(line.display_label ?? line.rpm ?? ''))
+    : [];
+  const longestLegendLabelLength = legendLabels.reduce(
+    (longest, label) => Math.max(longest, label.length),
+    0
+  );
+  const legendWidth = Math.max(260, longestLegendLabelLength * 8.5 + 40);
+  const legendRightMargin = 15;
+  const legendX = width - legendRightMargin - legendWidth;
+  const graphRightEdge = Math.max(720, legendX - 20);
+  const seriesGraphGridRight = `${((width - graphRightEdge) / width) * 100}%`;
+  option.grid.right = payload.graphMode === 'series' ? seriesGraphGridRight : option.grid.right;
+  if (payload.graphMode === 'series' && Array.isArray(option.graphic)) {
+    const legendGraphics = option.graphic.slice(1);
+    const legendDelta = legendX - 1300;
+    legendGraphics.forEach((graphic) => {
+      if (graphic.type === 'line' || graphic.type === 'text') {
+        graphic.left += legendDelta;
+      }
+    });
+  }
+  const legendEntryCount = payload.graphMode === 'series'
+    ? (payload.rpmLines ?? []).filter((line) => line?.display_label || line?.rpm != null).length
+    : 0;
+  const legendRowHeight = 22;
+  const legendReservedHeight = 136;
+  const height = Math.max(960, legendReservedHeight + legendEntryCount * legendRowHeight);
   const chart = echarts.init(null, null, {
     renderer: 'svg',
     ssr: true,

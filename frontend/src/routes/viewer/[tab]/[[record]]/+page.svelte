@@ -90,6 +90,8 @@
   let productListRequestToken = 0;
   let seriesOptionsRequestToken = 0;
   let seriesTabOptionsRequestToken = 0;
+  let appliedRouteStateKey = '';
+  let routeStateHydrationToken = 0;
   let previousSelectedSeriesId = null;
   let previousSelectedProductTypeId = '';
   let previousActiveViewerTab = activeViewerTab;
@@ -103,6 +105,17 @@
 
   $: productDescriptionSections = getDescriptionSections(selectedProduct || {});
   $: seriesDescriptionSections = getDescriptionSections(selectedSeriesRecord || {});
+
+  function internalPerformanceTableHtml(value) {
+    return String(value || '').replace(
+      /href=(['"])\/products?\/(\d+)(?:-[^"']*)?\1/g,
+      (_match, quote, productId) => `href=${quote}/viewer/product/${productId}${quote}`
+    );
+  }
+
+  $: selectedSeriesPerformanceTableHtml = internalPerformanceTableHtml(
+    selectedSeriesGraphRecord?.performance_table_html
+  );
 
   function viewerPath(tab = activeViewerTab) {
     const normalizedTab = normalizeViewerTab(tab);
@@ -892,6 +905,36 @@
     syncViewerUrl();
   }
 
+  $: if (viewerUrlStateReady) {
+    const nextRouteState = {
+      tab: normalizeViewerTab(data?.tab),
+      product: normalizeViewerId(data?.product),
+      productTypeId: normalizeViewerStringId(data?.product_type_id || data?.product_type),
+      productTypeContext: data?.product_type_context || null,
+      seriesProductTypeKey: normalizeViewerStringId(data?.series_product_type_key),
+      series: normalizeViewerStringId(data?.series)
+    };
+    const nextRouteStateKey = JSON.stringify(nextRouteState);
+
+    if (nextRouteStateKey !== appliedRouteStateKey) {
+      appliedRouteStateKey = nextRouteStateKey;
+      viewerStateHydrating = true;
+      activeViewerTab = nextRouteState.tab;
+      selectedProductId = nextRouteState.product;
+      selectedProductTypeId = nextRouteState.productTypeId;
+      selectedProductTypeContext = nextRouteState.productTypeContext;
+      seriesTabProductTypeFilter = nextRouteState.seriesProductTypeKey;
+      seriesTabSeriesId = nextRouteState.series;
+
+      const hydrationToken = ++routeStateHydrationToken;
+      Promise.resolve().then(() => {
+        if (hydrationToken === routeStateHydrationToken) {
+          viewerStateHydrating = false;
+        }
+      });
+    }
+  }
+
   onMount(async () => {
     await loadEverything();
     await loadSeriesOptions();
@@ -1509,7 +1552,7 @@
               </div>
             </div>
 
-            {#if selectedSeriesGraphRecord?.performance_table_html}
+            {#if selectedSeriesPerformanceTableHtml}
               <div class="card shadow-sm series-performance-card mb-3">
                 <div class="card-body">
                   <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
@@ -1518,7 +1561,7 @@
                       <div class="small text-body-secondary">Model variants, key specification columns, and performance ranges for this series.</div>
                     </div>
                   </div>
-                  <div class="performance-table-host">{@html selectedSeriesGraphRecord.performance_table_html}</div>
+                  <div class="performance-table-host">{@html selectedSeriesPerformanceTableHtml}</div>
                 </div>
               </div>
             {/if}
@@ -1663,21 +1706,9 @@
     width: max-content;
     min-width: 100%;
     border-collapse: collapse;
-    table-layout: fixed;
+    table-layout: auto;
     font-size: 0.84rem;
     line-height: 1.1;
-  }
-
-  .performance-table-host :global(.performance-table__col--model) {
-    width: 15%;
-  }
-
-  .performance-table-host :global(.performance-table__col--spec) {
-    width: 10.5%;
-  }
-
-  .performance-table-host :global(.performance-table__col--range) {
-    width: 13.5%;
   }
 
   .performance-table-host :global(.performance-table__table th),
@@ -1691,8 +1722,30 @@
   }
 
   .performance-table-host :global(.performance-table__table thead th) {
-    background: rgba(208, 225, 253, 0.8);
+    background: #cc1024;
+    color: #fff;
     font-weight: 700;
+  }
+
+  .performance-table-host :global(.performance-table__header-icon) {
+    display: block;
+    min-height: 2.1rem;
+    margin-bottom: 0.2rem;
+  }
+
+  .performance-table-host :global(.performance-table__header-icon svg) {
+    width: 2rem;
+    height: 2rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.6;
+    vertical-align: middle;
+  }
+
+  .performance-table-host :global(.performance-table__header-label) {
+    display: block;
   }
 
   .performance-table-host :global(.performance-table__table tbody tr:nth-child(even) td) {

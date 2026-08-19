@@ -46,18 +46,31 @@
       {% endif %}
     </section>
 
-    {% for section in series_sections %}
-      <section class="content-section mb-4">
-        <div class="content-block">
-          {{ section.html | safe }}
-        </div>
-      </section>
-    {% endfor %}
-
     {% if series_graph.hasGraphData %}
       <div class="card my-4 product-graph-card">
         <div class="card-header fw-semibold">Performance graph</div>
         <div class="card-body">
+          <div class="series-graph-controls border rounded p-3 mb-3" data-series-graph-controls>
+            <div class="row g-3 align-items-end">
+              <div class="col-md-4">
+                <label class="form-label small fw-semibold" for="series-line-mode">Lines to show</label>
+                <select class="form-select" id="series-line-mode" data-series-line-mode>
+                  <option value="both">High and low lines</option>
+                  <option value="high">High lines only</option>
+                  <option value="low">Low lines only</option>
+                </select>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label small fw-semibold" for="series-airflow-filter">Airflow</label>
+                <input class="form-control" id="series-airflow-filter" data-series-airflow type="number" step="any" inputmode="decimal" placeholder="Airflow range">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label small fw-semibold" for="series-pressure-filter">Pressure</label>
+                <input class="form-control" id="series-pressure-filter" data-series-pressure type="number" step="any" inputmode="decimal" placeholder="Pressure range">
+              </div>
+            </div>
+            <div class="small text-muted mt-3" data-series-filter-status></div>
+          </div>
           <div
             id="series-graph"
             class="product-graph-host"
@@ -79,6 +92,14 @@
         </div>
       </div>
     {% endif %}
+
+    {% for section in series_sections %}
+      <section class="content-section mb-4">
+        <div class="content-block">
+          {{ section.html | safe }}
+        </div>
+      </section>
+    {% endfor %}
 
     <section class="card my-4 series-performance-card">
       <div class="card-header fw-semibold">Performance table</div>

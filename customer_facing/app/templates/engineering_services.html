@@ -108,24 +108,36 @@
   </div>
 </section>
 
-<section class="engineering-cta page-hero mb-4">
+<section class="custom-design-section page-hero mb-4">
   <div class="row g-4 align-items-center">
     <div class="col-lg-8">
-      <p class="section-kicker text-uppercase text-primary fw-semibold mb-2">Next step</p>
-      <h2 class="h4 mb-2">Send us the drawing, dimensions, or rough idea and we can advise on the best process.</h2>
+      <p class="section-kicker text-uppercase fw-semibold mb-2">Custom design</p>
+      <h2 class="h3 mb-3">Need something made for a specific space, duty, or application?</h2>
+      <p class="text-muted mb-3">
+        Our fabrication capabilities can support more than standard catalogue items. From an early concept or rough
+        sketch through to formed panels, brackets, ducting, guards, and other practical components, we can help explore
+        a solution that fits the job.
+      </p>
       <p class="text-muted mb-0">
-        If a part needs multiple operations, we can help talk through the order of work and what will give the cleanest
-        finish.
+        Share your dimensions, drawings, photos, performance requirements, or simply describe the problem. The team
+        can review the details and come back with the next best step.
       </p>
     </div>
-    <div class="col-lg-4 text-lg-end">
-      <a
-        class="btn btn-primary btn-lg"
-        href="{{ site_contact.request_quote_url }}"
-        data-quote-request-trigger
-        data-bs-toggle="modal"
-        data-bs-target="#quoteRequestModal"
-      >Enquire</a>
+    <div class="col-lg-4">
+      <div class="custom-design-panel card shadow-sm">
+        <div class="card-body p-4">
+          <div class="small text-uppercase text-muted fw-semibold mb-2">Start a tailored enquiry</div>
+          <p class="text-muted mb-3">Use the enquiry form to send through your custom design or fabrication brief.</p>
+          <a
+            class="btn btn-primary w-100"
+            href="{{ site_contact.request_quote_url }}"
+            data-quote-request-trigger
+            data-quote-request-default-type="tailored"
+            data-bs-toggle="modal"
+            data-bs-target="#quoteRequestModal"
+          >Tell us about your project</a>
+        </div>
+      </div>
     </div>
   </div>
 </section>

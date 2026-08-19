@@ -54,14 +54,6 @@
       {% endif %}
     </section>
 
-    {% for section in product_sections %}
-    <section class="content-section mb-4">
-      <div class="content-block">
-        {{ section.html | safe }}
-      </div>
-    </section>
-    {% endfor %}
-
     {% if product_graph.hasGraphData %}
     <div class="card my-4 product-graph-card">
       <div class="card-header fw-semibold">Performance graph</div>
@@ -83,6 +75,14 @@
       </div>
     </div>
     {% endif %}
+
+    {% for section in product_sections %}
+    <section class="content-section mb-4">
+      <div class="content-block">
+        {{ section.html | safe }}
+      </div>
+    </section>
+    {% endfor %}
 
     {% include "partials/fan_acoustic_table.html" %}
 

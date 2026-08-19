@@ -3,6 +3,7 @@
   import { getChartTheme, theme } from '$lib/config.js';
   import { getDescriptionSections } from '$lib/descriptionSections.js';
   import { buildFullChartOption } from '$lib/fullChart.js';
+  import { filterSeriesGraphPayload, seriesGraphFilterRanges } from '$lib/seriesGraphFilters.js';
 
   export let data = {};
 
@@ -14,21 +15,31 @@
   let productTypeLabel = 'Series';
   let pageTitle = 'Series';
   let seriesDescriptionSections = [];
+  let lineMode = 'both';
+  let selectedAirflow = '';
+  let selectedPressure = '';
 
   $: series = data?.series ?? null;
   $: seriesGraphPayload = series?.series_graph_payload ?? null;
+  $: graphFilterRanges = seriesGraphFilterRanges(seriesGraphPayload);
+  $: filteredSeriesGraphPayload = filterSeriesGraphPayload(
+    seriesGraphPayload,
+    lineMode,
+    selectedAirflow,
+    selectedPressure
+  );
   $: chartTheme = getChartTheme($theme);
-  $: chartOption = seriesGraphPayload
+  $: chartOption = filteredSeriesGraphPayload
     ? buildFullChartOption({
-        rpmLines: seriesGraphPayload.rpmLines || [],
-        rpmPoints: seriesGraphPayload.rpmPoints || [],
-        efficiencyPoints: seriesGraphPayload.efficiencyPoints || [],
+        rpmLines: filteredSeriesGraphPayload.rpmLines || [],
+        rpmPoints: filteredSeriesGraphPayload.rpmPoints || [],
+        efficiencyPoints: filteredSeriesGraphPayload.efficiencyPoints || [],
         chartTheme,
-        title: seriesGraphPayload.title || `${series?.name || 'Series'} Series Graph`,
-        graphConfig: seriesGraphPayload.graphConfig || null,
+        title: filteredSeriesGraphPayload.title || `${series?.name || 'Series'} Series Graph`,
+        graphConfig: filteredSeriesGraphPayload.graphConfig || null,
         graphMode: 'series',
-        showRpmBandShading: Boolean(seriesGraphPayload.showRpmBandShading),
-        graphStyle: seriesGraphPayload.graphStyle || null,
+        showRpmBandShading: Boolean(filteredSeriesGraphPayload.showRpmBandShading),
+        graphStyle: filteredSeriesGraphPayload.graphStyle || null,
         adaptGraphBackgroundToTheme: true
       })
     : {};
@@ -85,13 +96,42 @@
         </div>
       </div>
 
-      {#if chartOption && Object.keys(chartOption).length}
+      {#if seriesGraphPayload}
+        <div class="graph-filters card border-0 mb-3">
+          <div class="card-body p-3">
+            <div class="row g-3 align-items-end">
+              <div class="col-12 col-md-4">
+                <label class="form-label small fw-semibold" for="series-line-mode">Lines to show</label>
+                <select id="series-line-mode" class="form-select" bind:value={lineMode}>
+                  <option value="both">High and low lines</option>
+                  <option value="high">High lines only</option>
+                  <option value="low">Low lines only</option>
+                </select>
+              </div>
+              <div class="col-12 col-md-4">
+                <label class="form-label small fw-semibold" for="series-airflow-filter">Airflow</label>
+                <input id="series-airflow-filter" class="form-control" type="number" step="any" inputmode="decimal" placeholder={`${graphFilterRanges.airflow.min ?? ''}–${graphFilterRanges.airflow.max ?? ''}`} bind:value={selectedAirflow} />
+              </div>
+              <div class="col-12 col-md-4">
+                <label class="form-label small fw-semibold" for="series-pressure-filter">Pressure</label>
+                <input id="series-pressure-filter" class="form-control" type="number" step="any" inputmode="decimal" placeholder={`${graphFilterRanges.pressure.min ?? ''}–${graphFilterRanges.pressure.max ?? ''}`} bind:value={selectedPressure} />
+              </div>
+            </div>
+            <div class="d-flex flex-wrap justify-content-between gap-2 mt-3 small text-body-secondary">
+              <span>Enter performance targets; lines unable to cover those targets are hidden.</span>
+              <span>{filteredSeriesGraphPayload?.rpmLines?.length || 0} matching line{filteredSeriesGraphPayload?.rpmLines?.length === 1 ? '' : 's'}</span>
+            </div>
+          </div>
+        </div>
+      {/if}
+
+      {#if chartOption && Object.keys(chartOption).length && filteredSeriesGraphPayload?.rpmLines?.length}
         <div class="chart-wrap">
           <ECharts option={chartOption} height="720px" />
         </div>
       {:else}
         <div class="empty-state">
-          <p class="mb-0">No graph data is available for this series yet.</p>
+          <p class="mb-0">{seriesGraphPayload ? 'No graph lines match the selected filters.' : 'No graph data is available for this series yet.'}</p>
         </div>
       {/if}
     </div>
@@ -142,8 +182,7 @@
       linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(255, 255, 255, 0.98));
   }
 
-  .eyebrow,
-  .section-label {
+  .eyebrow {
     color: #64748b;
     text-transform: uppercase;
     letter-spacing: 0.12em;
@@ -177,6 +216,11 @@
     overflow: hidden;
   }
 
+  .graph-filters {
+    background: rgba(248, 250, 252, 0.8);
+    border: 1px solid rgba(100, 116, 139, 0.18) !important;
+  }
+
   .performance-table-host {
     overflow-x: auto;
     background: #fff;
@@ -196,21 +240,9 @@
     width: max-content;
     min-width: 100%;
     border-collapse: collapse;
-    table-layout: fixed;
+    table-layout: auto;
     font-size: 0.84rem;
     line-height: 1.1;
-  }
-
-  .performance-table-host :global(.performance-table__col--model) {
-    width: 15%;
-  }
-
-  .performance-table-host :global(.performance-table__col--spec) {
-    width: 10.5%;
-  }
-
-  .performance-table-host :global(.performance-table__col--range) {
-    width: 13.5%;
   }
 
   .performance-table-host :global(.performance-table__table th),
@@ -224,8 +256,30 @@
   }
 
   .performance-table-host :global(.performance-table__table thead th) {
-    background: rgba(208, 225, 253, 0.8);
+    background: #cc1024;
+    color: #fff;
     font-weight: 700;
+  }
+
+  .performance-table-host :global(.performance-table__header-icon) {
+    display: block;
+    min-height: 2.1rem;
+    margin-bottom: 0.2rem;
+  }
+
+  .performance-table-host :global(.performance-table__header-icon svg) {
+    width: 2rem;
+    height: 2rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.6;
+    vertical-align: middle;
+  }
+
+  .performance-table-host :global(.performance-table__header-label) {
+    display: block;
   }
 
   .performance-table-host :global(.performance-table__table tbody tr:nth-child(even) td) {

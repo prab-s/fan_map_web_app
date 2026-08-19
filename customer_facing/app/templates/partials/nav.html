@@ -48,6 +48,16 @@
         </a>
 
         <a
+          class="btn btn-outline-light nav-about-button btn-sm"
+          href="/about-us"
+          {% if request.url.path.startswith('/about-us') %}
+            aria-current="page"
+          {% endif %}
+        >
+          About Us
+        </a>
+
+        <a
           class="btn btn-outline-light nav-contact-button btn-sm"
           href="/contact"
           {% if request.url.path.startswith('/contact') %}

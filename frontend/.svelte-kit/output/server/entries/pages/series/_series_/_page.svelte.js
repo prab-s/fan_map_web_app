@@ -4,9 +4,80 @@ import { t as theme } from "../../../../chunks/config.js";
 import { a as getDescriptionSections } from "../../../../chunks/descriptionSections.js";
 import { f as fallback } from "../../../../chunks/equality.js";
 import { h as html } from "../../../../chunks/html.js";
+function numericValue(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+function graphPoints(payload) {
+  if (Array.isArray(payload?.rpmPoints) && payload.rpmPoints.length) return payload.rpmPoints;
+  return (payload?.rpmLines || []).flatMap(
+    (line) => (line?.points || []).map((point) => ({
+      ...point,
+      rpm_line_id: point?.rpm_line_id ?? line?.id,
+      rpm: point?.rpm ?? line?.rpm
+    }))
+  );
+}
+function seriesGraphFilterValues(payload) {
+  const airflow = /* @__PURE__ */ new Set();
+  const pressure = /* @__PURE__ */ new Set();
+  for (const point of graphPoints(payload)) {
+    const pointAirflow = numericValue(point?.airflow);
+    const pointPressure = numericValue(point?.pressure);
+    if (pointAirflow != null) airflow.add(pointAirflow);
+    if (pointPressure != null) pressure.add(pointPressure);
+  }
+  return {
+    airflow: [...airflow].sort((a, b) => a - b),
+    pressure: [...pressure].sort((a, b) => a - b)
+  };
+}
+function seriesGraphFilterRanges(payload) {
+  const values = seriesGraphFilterValues(payload);
+  return {
+    airflow: {
+      min: values.airflow[0] ?? null,
+      max: values.airflow.at(-1) ?? null
+    },
+    pressure: {
+      min: values.pressure[0] ?? null,
+      max: values.pressure.at(-1) ?? null
+    }
+  };
+}
+function filterSeriesGraphPayload(payload, lineMode = "both", airflow = "", pressure = "") {
+  if (!payload) return null;
+  const normalizedMode = ["high", "low", "both"].includes(lineMode) ? lineMode : "both";
+  const selectedAirflow = airflow === "" || airflow == null ? null : numericValue(airflow);
+  const selectedPressure = pressure === "" || pressure == null ? null : numericValue(pressure);
+  const pointsByLineId = /* @__PURE__ */ new Map();
+  for (const point of graphPoints(payload)) {
+    const lineId = String(point?.rpm_line_id ?? "");
+    if (!pointsByLineId.has(lineId)) pointsByLineId.set(lineId, []);
+    pointsByLineId.get(lineId).push(point);
+  }
+  const lines = (payload.rpmLines || []).filter((line) => {
+    const role = String(line?.line_role || "high").toLowerCase();
+    if (normalizedMode !== "both" && role !== normalizedMode) return false;
+    const points = pointsByLineId.get(String(line?.id ?? line?.rpm ?? "")) || [];
+    if (selectedAirflow == null && selectedPressure == null) return true;
+    const airflowValues = points.map((point) => numericValue(point?.airflow)).filter((value) => value != null);
+    const pressureValues = points.map((point) => numericValue(point?.pressure)).filter((value) => value != null);
+    const airflowMatches = selectedAirflow == null || airflowValues.length > 0 && selectedAirflow >= Math.min(...airflowValues) && selectedAirflow <= Math.max(...airflowValues);
+    const pressureMatches = selectedPressure == null || pressureValues.length > 0 && selectedPressure >= Math.min(...pressureValues) && selectedPressure <= Math.max(...pressureValues);
+    return airflowMatches && pressureMatches;
+  });
+  const lineIds = new Set(lines.map((line) => String(line?.id ?? line?.rpm ?? "")));
+  return {
+    ...payload,
+    rpmLines: lines,
+    rpmPoints: Array.isArray(payload.rpmPoints) ? payload.rpmPoints.filter((point) => lineIds.has(String(point?.rpm_line_id ?? point?.rpm ?? ""))) : void 0
+  };
+}
 function _page($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
     var $$store_subs;
+    let graphFilterRanges, filteredSeriesGraphPayload;
     let data = fallback($$props["data"], () => ({}), true);
     let series = null;
     let seriesGraphPayload = null;
@@ -16,19 +87,24 @@ function _page($$renderer, $$props) {
     let productTypeLabel = "Series";
     let pageTitle = "Series";
     let seriesDescriptionSections = [];
+    let lineMode = "both";
+    let selectedAirflow = "";
+    let selectedPressure = "";
     series = data?.series ?? null;
     seriesGraphPayload = series?.series_graph_payload ?? null;
+    graphFilterRanges = seriesGraphFilterRanges(seriesGraphPayload);
+    filteredSeriesGraphPayload = filterSeriesGraphPayload(seriesGraphPayload, lineMode, selectedAirflow, selectedPressure);
     chartTheme = getChartTheme(store_get($$store_subs ??= {}, "$theme", theme));
-    chartOption = seriesGraphPayload ? buildFullChartOption({
-      rpmLines: seriesGraphPayload.rpmLines || [],
-      rpmPoints: seriesGraphPayload.rpmPoints || [],
-      efficiencyPoints: seriesGraphPayload.efficiencyPoints || [],
+    chartOption = filteredSeriesGraphPayload ? buildFullChartOption({
+      rpmLines: filteredSeriesGraphPayload.rpmLines || [],
+      rpmPoints: filteredSeriesGraphPayload.rpmPoints || [],
+      efficiencyPoints: filteredSeriesGraphPayload.efficiencyPoints || [],
       chartTheme,
-      title: seriesGraphPayload.title || `${series?.name || "Series"} Series Graph`,
-      graphConfig: seriesGraphPayload.graphConfig || null,
+      title: filteredSeriesGraphPayload.title || `${series?.name || "Series"} Series Graph`,
+      graphConfig: filteredSeriesGraphPayload.graphConfig || null,
       graphMode: "series",
-      showRpmBandShading: Boolean(seriesGraphPayload.showRpmBandShading),
-      graphStyle: seriesGraphPayload.graphStyle || null,
+      showRpmBandShading: Boolean(filteredSeriesGraphPayload.showRpmBandShading),
+      graphStyle: filteredSeriesGraphPayload.graphStyle || null,
       adaptGraphBackgroundToTheme: true
     }) : {};
     seriesDescriptionSections = getDescriptionSections(series || {});
@@ -63,14 +139,40 @@ function _page($$renderer, $$props) {
       $$renderer2.push("<!--[-1-->");
     }
     $$renderer2.push(`<!--]--></div></div> `);
-    if (chartOption && Object.keys(chartOption).length) {
+    if (seriesGraphPayload) {
+      $$renderer2.push("<!--[0-->");
+      $$renderer2.push(`<div class="graph-filters card border-0 mb-3 svelte-a8na6i"><div class="card-body p-3"><div class="row g-3 align-items-end"><div class="col-12 col-md-4"><label class="form-label small fw-semibold" for="series-line-mode">Lines to show</label> `);
+      $$renderer2.select(
+        {
+          id: "series-line-mode",
+          class: "form-select",
+          value: lineMode
+        },
+        ($$renderer3) => {
+          $$renderer3.option({ value: "both" }, ($$renderer4) => {
+            $$renderer4.push(`High and low lines`);
+          });
+          $$renderer3.option({ value: "high" }, ($$renderer4) => {
+            $$renderer4.push(`High lines only`);
+          });
+          $$renderer3.option({ value: "low" }, ($$renderer4) => {
+            $$renderer4.push(`Low lines only`);
+          });
+        }
+      );
+      $$renderer2.push(`</div> <div class="col-12 col-md-4"><label class="form-label small fw-semibold" for="series-airflow-filter">Airflow</label> <input id="series-airflow-filter" class="form-control" type="number" step="any" inputmode="decimal"${attr("placeholder", `${graphFilterRanges.airflow.min ?? ""}–${graphFilterRanges.airflow.max ?? ""}`)}${attr("value", selectedAirflow)}/></div> <div class="col-12 col-md-4"><label class="form-label small fw-semibold" for="series-pressure-filter">Pressure</label> <input id="series-pressure-filter" class="form-control" type="number" step="any" inputmode="decimal"${attr("placeholder", `${graphFilterRanges.pressure.min ?? ""}–${graphFilterRanges.pressure.max ?? ""}`)}${attr("value", selectedPressure)}/></div></div> <div class="d-flex flex-wrap justify-content-between gap-2 mt-3 small text-body-secondary"><span>Enter performance targets; lines unable to cover those targets are hidden.</span> <span>${escape_html(filteredSeriesGraphPayload?.rpmLines?.length || 0)} matching line${escape_html(filteredSeriesGraphPayload?.rpmLines?.length === 1 ? "" : "s")}</span></div></div></div>`);
+    } else {
+      $$renderer2.push("<!--[-1-->");
+    }
+    $$renderer2.push(`<!--]--> `);
+    if (chartOption && Object.keys(chartOption).length && filteredSeriesGraphPayload?.rpmLines?.length) {
       $$renderer2.push("<!--[0-->");
       $$renderer2.push(`<div class="chart-wrap svelte-a8na6i">`);
       ECharts($$renderer2, { option: chartOption, height: "720px" });
       $$renderer2.push(`<!----></div>`);
     } else {
       $$renderer2.push("<!--[-1-->");
-      $$renderer2.push(`<div class="empty-state svelte-a8na6i"><p class="mb-0">No graph data is available for this series yet.</p></div>`);
+      $$renderer2.push(`<div class="empty-state svelte-a8na6i"><p class="mb-0">${escape_html(seriesGraphPayload ? "No graph lines match the selected filters." : "No graph data is available for this series yet.")}</p></div>`);
     }
     $$renderer2.push(`<!--]--></div></section> <section class="card shadow-sm border-0 table-panel mb-4 svelte-a8na6i"><div class="card-body p-3 p-lg-4"><div class="d-flex flex-wrap align-items-center gap-2 mb-3"><div><h2 class="h4 mb-1">Performance Table</h2> <p class="text-body-secondary mb-0">Model variants, key specification columns, and performance ranges for this series.</p></div></div> `);
     if (series?.performance_table_html) {
