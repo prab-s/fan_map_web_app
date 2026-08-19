@@ -14,6 +14,7 @@
   $: isRunning = job?.status === 'running';
   $: isCompleted = job?.status === 'completed';
   $: isFailed = job?.status === 'failed';
+  $: isPdfRenderHeartbeat = isRunning && /^Rendering PDF in Chromium \(/.test(job?.progress_message ?? '');
   $: elapsedMs = maintenanceJobElapsedMs(job, now);
 
   function progressSignature(nextJob) {
@@ -84,7 +85,7 @@
       aria-valuenow={progressPercent ?? undefined}
     >
       <div
-        class={`progress-bar ${progressPercent == null && isRunning ? 'progress-bar-striped progress-bar-animated' : ''}`}
+        class={`progress-bar ${isRunning && (progressPercent == null || isPdfRenderHeartbeat) ? 'progress-bar-striped progress-bar-animated' : ''}`}
         style={`width: ${(isCompleted ? 100 : progressPercent) ?? 100}%`}
       >
         {#if isCompleted || progressPercent != null}
@@ -97,6 +98,11 @@
     {#if job.progress_current != null && job.progress_total != null}
       <div class="small text-body-secondary mt-2">
         Step {job.progress_current} of {job.progress_total}
+      </div>
+    {/if}
+    {#if isPdfRenderHeartbeat}
+      <div class="small text-primary-emphasis mt-2">
+        Active PDF render; the percentage will advance when Chromium completes this phase.
       </div>
     {/if}
     {#if isRunning && startedLabel}

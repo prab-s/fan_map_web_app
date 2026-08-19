@@ -701,6 +701,7 @@
       "_auth.js",
       "_config.js",
       "_equality.js",
+      "_JobProgressPanel.js",
       "_api.js"
     ],
     "css": [

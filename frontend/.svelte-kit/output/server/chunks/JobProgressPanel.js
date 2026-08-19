@@ -71,7 +71,7 @@ async function runMaintenanceJob(starter, options = {}) {
 }
 function JobProgressPanel($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
-    let progressPercent, isRunning, isCompleted, isFailed, elapsedMs, staleForMs, showsStalled, startedLabel, staleLabel;
+    let progressPercent, isRunning, isCompleted, isFailed, isPdfRenderHeartbeat, elapsedMs, staleForMs, showsStalled, startedLabel, staleLabel;
     let job = fallback($$props["job"], null);
     let label = fallback($$props["label"], "Generating PDF");
     let now = Date.now();
@@ -97,6 +97,7 @@ function JobProgressPanel($$renderer, $$props) {
     isRunning = job?.status === "running";
     isCompleted = job?.status === "completed";
     isFailed = job?.status === "failed";
+    isPdfRenderHeartbeat = isRunning && /^Rendering PDF in Chromium \(/.test(job?.progress_message ?? "");
     {
       if (isRunning && !heartbeat) {
         heartbeat = setInterval(
@@ -145,7 +146,7 @@ function JobProgressPanel($$renderer, $$props) {
       } else {
         $$renderer2.push("<!--[-1-->");
       }
-      $$renderer2.push(`<!--]--> <div class="progress" role="progressbar"${attr("aria-label", label)} aria-valuemin="0" aria-valuemax="100"${attr("aria-valuenow", progressPercent ?? void 0)}><div${attr_class(`progress-bar ${progressPercent == null && isRunning ? "progress-bar-striped progress-bar-animated" : ""}`)}${attr_style(`width: ${(isCompleted ? 100 : progressPercent) ?? 100}%`)}>`);
+      $$renderer2.push(`<!--]--> <div class="progress" role="progressbar"${attr("aria-label", label)} aria-valuemin="0" aria-valuemax="100"${attr("aria-valuenow", progressPercent ?? void 0)}><div${attr_class(`progress-bar ${isRunning && (progressPercent == null || isPdfRenderHeartbeat) ? "progress-bar-striped progress-bar-animated" : ""}`)}${attr_style(`width: ${(isCompleted ? 100 : progressPercent) ?? 100}%`)}>`);
       if (isCompleted || progressPercent != null) {
         $$renderer2.push("<!--[0-->");
         $$renderer2.push(`${escape_html((isCompleted ? 100 : progressPercent).toFixed(0))}%`);
@@ -159,6 +160,13 @@ function JobProgressPanel($$renderer, $$props) {
       if (job.progress_current != null && job.progress_total != null) {
         $$renderer2.push("<!--[0-->");
         $$renderer2.push(`<div class="small text-body-secondary mt-2">Step ${escape_html(job.progress_current)} of ${escape_html(job.progress_total)}</div>`);
+      } else {
+        $$renderer2.push("<!--[-1-->");
+      }
+      $$renderer2.push(`<!--]--> `);
+      if (isPdfRenderHeartbeat) {
+        $$renderer2.push("<!--[0-->");
+        $$renderer2.push(`<div class="small text-primary-emphasis mt-2">Active PDF render; the percentage will advance when Chromium completes this phase.</div>`);
       } else {
         $$renderer2.push("<!--[-1-->");
       }

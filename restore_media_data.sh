@@ -29,7 +29,7 @@ shift
 ENV_FILE="${ENV_FILE:-.env.deploy}"
 PODMAN_BIN="${PODMAN_BIN:-podman}"
 APP_CONTAINER_NAME="${APP_CONTAINER_NAME:-fan-graphs-app}"
-MEDIA_DIRS=(product_images series_images product_graphs product_pdfs product_type_pdfs series_graphs series_pdfs)
+MEDIA_DIRS=(product_images series_images product_graphs product_pdfs product_type_pdfs series_graphs series_pdfs associated_documents)
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -92,7 +92,18 @@ restore_from_container() {
   fi
 
   log "Restoring media into the running deployment container"
-  ${PODMAN_BIN} exec -i "${APP_CONTAINER_NAME}" sh -lc 'rm -rf /app/data/product_images /app/data/series_images /app/data/product_graphs /app/data/product_pdfs /app/data/product_type_pdfs /app/data/series_graphs /app/data/series_pdfs /app/templates'
+  local remove_paths=()
+  local path
+  for path in "${media_dirs[@]}"; do
+    if [[ "$path" == templates ]]; then
+      remove_paths+=("/app/templates")
+    else
+      remove_paths+=("/app/${path}")
+    fi
+  done
+  local remove_command
+  printf -v remove_command 'rm -rf %q ' "${remove_paths[@]}"
+  ${PODMAN_BIN} exec -i "${APP_CONTAINER_NAME}" sh -lc "$remove_command"
   tar -C "$STAGING_DIR" -cf - "${media_dirs[@]}" | ${PODMAN_BIN} exec -i "${APP_CONTAINER_NAME}" tar -C /app -xf -
 }
 

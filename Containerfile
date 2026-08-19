@@ -4,6 +4,7 @@ FROM mcr.microsoft.com/devcontainers/javascript-node:22-bookworm AS frontend-bui
 WORKDIR /app/frontend
 
 COPY frontend/package*.json ./
+RUN npm install --global npm@latest --no-audit --no-fund
 RUN npm ci --prefer-offline --no-audit --no-fund
 
 COPY frontend/ ./
@@ -33,6 +34,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt /app/backend/requirements.txt
+RUN python -m pip install --upgrade pip
 RUN pip install --no-cache-dir -r /app/backend/requirements.txt
 
 COPY backend/ /app/backend/

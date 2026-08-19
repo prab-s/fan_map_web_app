@@ -2,6 +2,7 @@ import asyncio
 import csv
 import base64
 import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import httpx
 import smtplib
 import json
@@ -189,6 +190,33 @@ DATA_BACKUP_DIRS = [
     ASSOCIATED_DOCUMENTS_DIR,
 ]
 DATA_BACKUP_DIR_NAMES = [path.name for path in DATA_BACKUP_DIRS]
+MEDIA_BACKUP_CHUNKS = {
+    "uploaded-images": {
+        "label": "Uploaded images",
+        "description": "Product and series images.",
+        "directories": [PRODUCT_IMAGES_DIR, SERIES_IMAGES_DIR],
+    },
+    "associated-documents": {
+        "label": "Associated documents",
+        "description": "Documents attached to products, series, and product types.",
+        "directories": [ASSOCIATED_DOCUMENTS_DIR],
+    },
+    "generated-graphs": {
+        "label": "Generated graphs",
+        "description": "Product and series graph images.",
+        "directories": [PRODUCT_GRAPHS_DIR, SERIES_GRAPHS_DIR],
+    },
+    "generated-pdfs": {
+        "label": "Generated PDFs",
+        "description": "Product, series, and product type PDF files.",
+        "directories": [PRODUCT_PDFS_DIR, SERIES_PDFS_DIR, PRODUCT_TYPE_PDFS_DIR],
+    },
+    "templates": {
+        "label": "Templates",
+        "description": "Product, series, product type templates, and the template registry.",
+        "directories": [],
+    },
+}
 FRONTEND_DIR = Path(__file__).resolve().parents[1] / "frontend"
 TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates"
 TEMPLATE_REGISTRY_PATH = TEMPLATES_DIR / "registry.json"
@@ -3550,7 +3578,12 @@ def _series_tab_layout(page_height: float, tab_count: int) -> list[tuple[float, 
     return positions
 
 
-def render_pdf_from_html(html_content: str, output_path: Path, stylesheet_text: str | None = None) -> None:
+def render_pdf_from_html(
+    html_content: str,
+    output_path: Path,
+    stylesheet_text: str | None = None,
+    progress_callback=None,
+) -> None:
     browser_binary = find_chromium_binary()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     render_started = time.perf_counter()
@@ -3576,31 +3609,40 @@ def render_pdf_from_html(html_content: str, output_path: Path, stylesheet_text: 
             if output_path.exists():
                 output_path.unlink()
             attempt_started = time.perf_counter()
-            try:
-                result = subprocess.run(
-                    [
-                        browser_binary,
-                        headless_flag,
-                        "--disable-gpu",
-                        "--no-sandbox",
-                        "--disable-dev-shm-usage",
-                        "--allow-file-access-from-files",
-                        "--print-to-pdf-no-header",
-                        f"--print-to-pdf={output_path}",
-                        html_path.as_uri(),
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=timeout_seconds,
-                )
-            except subprocess.TimeoutExpired as exc:
-                logger.error(
-                    "[pdf-render] Chromium timed out after %.1fs flag=%s total_elapsed=%.1fs",
-                    timeout_seconds,
-                    headless_flag,
-                    time.perf_counter() - render_started,
-                )
-                raise RuntimeError(f"Chromium PDF rendering exceeded {timeout_seconds:g} seconds.") from exc
+            command = [
+                browser_binary,
+                headless_flag,
+                "--disable-gpu",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--allow-file-access-from-files",
+                "--print-to-pdf-no-header",
+                f"--print-to-pdf={output_path}",
+                html_path.as_uri(),
+            ]
+            process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            attempt_elapsed = 0.0
+            while True:
+                try:
+                    stdout, stderr = process.communicate(timeout=2.0)
+                    result = subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+                    break
+                except subprocess.TimeoutExpired:
+                    attempt_elapsed = time.perf_counter() - attempt_started
+                    if progress_callback:
+                        progress_callback(
+                            f"Rendering PDF in Chromium ({attempt_elapsed:.0f}s elapsed)",
+                        )
+                    if attempt_elapsed >= timeout_seconds:
+                        process.kill()
+                        process.communicate()
+                        logger.error(
+                            "[pdf-render] Chromium timed out after %.1fs flag=%s total_elapsed=%.1fs",
+                            timeout_seconds,
+                            headless_flag,
+                            time.perf_counter() - render_started,
+                        )
+                        raise RuntimeError(f"Chromium PDF rendering exceeded {timeout_seconds:g} seconds.")
             logger.info(
                 "[pdf-render] browser finished flag=%s elapsed=%.1fs exit_code=%s output_bytes=%d",
                 headless_flag,
@@ -4480,7 +4522,7 @@ def generate_product_pdf(
         html_content, stylesheet_text = build_product_pdf_html(product)
         if progress_callback:
             progress_callback(f"Writing product PDF for {product.model or 'product'}", 2, 3)
-        render_pdf_from_html(html_content, base_path, stylesheet_text)
+        render_pdf_from_html(html_content, base_path, stylesheet_text, progress_callback=progress_callback)
         if progress_callback:
             progress_callback(f"Copying product PDF for {product.model or 'product'}", 3, 3)
         shutil.copyfile(base_path, output_path)
@@ -5319,7 +5361,12 @@ def build_series_pdf_base(series: Series, temp_dir: Path, progress_callback=None
     cover_html, cover_stylesheet_text = build_series_pdf_html(series, temp_dir)
     if progress_callback:
         progress_callback(f"Rendering series cover for {series.name or 'series'}", 1, max(len(series.products or []) + 4, 5))
-    render_pdf_from_html(cover_html, cover_base_path, cover_stylesheet_text)
+    render_pdf_from_html(
+        cover_html,
+        cover_base_path,
+        cover_stylesheet_text,
+        progress_callback=progress_callback,
+    )
 
     ordered_products = sorted(series.products or [], key=lambda item: (item.model or "").casefold())
     total_steps = max(len(ordered_products) + 4, 5)
@@ -5902,7 +5949,12 @@ def render_product_type_intro_with_page_ranges(
     )
     if progress_callback:
         progress_callback(f"Rendering product type intro for {product_type.label}", 1, 2)
-    render_pdf_from_html(intro_html, intro_base_path, intro_stylesheet_text)
+    render_pdf_from_html(
+        intro_html,
+        intro_base_path,
+        intro_stylesheet_text,
+        progress_callback=progress_callback,
+    )
     intro_page_count = pdf_page_count(intro_base_path)
     logger.info("[product-type-pdf] first intro render pages=%d product_type=%s", intro_page_count, product_type.label)
 
@@ -5934,7 +5986,12 @@ def render_product_type_intro_with_page_ranges(
     )
     if progress_callback:
         progress_callback(f"Rendering product type intro with page ranges for {product_type.label}", 2, 2)
-    render_pdf_from_html(intro_html, intro_base_path, intro_stylesheet_text)
+    render_pdf_from_html(
+        intro_html,
+        intro_base_path,
+        intro_stylesheet_text,
+        progress_callback=progress_callback,
+    )
     intro_page_count = pdf_page_count(intro_base_path)
     logger.info("[product-type-pdf] final intro render pages=%d product_type=%s", intro_page_count, product_type.label)
 
@@ -6329,7 +6386,12 @@ def _render_combined_product_type_contents_page(
         contents_pages_html,
     )
     rendered_path = temp_dir / f"combined_{sanitize_name(product_type.key or product_type.label or 'unknown')}_intro.pdf"
-    render_pdf_from_html(intro_html, rendered_path, stylesheet_text)
+    render_pdf_from_html(
+        intro_html,
+        rendered_path,
+        stylesheet_text,
+        progress_callback=progress_callback,
+    )
     return rendered_path, pdf_page_count(rendered_path)
 
 
@@ -7492,6 +7554,23 @@ def _copy_media_directories(staging_data_dir: Path, progress_callback=None, *, l
             shutil.copytree(media_dir, target_dir, dirs_exist_ok=True)
 
 
+def _copy_selected_media_directories(
+    staging_data_dir: Path,
+    media_directories: list[Path],
+    progress_callback=None,
+    *,
+    label_prefix: str = "Collecting",
+):
+    total = len(media_directories) + 1
+    for offset, media_dir in enumerate(media_directories, start=1):
+        if media_dir.is_dir():
+            if progress_callback:
+                progress_callback(f"{label_prefix} {media_dir.name}", offset, total)
+            target_dir = staging_data_dir / media_dir.name
+            target_dir.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(media_dir, target_dir, dirs_exist_ok=True)
+
+
 def _write_zip_archive(source_dir: Path, archive_path: Path) -> None:
     with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for root, _, files in os.walk(source_dir):
@@ -7692,6 +7771,58 @@ def create_data_backup_bundle(progress_callback=None) -> Path:
 
         if progress_callback:
             progress_callback("Creating data archive", backup_stages_total, backup_stages_total)
+        _write_zip_archive(staging_dir, archive_path)
+
+    return archive_path
+
+
+def create_media_backup_chunk_bundle(chunk_id: str, progress_callback=None) -> Path:
+    chunk = MEDIA_BACKUP_CHUNKS.get(chunk_id)
+    if not chunk:
+        raise RuntimeError(f"Unknown media backup chunk: {chunk_id}")
+
+    timestamp = backend_now().strftime("%Y%m%d_%H%M%S")
+    archive_name = f"fan_graphs_{chunk_id.replace('-', '_')}_backup_{timestamp}.zip"
+    archive_path = BACKUP_OUTPUT_DIR / archive_name
+    media_directories = chunk["directories"]
+    backup_stages_total = len(media_directories) + 2
+
+    with tempfile.TemporaryDirectory() as staging_dir_raw:
+        staging_dir = Path(staging_dir_raw)
+        data_dir = staging_dir / "data"
+        data_dir.mkdir(parents=True, exist_ok=True)
+        if progress_callback:
+            progress_callback(f"Collecting {chunk['label'].lower()}", 1, backup_stages_total)
+        _copy_selected_media_directories(
+            data_dir,
+            media_directories,
+            progress_callback,
+            label_prefix="Collecting",
+        )
+        if chunk_id == "templates":
+            _copy_directory_to_staging(
+                TEMPLATES_DIR,
+                staging_dir,
+                "templates",
+                "Collecting templates",
+                progress_callback,
+                2,
+                backup_stages_total,
+            )
+        else:
+            if progress_callback:
+                progress_callback("Preparing archive", backup_stages_total - 1, backup_stages_total)
+
+        _write_backup_readme(
+            staging_dir,
+            f"Internal Facing {chunk['label']} backup archive",
+            [
+                f"- {chunk['description']}",
+                "- Temporary data/bulk_imports files are excluded.",
+            ],
+        )
+        if progress_callback:
+            progress_callback("Creating archive", backup_stages_total, backup_stages_total)
         _write_zip_archive(staging_dir, archive_path)
 
     return archive_path
@@ -10461,34 +10592,68 @@ def regenerate_all_product_pdfs(db: Session = Depends(get_db)):
 def start_regenerate_all_product_pdfs_job():
     def work(progress):
         with SessionLocal() as db:
-            products = db.query(Product).options(joinedload(Product.product_type)).all()
-            total = len(products)
-            processed = 0
-            for index, product in enumerate(products, start=1):
-                item_progress = _make_indexed_progress_window(progress, index, total)
-                item_progress(f"Loading product {index} of {total}: {product.model}", 1, 100)
+            product_specs = [
+                (product.id, product.model or f"product {product.id}")
+                for product in db.query(Product.id, Product.model).order_by(Product.id).all()
+            ]
+
+        total = len(product_specs)
+        if not total:
+            return {
+                "result_message": "Product PDFs regenerated.",
+                "products_processed": 0,
+            }
+
+        worker_limit = max(1, min(int(os.getenv("PDF_REGENERATION_WORKERS", "2")), 4))
+        completed = 0
+        progress(f"Starting {total} product PDF renders with up to {worker_limit} concurrent workers", 0, total)
+
+        def render_one_product(product_id: int, product_label: str):
+            with SessionLocal() as worker_db:
+                product = (
+                    worker_db.query(Product)
+                    .options(joinedload(Product.product_type))
+                    .filter(Product.id == product_id)
+                    .first()
+                )
+                if not product:
+                    raise RuntimeError(f"Product {product_id} no longer exists.")
+
                 graph_path = Path(product.graph_image_path) if product.graph_image_path else None
                 if product.product_type and product.product_type.supports_graph and not (graph_path and graph_path.is_file()):
                     try:
-                        item_progress(f"Refreshing graph image for {product.model}", 10, 100)
-                        refresh_graph_for_product(db, product)
+                        progress(f"Refreshing graph image for {product_label} ({completed}/{total} complete)", completed, total)
+                        refresh_graph_for_product(worker_db, product)
                     except Exception as exc:
-                        logger.exception("[maintenance:regenerate_all_product_pdfs] graph refresh failed for %s", product.model)
-                        raise_job_phase_error(f"Product {product.model}", "graph image generation", exc)
-                else:
-                    item_progress(f"Graph image already available for {product.model}", 10, 100)
+                        logger.exception("[maintenance:regenerate_all_product_pdfs] graph refresh failed for %s", product_label)
+                        raise_job_phase_error(f"Product {product_label}", "graph image generation", exc)
+
                 try:
-                    item_progress(f"Rendering printed PDF for {product.model}", 20, 100)
-                    generate_product_pdfs(product, progress_callback=_make_progress_window(item_progress, 20, 90))
-                    item_progress(f"Printed PDF generated for {product.model}", 95, 100)
+                    progress(f"Rendering printed PDF for {product_label} ({completed}/{total} complete)", completed, total)
+                    # Shared product-type PDF cleanup is performed once after
+                    # all workers finish; doing it here would race in parallel.
+                    generate_product_pdf(product, progress_callback=lambda message, *_: progress(
+                        f"{message} — {product_label} ({completed}/{total} complete)",
+                        completed,
+                        total,
+                    ))
                 except Exception as exc:
-                    logger.exception("[maintenance:regenerate_all_product_pdfs] pdf rendering failed for %s", product.model)
-                    raise_job_phase_error(f"Product {product.model}", "PDF rendering", exc)
-                processed += 1
-            db.commit()
+                    logger.exception("[maintenance:regenerate_all_product_pdfs] pdf rendering failed for %s", product_label)
+                    raise_job_phase_error(f"Product {product_label}", "PDF rendering", exc)
+                worker_db.commit()
+                return product_id, product_label
+
+        with ThreadPoolExecutor(max_workers=worker_limit, thread_name_prefix="product-pdf") as executor:
+            futures = [executor.submit(render_one_product, product_id, product_label) for product_id, product_label in product_specs]
+            for future in as_completed(futures):
+                product_id, product_label = future.result()
+                completed += 1
+                progress(f"Printed PDF generated for {product_label} ({completed}/{total} complete)", completed, total)
+
+        remove_all_product_types_pdf_files()
         return {
             "result_message": "Product PDFs regenerated.",
-            "products_processed": processed,
+            "products_processed": completed,
         }
 
     return serialize_maintenance_job(start_maintenance_job("regenerate_all_product_pdfs", work))
@@ -10842,6 +11007,40 @@ def start_data_backup_bundle_job():
     return start_media_backup_bundle_job()
 
 
+@app.get("/api/maintenance/media/chunks", dependencies=[Depends(require_admin_user)], tags=["Maintenance"], summary="List media backup chunks")
+def list_media_backup_chunks():
+    return [
+        {
+            "id": chunk_id,
+            "label": chunk["label"],
+            "description": chunk["description"],
+        }
+        for chunk_id, chunk in MEDIA_BACKUP_CHUNKS.items()
+    ]
+
+
+@app.post("/api/maintenance/jobs/media/{chunk_id}/create", response_model=MaintenanceJobResponse, dependencies=[Depends(require_admin_user)], tags=["Maintenance"], summary="Start creating a media backup chunk")
+def start_media_backup_chunk_job(chunk_id: str):
+    if chunk_id not in MEDIA_BACKUP_CHUNKS:
+        raise HTTPException(status_code=404, detail="Media backup chunk not found.")
+
+    chunk_label = MEDIA_BACKUP_CHUNKS[chunk_id]["label"]
+
+    def work(progress):
+        archive_path = create_media_backup_chunk_bundle(chunk_id, progress)
+        return {
+            "result_message": f"{chunk_label} backup created: {archive_path.name}",
+            "result_download_url": f"/api/maintenance/jobs/{job['id']}/download",
+            "result_file_path": str(archive_path),
+            "progress_current": 1,
+            "progress_total": 1,
+            "progress_percent": 100.0,
+        }
+
+    job = start_maintenance_job(f"create_media_backup_{chunk_id}", work)
+    return serialize_maintenance_job(job)
+
+
 @app.post("/api/maintenance/backups/db/restore", dependencies=[Depends(require_admin_user)], tags=["Maintenance"], summary="Restore a DB data backup")
 async def restore_db_backup_bundle_endpoint(file: UploadFile = File(...)):
     if not file.filename or not file.filename.lower().endswith(".zip"):
@@ -10906,27 +11105,49 @@ async def start_restore_backup_bundle_job_old(file: UploadFile = File(...)):
 
 
 @app.post("/api/maintenance/jobs/backups/media/restore", response_model=MaintenanceJobResponse, dependencies=[Depends(require_admin_user)], tags=["Maintenance"], summary="Start restoring a media data backup")
-async def start_restore_media_backup_bundle_job(file: UploadFile = File(...)):
-    if not file.filename or not file.filename.lower().endswith(".zip"):
+async def start_restore_media_backup_bundle_job(files: list[UploadFile] = File(...)):
+    if not files or any(not file.filename or not file.filename.lower().endswith(".zip") for file in files):
         raise HTTPException(status_code=400, detail="Please upload a .zip media data backup.")
 
-    archive_bytes = await file.read()
+    archive_dir = Path(tempfile.mkdtemp(prefix="fan-graphs-media-restore-"))
+    archive_paths = []
+    try:
+        for index, file in enumerate(files):
+            archive_path = archive_dir / f"archive_{index}.zip"
+            with archive_path.open("wb") as output:
+                while True:
+                    contents = await file.read(1024 * 1024)
+                    if not contents:
+                        break
+                    output.write(contents)
+            archive_paths.append(archive_path)
+    except Exception:
+        shutil.rmtree(archive_dir, ignore_errors=True)
+        raise
 
     def work(progress):
-        restore_media_backup_bundle(archive_bytes, progress)
-        return {
-            "result_message": "Media data backup restored successfully.",
-            "progress_current": 1,
-            "progress_total": 1,
-            "progress_percent": 100.0,
-        }
+        try:
+            total = len(archive_paths)
+            for index, archive_path in enumerate(archive_paths, start=1):
+                restore_media_backup_bundle(
+                    archive_path.read_bytes(),
+                    _make_indexed_progress_window(progress, index, total),
+                )
+            return {
+                "result_message": f"{total} media backup archive{'s' if total != 1 else ''} restored successfully.",
+                "progress_current": 1,
+                "progress_total": 1,
+                "progress_percent": 100.0,
+            }
+        finally:
+            shutil.rmtree(archive_dir, ignore_errors=True)
 
     return serialize_maintenance_job(start_maintenance_job("restore_media_data_backup_bundle", work))
 
 
 @app.post("/api/maintenance/jobs/backups/media/restore-old", response_model=MaintenanceJobResponse, dependencies=[Depends(require_admin_user)], tags=["Maintenance"], include_in_schema=False)
 async def start_restore_media_backup_bundle_job_old(file: UploadFile = File(...)):
-    return await start_restore_media_backup_bundle_job(file)
+    return await start_restore_media_backup_bundle_job([file])
 
 
 @app.get("/api/maintenance/jobs/{job_id}", response_model=MaintenanceJobResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"], summary="Get maintenance job status")

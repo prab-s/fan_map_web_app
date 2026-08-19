@@ -19,8 +19,8 @@
     getProductTypes,
     getUsers,
     getSeries,
-    startDataBackupBundleJob,
     startDatabaseBackupBundleJob,
+    startMediaBackupChunkJob,
     startDeleteAllGraphImagesJob,
     startRegenerateAllGraphImagesJob,
     startRegenerateAllProductPdfsJob,
@@ -64,7 +64,17 @@
   let customerDeviceLogsOpen = false;
   let internalDeviceLogsOpen = false;
   let dbBackupFile = null;
-  let mediaBackupFile = null;
+  let mediaBackupFiles = [];
+  const mediaBackupChunks = [
+    { id: 'uploaded-images', label: 'Uploaded images', description: 'Product and series images.' },
+    { id: 'associated-documents', label: 'Associated documents', description: 'Documents attached to products, series, and product types.' },
+    { id: 'generated-graphs', label: 'Generated graphs', description: 'Product and series graph images.' },
+    { id: 'generated-pdfs', label: 'Generated PDFs', description: 'Product, series, and product type PDF files.' },
+    { id: 'templates', label: 'Templates', description: 'Product, series, product type templates, and the template registry.' }
+  ];
+  let backupJobs = {};
+  let backupLoading = {};
+  let backupPollTimeouts = {};
   let maintenanceJob = null;
   let maintenancePollTimeout = null;
   let pendingMaintenanceConfirmation = null;
@@ -163,6 +173,9 @@
     }
     if (maintenancePollTimeout) {
       clearTimeout(maintenancePollTimeout);
+    }
+    for (const timeout of Object.values(backupPollTimeouts)) {
+      if (timeout) clearTimeout(timeout);
     }
   });
 
@@ -887,6 +900,67 @@
     }
   }
 
+  function setBackupJob(key, job) {
+    backupJobs = { ...backupJobs, [key]: job };
+  }
+
+  function setBackupLoading(key, value) {
+    backupLoading = { ...backupLoading, [key]: value };
+  }
+
+  async function pollBackupJob(key, jobId, options = {}) {
+    try {
+      const job = await getMaintenanceJob(jobId);
+      setBackupJob(key, job);
+
+      if (job.status === 'completed') {
+        setBackupLoading(key, false);
+        if (job.result_download_url && options.downloadOnComplete) {
+          const { blob, filename } = await downloadMaintenanceJobFile(job.id);
+          const downloadUrl = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = downloadUrl;
+          link.download = filename;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          window.URL.revokeObjectURL(downloadUrl);
+        }
+        addSuccess(job.result_message || options.successMessage || 'Backup task completed.');
+        clearMaintenanceErrorToast();
+        return;
+      }
+
+      if (job.status === 'failed') {
+        setBackupLoading(key, false);
+        addMaintenanceError(job.error || options.errorMessage || 'Backup task failed.');
+        return;
+      }
+
+      backupPollTimeouts = {
+        ...backupPollTimeouts,
+        [key]: setTimeout(() => pollBackupJob(key, jobId, options), 1500)
+      };
+    } catch (error) {
+      setBackupLoading(key, false);
+      addMaintenanceError(error?.message || options.errorMessage || 'Unable to read backup task status.');
+    }
+  }
+
+  async function runBackupJob(key, starter, options = {}) {
+    setBackupLoading(key, true);
+    clearMaintenanceErrorToast();
+    clearSuccessToast();
+    try {
+      const job = await starter();
+      setBackupJob(key, job);
+      await pollBackupJob(key, job.id, options);
+    } catch (error) {
+      setBackupLoading(key, false);
+      addMaintenanceError(error?.message || options.errorMessage || 'Unable to run backup task.');
+    }
+  }
+
   function requestMaintenanceConfirmation(starter, options = {}) {
     pendingMaintenanceConfirmation = { starter, options };
   }
@@ -903,17 +977,17 @@
   }
 
   async function handleDatabaseBackupDownload() {
-    await runMaintenanceJob(startDatabaseBackupBundleJob, {
+    await runBackupJob('database', startDatabaseBackupBundleJob, {
       successMessage: 'DB data backup created.',
       errorMessage: 'Unable to create DB data backup.',
       downloadOnComplete: true
     });
   }
 
-  async function handleDataBackupDownload() {
-    await runMaintenanceJob(startDataBackupBundleJob, {
-      successMessage: 'Media data backup created.',
-      errorMessage: 'Unable to create media data backup.',
+  async function handleMediaBackupChunkDownload(chunk) {
+    await runBackupJob(chunk.id, () => startMediaBackupChunkJob(chunk.id), {
+      successMessage: `${chunk.label} backup created.`,
+      errorMessage: `Unable to create ${chunk.label.toLowerCase()} backup.`,
       downloadOnComplete: true
     });
   }
@@ -923,7 +997,7 @@
   }
 
   function handleMediaBackupFileChange(event) {
-    mediaBackupFile = event.currentTarget?.files?.[0] || null;
+    mediaBackupFiles = Array.from(event.currentTarget?.files || []);
   }
 
   async function handleDbBackupRestore() {
@@ -941,7 +1015,7 @@
     }
 
     const fileToRestore = dbBackupFile;
-    await runMaintenanceJob(() => startRestoreDatabaseBackupBundleJob(fileToRestore), {
+    await runBackupJob('database-restore', () => startRestoreDatabaseBackupBundleJob(fileToRestore), {
       successMessage: 'DB data backup restored successfully.',
       errorMessage: 'Unable to restore DB data backup.'
     });
@@ -955,8 +1029,8 @@
   }
 
   async function handleMediaBackupRestore() {
-    if (!mediaBackupFile) {
-      addMaintenanceError('Choose a media data ZIP file first.');
+    if (!mediaBackupFiles.length) {
+      addMaintenanceError('Choose one or more media data ZIP files first.');
       clearSuccessToast();
       return;
     }
@@ -968,13 +1042,12 @@
       return;
     }
 
-    const fileToRestore = mediaBackupFile;
-    await runMaintenanceJob(() => startRestoreDataBackupBundleJob(fileToRestore), {
+    await runBackupJob('media-restore', () => startRestoreDataBackupBundleJob(mediaBackupFiles), {
       successMessage: 'Media data backup restored successfully.',
       errorMessage: 'Unable to restore media data backup.'
     });
     if (!maintenanceErrorToast) {
-      mediaBackupFile = null;
+      mediaBackupFiles = [];
       const input = document.getElementById('media-backup-restore-file');
       if (input) {
         input.value = '';
@@ -1364,7 +1437,7 @@
                     class="btn btn-primary btn-sm"
                     type="button"
                     on:click={handleDatabaseBackupDownload}
-                    disabled={maintenanceLoading}
+                    disabled={backupLoading.database || backupLoading['database-restore']}
                   >
                     Download DB Data ZIP
                   </button>
@@ -1380,7 +1453,7 @@
                     type="file"
                     accept=".zip,application/zip"
                     on:change={handleDbBackupFileChange}
-                    disabled={maintenanceLoading}
+                    disabled={backupLoading.database || backupLoading['database-restore']}
                   />
                 </div>
                 <div class="col-12 col-lg-auto">
@@ -1388,60 +1461,83 @@
                     class="btn btn-outline-danger btn-sm"
                     type="button"
                     on:click={handleDbBackupRestore}
-                    disabled={maintenanceLoading || !dbBackupFile}
+                    disabled={backupLoading.database || backupLoading['database-restore'] || !dbBackupFile}
                   >
                     Restore DB Data ZIP
                   </button>
                 </div>
               </div>
+              {#if backupJobs.database}
+                <JobProgressPanel job={backupJobs.database} label="DB data backup" />
+              {/if}
+              {#if backupJobs['database-restore']}
+                <JobProgressPanel job={backupJobs['database-restore']} label="DB data restore" />
+              {/if}
             </div>
           </div>
 
           <div class="card border mb-3">
             <div class="card-body">
-              <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
-                <div>
-                  <h3 class="h6 mb-1">Backup Media Data</h3>
-                  <p class="mb-2 text-body-secondary">
-                    Download the media-only ZIP for product images, graph images, generated PDFs, and templates. Backups are excluded.
-                  </p>
-                </div>
-                <div class="d-flex gap-2 flex-wrap">
-                  <button
-                    class="btn btn-primary btn-sm"
-                    type="button"
-                    on:click={handleDataBackupDownload}
-                    disabled={maintenanceLoading}
-                  >
-                    Download Media Data ZIP
-                  </button>
-                </div>
+              <h3 class="h6 mb-1">Backup Media Data</h3>
+              <p class="mb-3 text-body-secondary">
+                Download the media-only backup as five smaller logical ZIP archives. Backups and temporary import files are excluded.
+              </p>
+              <div class="row g-3">
+                {#each mediaBackupChunks as chunk}
+                  <div class="col-12 col-lg-6">
+                    <div class="card border h-100">
+                      <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start gap-2">
+                          <div>
+                            <h4 class="h6 mb-1">{chunk.label}</h4>
+                            <p class="small text-body-secondary mb-3">{chunk.description}</p>
+                          </div>
+                          <button
+                            class="btn btn-primary btn-sm flex-shrink-0"
+                            type="button"
+                            on:click={() => handleMediaBackupChunkDownload(chunk)}
+                            disabled={backupLoading[chunk.id] || backupLoading['media-restore']}
+                          >
+                            Download ZIP
+                          </button>
+                        </div>
+                        {#if backupJobs[chunk.id]}
+                          <JobProgressPanel job={backupJobs[chunk.id]} label={`${chunk.label} backup`} />
+                        {/if}
+                      </div>
+                    </div>
+                  </div>
+                {/each}
               </div>
 
-              <div class="row g-2 align-items-end mt-1">
+              <div class="row g-2 align-items-end mt-4">
                 <div class="col-12 col-lg">
-                  <label class="form-label form-label-sm" for="media-backup-restore-file">Restore Media Data ZIP</label>
+                  <label class="form-label form-label-sm" for="media-backup-restore-file">Restore Media Data ZIPs</label>
                   <input
                     id="media-backup-restore-file"
                     class="form-control form-control-sm"
                     type="file"
+                    multiple
                     accept=".zip,application/zip"
                     on:change={handleMediaBackupFileChange}
-                    disabled={maintenanceLoading}
+                    disabled={backupLoading['media-restore']}
                   />
+                  <div class="form-text">Select one or more logical media backup archives.</div>
                 </div>
                 <div class="col-12 col-lg-auto">
                   <button
                     class="btn btn-outline-danger btn-sm"
                     type="button"
                     on:click={handleMediaBackupRestore}
-                    disabled={maintenanceLoading || !mediaBackupFile}
+                    disabled={backupLoading['media-restore'] || !mediaBackupFiles.length}
                   >
-                    Restore Media Data ZIP
+                    Restore Selected Media ZIPs
                   </button>
                 </div>
               </div>
-
+              {#if backupJobs['media-restore']}
+                <JobProgressPanel job={backupJobs['media-restore']} label="Media data restore" />
+              {/if}
             </div>
           </div>
 

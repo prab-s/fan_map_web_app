@@ -4,6 +4,7 @@ import { o as onDestroy } from "../../../chunks/index-server.js";
 import { a as auth } from "../../../chunks/auth.js";
 import { G as GLOBAL_UNIT_OPTIONS } from "../../../chunks/config.js";
 import { f as fallback } from "../../../chunks/equality.js";
+import { J as JobProgressPanel } from "../../../chunks/JobProgressPanel.js";
 import { y as startRegenerateEverythingJob, z as startDeleteAllGraphImagesJob, g as getProducts, A as getSeries, B as getUsers, C as getProductTypes } from "../../../chunks/api.js";
 function FileManager($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
@@ -170,6 +171,37 @@ function _page($$renderer, $$props) {
     let sendingSmtpTest = false;
     let maintenanceLoading = false;
     let maintenanceErrorToast = "";
+    let mediaBackupFiles = [];
+    const mediaBackupChunks = [
+      {
+        id: "uploaded-images",
+        label: "Uploaded images",
+        description: "Product and series images."
+      },
+      {
+        id: "associated-documents",
+        label: "Associated documents",
+        description: "Documents attached to products, series, and product types."
+      },
+      {
+        id: "generated-graphs",
+        label: "Generated graphs",
+        description: "Product and series graph images."
+      },
+      {
+        id: "generated-pdfs",
+        label: "Generated PDFs",
+        description: "Product, series, and product type PDF files."
+      },
+      {
+        id: "templates",
+        label: "Templates",
+        description: "Product, series, product type templates, and the template registry."
+      }
+    ];
+    let backupJobs = {};
+    let backupLoading = {};
+    let backupPollTimeouts = {};
     let pendingMaintenanceConfirmation = null;
     let products = [];
     let productsLoaded = false;
@@ -198,6 +230,9 @@ function _page($$renderer, $$props) {
     let seriesByIdMap = /* @__PURE__ */ new Map();
     let productsByIdMap = /* @__PURE__ */ new Map();
     onDestroy(() => {
+      for (const timeout of Object.values(backupPollTimeouts)) {
+        if (timeout) clearTimeout(timeout);
+      }
     });
     function productTemplates() {
       return templateRegistry.product_templates ?? [];
@@ -521,7 +556,47 @@ function _page($$renderer, $$props) {
       {
         $$renderer2.push("<!--[-1-->");
       }
-      $$renderer2.push(`<!--]--></div></div> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Backup DB Data</h3> <p class="mb-2 text-body-secondary">Download the PostgreSQL backup ZIP. This is the plug-and-play restore package for the app database.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Download DB Data ZIP</button></div></div> <div class="row g-2 align-items-end mt-1"><div class="col-12 col-lg"><label class="form-label form-label-sm" for="db-backup-restore-file">Restore DB Data ZIP</label> <input id="db-backup-restore-file" class="form-control form-control-sm" type="file" accept=".zip,application/zip"${attr("disabled", maintenanceLoading, true)}/></div> <div class="col-12 col-lg-auto"><button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", true, true)}>Restore DB Data ZIP</button></div></div></div></div> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Backup Media Data</h3> <p class="mb-2 text-body-secondary">Download the media-only ZIP for product images, graph images, generated PDFs, and templates. Backups are excluded.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Download Media Data ZIP</button></div></div> <div class="row g-2 align-items-end mt-1"><div class="col-12 col-lg"><label class="form-label form-label-sm" for="media-backup-restore-file">Restore Media Data ZIP</label> <input id="media-backup-restore-file" class="form-control form-control-sm" type="file" accept=".zip,application/zip"${attr("disabled", maintenanceLoading, true)}/></div> <div class="col-12 col-lg-auto"><button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", true, true)}>Restore Media Data ZIP</button></div></div></div></div> <div class="mb-3">`);
+      $$renderer2.push(`<!--]--></div></div> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Backup DB Data</h3> <p class="mb-2 text-body-secondary">Download the PostgreSQL backup ZIP. This is the plug-and-play restore package for the app database.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", backupLoading.database || backupLoading["database-restore"], true)}>Download DB Data ZIP</button></div></div> <div class="row g-2 align-items-end mt-1"><div class="col-12 col-lg"><label class="form-label form-label-sm" for="db-backup-restore-file">Restore DB Data ZIP</label> <input id="db-backup-restore-file" class="form-control form-control-sm" type="file" accept=".zip,application/zip"${attr("disabled", backupLoading.database || backupLoading["database-restore"], true)}/></div> <div class="col-12 col-lg-auto"><button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", backupLoading.database || backupLoading["database-restore"] || true, true)}>Restore DB Data ZIP</button></div></div> `);
+      if (backupJobs.database) {
+        $$renderer2.push("<!--[0-->");
+        JobProgressPanel($$renderer2, { job: backupJobs.database, label: "DB data backup" });
+      } else {
+        $$renderer2.push("<!--[-1-->");
+      }
+      $$renderer2.push(`<!--]--> `);
+      if (backupJobs["database-restore"]) {
+        $$renderer2.push("<!--[0-->");
+        JobProgressPanel($$renderer2, {
+          job: backupJobs["database-restore"],
+          label: "DB data restore"
+        });
+      } else {
+        $$renderer2.push("<!--[-1-->");
+      }
+      $$renderer2.push(`<!--]--></div></div> <div class="card border mb-3"><div class="card-body"><h3 class="h6 mb-1">Backup Media Data</h3> <p class="mb-3 text-body-secondary">Download the media-only backup as five smaller logical ZIP archives. Backups and temporary import files are excluded.</p> <div class="row g-3"><!--[-->`);
+      const each_array_2 = ensure_array_like(mediaBackupChunks);
+      for (let $$index_2 = 0, $$length = each_array_2.length; $$index_2 < $$length; $$index_2++) {
+        let chunk = each_array_2[$$index_2];
+        $$renderer2.push(`<div class="col-12 col-lg-6"><div class="card border h-100"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-2"><div><h4 class="h6 mb-1">${escape_html(chunk.label)}</h4> <p class="small text-body-secondary mb-3">${escape_html(chunk.description)}</p></div> <button class="btn btn-primary btn-sm flex-shrink-0" type="button"${attr("disabled", backupLoading[chunk.id] || backupLoading["media-restore"], true)}>Download ZIP</button></div> `);
+        if (backupJobs[chunk.id]) {
+          $$renderer2.push("<!--[0-->");
+          JobProgressPanel($$renderer2, { job: backupJobs[chunk.id], label: `${chunk.label} backup` });
+        } else {
+          $$renderer2.push("<!--[-1-->");
+        }
+        $$renderer2.push(`<!--]--></div></div></div>`);
+      }
+      $$renderer2.push(`<!--]--></div> <div class="row g-2 align-items-end mt-4"><div class="col-12 col-lg"><label class="form-label form-label-sm" for="media-backup-restore-file">Restore Media Data ZIPs</label> <input id="media-backup-restore-file" class="form-control form-control-sm" type="file" multiple="" accept=".zip,application/zip"${attr("disabled", backupLoading["media-restore"], true)}/> <div class="form-text">Select one or more logical media backup archives.</div></div> <div class="col-12 col-lg-auto"><button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", backupLoading["media-restore"] || !mediaBackupFiles.length, true)}>Restore Selected Media ZIPs</button></div></div> `);
+      if (backupJobs["media-restore"]) {
+        $$renderer2.push("<!--[0-->");
+        JobProgressPanel($$renderer2, {
+          job: backupJobs["media-restore"],
+          label: "Media data restore"
+        });
+      } else {
+        $$renderer2.push("<!--[-1-->");
+      }
+      $$renderer2.push(`<!--]--></div></div> <div class="mb-3">`);
       FileManager($$renderer2, {
         rootName: "data",
         title: "Media File Manager",
@@ -592,9 +667,9 @@ function _page($$renderer, $$props) {
             $$renderer4.push(`-- Choose option --`);
           });
           $$renderer3.push(`<!--[-->`);
-          const each_array_2 = ensure_array_like(productTypes);
-          for (let $$index_2 = 0, $$length = each_array_2.length; $$index_2 < $$length; $$index_2++) {
-            let productType = each_array_2[$$index_2];
+          const each_array_3 = ensure_array_like(productTypes);
+          for (let $$index_3 = 0, $$length = each_array_3.length; $$index_3 < $$length; $$index_3++) {
+            let productType = each_array_3[$$index_3];
             $$renderer3.option({ value: productType.id }, ($$renderer4) => {
               $$renderer4.push(`${escape_html(productType.label)}`);
             });
@@ -617,9 +692,9 @@ function _page($$renderer, $$props) {
               $$renderer4.push(`-- Choose option --`);
             });
             $$renderer3.push(`<!--[-->`);
-            const each_array_3 = ensure_array_like(productTemplates());
-            for (let $$index_3 = 0, $$length = each_array_3.length; $$index_3 < $$length; $$index_3++) {
-              let template = each_array_3[$$index_3];
+            const each_array_4 = ensure_array_like(productTemplates());
+            for (let $$index_4 = 0, $$length = each_array_4.length; $$index_4 < $$length; $$index_4++) {
+              let template = each_array_4[$$index_4];
               $$renderer3.option({ value: template.id }, ($$renderer4) => {
                 $$renderer4.push(`${escape_html(template.label)}`);
               });
@@ -639,9 +714,9 @@ function _page($$renderer, $$props) {
               $$renderer4.push(`-- Choose option --`);
             });
             $$renderer3.push(`<!--[-->`);
-            const each_array_4 = ensure_array_like(templateRegistry.series_templates ?? []);
-            for (let $$index_4 = 0, $$length = each_array_4.length; $$index_4 < $$length; $$index_4++) {
-              let template = each_array_4[$$index_4];
+            const each_array_5 = ensure_array_like(templateRegistry.series_templates ?? []);
+            for (let $$index_5 = 0, $$length = each_array_5.length; $$index_5 < $$length; $$index_5++) {
+              let template = each_array_5[$$index_5];
               $$renderer3.option({ value: template.id }, ($$renderer4) => {
                 $$renderer4.push(`${escape_html(template.label)}`);
               });
@@ -653,9 +728,9 @@ function _page($$renderer, $$props) {
         if (presetGroups.length) {
           $$renderer2.push("<!--[0-->");
           $$renderer2.push(`<div class="vstack gap-3"><!--[-->`);
-          const each_array_5 = ensure_array_like(presetGroups);
-          for (let groupIndex = 0, $$length = each_array_5.length; groupIndex < $$length; groupIndex++) {
-            let group = each_array_5[groupIndex];
+          const each_array_6 = ensure_array_like(presetGroups);
+          for (let groupIndex = 0, $$length = each_array_6.length; groupIndex < $$length; groupIndex++) {
+            let group = each_array_6[groupIndex];
             $$renderer2.push(`<div${attr_class(
               `border rounded p-3 ${group._pending_delete ? "bg-danger-subtle border-danger-subtle opacity-75" : ""}`,
               "svelte-g40i6i"
@@ -667,9 +742,9 @@ function _page($$renderer, $$props) {
               $$renderer2.push("<!--[-1-->");
             }
             $$renderer2.push(`<!--]--> <div class="vstack gap-2"><!--[-->`);
-            const each_array_6 = ensure_array_like(group.parameters);
-            for (let parameterIndex = 0, $$length2 = each_array_6.length; parameterIndex < $$length2; parameterIndex++) {
-              let parameter = each_array_6[parameterIndex];
+            const each_array_7 = ensure_array_like(group.parameters);
+            for (let parameterIndex = 0, $$length2 = each_array_7.length; parameterIndex < $$length2; parameterIndex++) {
+              let parameter = each_array_7[parameterIndex];
               $$renderer2.push(`<div${attr_class(
                 `border rounded p-3 bg-body-tertiary ${parameter._pending_delete ? "border-danger-subtle bg-danger-subtle opacity-75" : ""}`,
                 "svelte-g40i6i"
@@ -707,9 +782,9 @@ function _page($$renderer, $$props) {
                       $$renderer4.push(`No unit`);
                     });
                     $$renderer3.push(`<!--[-->`);
-                    const each_array_7 = ensure_array_like(GLOBAL_UNIT_OPTIONS);
-                    for (let $$index_5 = 0, $$length3 = each_array_7.length; $$index_5 < $$length3; $$index_5++) {
-                      let unitOption = each_array_7[$$index_5];
+                    const each_array_8 = ensure_array_like(GLOBAL_UNIT_OPTIONS);
+                    for (let $$index_6 = 0, $$length3 = each_array_8.length; $$index_6 < $$length3; $$index_6++) {
+                      let unitOption = each_array_8[$$index_6];
                       $$renderer3.option({ value: unitOption }, ($$renderer4) => {
                         $$renderer4.push(`${escape_html(unitOption)}`);
                       });
@@ -742,9 +817,9 @@ function _page($$renderer, $$props) {
         if (presetRpmLines.length) {
           $$renderer2.push("<!--[0-->");
           $$renderer2.push(`<div class="vstack gap-3"><!--[-->`);
-          const each_array_8 = ensure_array_like(presetRpmLines);
-          for (let lineIndex = 0, $$length = each_array_8.length; lineIndex < $$length; lineIndex++) {
-            let line = each_array_8[lineIndex];
+          const each_array_9 = ensure_array_like(presetRpmLines);
+          for (let lineIndex = 0, $$length = each_array_9.length; lineIndex < $$length; lineIndex++) {
+            let line = each_array_9[lineIndex];
             $$renderer2.push(`<div${attr_class(
               `border rounded p-3 ${line._pending_delete ? "bg-danger-subtle border-danger-subtle opacity-75" : ""}`,
               "svelte-g40i6i"
@@ -756,9 +831,9 @@ function _page($$renderer, $$props) {
               $$renderer2.push("<!--[-1-->");
             }
             $$renderer2.push(`<!--]--> <div class="table-responsive mt-3"><table class="table table-sm align-middle editable-table mb-0"><thead><tr><th>Airflow</th><th>Pressure</th><th>Actions</th></tr></thead><tbody><!--[-->`);
-            const each_array_9 = ensure_array_like(line.points);
-            for (let pointIndex = 0, $$length2 = each_array_9.length; pointIndex < $$length2; pointIndex++) {
-              let point = each_array_9[pointIndex];
+            const each_array_10 = ensure_array_like(line.points);
+            for (let pointIndex = 0, $$length2 = each_array_10.length; pointIndex < $$length2; pointIndex++) {
+              let point = each_array_10[pointIndex];
               $$renderer2.push(`<tr${attr_class(clsx(point._pending_delete ? "table-danger" : ""))}><td><input class="form-control form-control-sm" type="number" step="any"${attr("value", point.airflow)}/></td><td><input class="form-control form-control-sm" type="number" step="any"${attr("value", point.pressure)}/></td><td><div class="d-flex flex-wrap gap-2"><button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", pointIndex === 0 || line._pending_delete || point._pending_delete, true)}>Up</button> <button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", pointIndex === line.points.length - 1 || line._pending_delete || point._pending_delete, true)}>Down</button> <button${attr_class(`btn btn-sm ${point._pending_delete ? "btn-outline-success" : "btn-outline-danger"}`, "svelte-g40i6i")} type="button"${attr("disabled", line._pending_delete, true)}>${escape_html(point._pending_delete ? "Undo Delete" : "Delete")}</button></div></td></tr>`);
             }
             $$renderer2.push(`<!--]--></tbody></table></div></div>`);
@@ -772,9 +847,9 @@ function _page($$renderer, $$props) {
         if (presetEfficiencyPoints.length) {
           $$renderer2.push("<!--[0-->");
           $$renderer2.push(`<div class="table-responsive"><table class="table table-sm align-middle editable-table mb-0"><thead><tr><th>Airflow</th><th>Efficiency Centre</th><th>Efficiency Lower End</th><th>Efficiency Higher End</th><th>Permissible Use</th><th>Actions</th></tr></thead><tbody><!--[-->`);
-          const each_array_10 = ensure_array_like(presetEfficiencyPoints);
-          for (let pointIndex = 0, $$length = each_array_10.length; pointIndex < $$length; pointIndex++) {
-            let point = each_array_10[pointIndex];
+          const each_array_11 = ensure_array_like(presetEfficiencyPoints);
+          for (let pointIndex = 0, $$length = each_array_11.length; pointIndex < $$length; pointIndex++) {
+            let point = each_array_11[pointIndex];
             $$renderer2.push(`<tr${attr_class(clsx(point._pending_delete ? "table-danger" : ""))}><td><input class="form-control form-control-sm" type="number" step="any"${attr("value", point.airflow)}/></td><td><input class="form-control form-control-sm" type="number" step="any"${attr("value", point.efficiency_centre)}/></td><td><input class="form-control form-control-sm" type="number" step="any"${attr("value", point.efficiency_lower_end)}/></td><td><input class="form-control form-control-sm" type="number" step="any"${attr("value", point.efficiency_higher_end)}/></td><td><input class="form-control form-control-sm" type="number" step="any"${attr("value", point.permissible_use)}/></td><td><div class="d-flex flex-wrap gap-2"><button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", pointIndex === 0 || point._pending_delete, true)}>Up</button> <button class="btn btn-outline-secondary btn-sm" type="button"${attr("disabled", pointIndex === presetEfficiencyPoints.length - 1 || point._pending_delete, true)}>Down</button> <button${attr_class(`btn btn-sm ${point._pending_delete ? "btn-outline-success" : "btn-outline-danger"}`, "svelte-g40i6i")} type="button">${escape_html(point._pending_delete ? "Undo Delete" : "Delete")}</button></div></td></tr>`);
           }
           $$renderer2.push(`<!--]--></tbody></table></div>`);

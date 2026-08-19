@@ -796,6 +796,13 @@ export async function startDataBackupBundleJob() {
   return r.json();
 }
 
+export async function startMediaBackupChunkJob(chunkId) {
+  const r = await apiFetch(`/maintenance/jobs/media/${encodeURIComponent(chunkId)}/create`, {
+    method: 'POST'
+  });
+  return r.json();
+}
+
 export async function downloadBackupBundle() {
   return downloadDatabaseBackupBundle();
 }
@@ -834,9 +841,12 @@ export async function restoreDataBackupBundle(file) {
   return r.json();
 }
 
-export async function startRestoreDataBackupBundleJob(file) {
+export async function startRestoreDataBackupBundleJob(files) {
   const formData = new FormData();
-  formData.append('file', file);
+  const selectedFiles = Array.isArray(files) ? files : [files];
+  for (const file of selectedFiles) {
+    formData.append('files', file);
+  }
   const r = await apiFetch('/maintenance/jobs/backups/media/restore', {
     method: 'POST',
     body: formData
