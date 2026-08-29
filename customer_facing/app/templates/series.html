@@ -109,19 +109,6 @@
       </div>
     </section>
 
-    <h2 class="h4 mt-4">Products in this series</h2>
-
-    <div class="row g-3">
-      {% for product in series_products %}
-        <div class="col-md-6">
-          {% include "partials/product_card.html" %}
-        </div>
-      {% else %}
-        <div class="col-12">
-          <div class="alert alert-light border mb-0">No products are linked to this series yet.</div>
-        </div>
-      {% endfor %}
-    </div>
   </div>
 
   <aside class="col-lg-4">

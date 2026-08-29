@@ -4,7 +4,6 @@ import base64
 import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import httpx
-import smtplib
 import json
 import ipaddress
 import math
@@ -24,7 +23,6 @@ import tempfile
 import threading
 import zipfile
 import time
-import ssl
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -32,7 +30,6 @@ from pathlib import Path
 from typing import Optional
 from uuid import uuid4
 from xml.etree import ElementTree as ET
-from email.message import EmailMessage
 
 import html5lib
 from fastapi import APIRouter, FastAPI, Depends, HTTPException, Query, Request, Response, UploadFile, File, Form
@@ -82,6 +79,7 @@ from backend.models import (
 from backend.models import AppSettings
 from backend.timezone import APP_TIMEZONE, backend_now, backend_now_iso, file_mtime_milliseconds, generated_file_timestamp
 from backend.security import sanitize_rich_text, sanitizer_status, validate_zip_members
+from backend.email import SMTPConfig, send_email
 
 PERMISSIBLE_USE_MODES = {"dedicated", "upper", "lower", "both", "none"}
 
@@ -264,7 +262,7 @@ POSTGRES_USER = os.getenv("POSTGRES_USER", "").strip()
 PASSWORD_HASH_ITERATIONS = 600_000
 QUOTE_REQUEST_RECIPIENT_EMAILS = [
     email.strip()
-    for email in os.getenv("QUOTE_REQUEST_RECIPIENT_EMAILS", os.getenv("QUOTE_REQUEST_RECIPIENT_EMAIL", "admin@venttech.co.nz")).split(",")
+    for email in os.getenv("QUOTE_REQUEST_RECIPIENT_EMAILS", os.getenv("QUOTE_REQUEST_RECIPIENT_EMAIL", "")).split(",")
     if email.strip()
 ]
 QUOTE_REQUEST_THROTTLE_WINDOW_SECONDS = int(os.getenv("QUOTE_REQUEST_THROTTLE_WINDOW_SECONDS", "900"))
@@ -289,14 +287,7 @@ INTERNAL_CORS_ORIGINS = [
 ]
 SECURITY_CONFIGURATION_STRICT = os.getenv("SECURITY_CONFIGURATION_STRICT", "false").strip().lower() in {"1", "true", "yes", "on"}
 SECURITY_CONFIGURATION_FILE = os.getenv("SECURITY_CONFIGURATION_FILE", ".env.sit" if not SECURITY_CONFIGURATION_STRICT else ".env.deploy").strip()
-SMTP_HOST = os.getenv("SMTP_HOST", "").strip()
-SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-SMTP_USERNAME = os.getenv("SMTP_USERNAME", "").strip()
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "").strip()
-SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL", "").strip()
-SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", "Vent-Tech website").strip()
-SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").strip().lower() in {"1", "true", "yes", "on"}
-SMTP_USE_SSL = os.getenv("SMTP_USE_SSL", "false").strip().lower() in {"1", "true", "yes", "on"}
+SMTP_CONFIG = SMTPConfig.from_environment()
 POSTGRES_CLIENT_IMAGE = os.getenv("PG_CLIENT_IMAGE", "docker.io/library/postgres:16").strip() or "docker.io/library/postgres:16"
 MAINTENANCE_JOBS: dict[str, dict] = {}
 
@@ -4772,7 +4763,6 @@ def render_series_performance_table_rows(
             )
         cells = [
             f"<td>{model_text}</td>",
-            *([f"<td>{html.escape(ranges['rpm'])}</td>"] if include_rpm else []),
             *[
                 f"<td>{html.escape(values.get((group_name, parameter_name), '—'))}</td>"
                 for group_name, parameter_name, _ in candidate_columns
@@ -4780,6 +4770,7 @@ def render_series_performance_table_rows(
             f"<td>{html.escape(ranges['pressure_range'])}</td>",
             f"<td>{html.escape(ranges['airflow_range'])}</td>",
             f"<td>{html.escape(ranges['flc'])}</td>",
+            *([f"<td>{html.escape(ranges['rpm'])}</td>"] if include_rpm else []),
             f"<td>{html.escape(ranges['power'])}</td>",
         ]
         body_rows.append("<tr>" + "".join(cells) + "</tr>")
@@ -5148,7 +5139,6 @@ def render_series_performance_table_html(series: Series) -> str:
         '<table class="performance-table__table">'
         '<colgroup>'
         '<col class="performance-table__col performance-table__col--model" />'
-        '<col class="performance-table__col performance-table__col--rpm" />'
         + "".join(
             '<col class="performance-table__col performance-table__col--spec" />'
             for _ in performance_column_labels
@@ -5156,15 +5146,16 @@ def render_series_performance_table_html(series: Series) -> str:
         + '<col class="performance-table__col performance-table__col--pressure" />'
         + '<col class="performance-table__col performance-table__col--airflow" />'
         + '<col class="performance-table__col performance-table__col--flc" />'
+        + '<col class="performance-table__col performance-table__col--rpm" />'
         + '<col class="performance-table__col performance-table__col--power" />'
         + '</colgroup>'
         "<thead><tr>"
         + _performance_header("Model", "model")
-        + _performance_header("RPM", "rpm")
         + "".join(_performance_header(label) for label in performance_column_labels)
         + _performance_header("Pressure Range", "pressure")
         + _performance_header("Airflow Range", "airflow")
         + _performance_header("FLC", "flc")
+        + _performance_header("RPM", "rpm")
         + _performance_header("Power", "power")
         + "</tr></thead>"
         + "<tbody>"
@@ -7267,58 +7258,14 @@ def _quote_request_body(record: QuoteRequest) -> str:
     return "\n".join(lines)
 
 
-def _build_quote_request_email(record: QuoteRequest, recipient_emails: list[str]) -> EmailMessage:
-    message = EmailMessage()
-    recipient_emails = recipient_emails or ["admin@venttech.co.nz"]
-    from_email = SMTP_FROM_EMAIL or SMTP_USERNAME or recipient_emails[0]
-    from_name = SMTP_FROM_NAME or "Vent-Tech website"
-
-    message["To"] = ", ".join(recipient_emails)
-    message["From"] = f"{from_name} <{from_email}>"
-    message["Reply-To"] = record.email
-    message["Subject"] = _quote_request_subject(record)
-    message.set_content(_quote_request_body(record))
-    return message
-
-
-def _build_quote_request_test_email(recipient_email: str) -> EmailMessage:
-    message = EmailMessage()
-    from_email = SMTP_FROM_EMAIL or SMTP_USERNAME or recipient_email
-    from_name = SMTP_FROM_NAME or "Vent-Tech website"
-
-    message["To"] = recipient_email
-    message["From"] = f"{from_name} <{from_email}>"
-    message["Subject"] = "Vent-Tech SMTP test"
-    message.set_content(
-        "This is a test email from the Vent-Tech enquiry system.\n\n"
-        "If you received this message, SMTP delivery is working."
+def _send_quote_request_email(record: QuoteRequest, recipient_emails: list[str]) -> bool:
+    return send_email(
+        recipient_emails,
+        _quote_request_subject(record),
+        _quote_request_body(record),
+        reply_to=record.email,
+        config=SMTP_CONFIG,
     )
-    return message
-
-
-def _send_quote_request_email(message: EmailMessage) -> None:
-    if not SMTP_HOST:
-        raise RuntimeError("SMTP_HOST is not configured.")
-
-    context = ssl.create_default_context()
-    if SMTP_USE_SSL:
-        server = smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=20, context=context)
-    else:
-        server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20)
-
-    try:
-        server.ehlo()
-        if SMTP_USE_TLS and not SMTP_USE_SSL:
-            server.starttls(context=context)
-            server.ehlo()
-        if SMTP_USERNAME:
-            server.login(SMTP_USERNAME, SMTP_PASSWORD)
-        server.send_message(message)
-    finally:
-        try:
-            server.quit()
-        except Exception:
-            server.close()
 
 
 def _normalise_quote_request_payload(payload: QuoteRequestCreate) -> dict:
@@ -9329,21 +9276,23 @@ async def create_quote_request(body: QuoteRequestCreate, request: Request, db: S
     db.add(record)
     db.flush()
 
-    if not SMTP_HOST:
+    if not SMTP_CONFIG.is_configured:
         record.email_status = "not_configured"
-        record.email_error = "SMTP_HOST is not configured."
+        record.email_error = "SMTP is not configured."
         logger.info("Quote request email skipped because SMTP is not configured")
     else:
         try:
-            email_message = _build_quote_request_email(record, recipient_emails)
-            await asyncio.to_thread(_send_quote_request_email, email_message)
+            sent = await asyncio.to_thread(_send_quote_request_email, record, recipient_emails)
+            if not sent:
+                record.email_status = "not_configured"
+                record.email_error = "SMTP is not configured."
+            else:
+                record.email_status = "sent"
+                record.email_error = None
         except Exception as exc:
             record.email_status = "failed"
             record.email_error = str(exc)
             logger.exception("Quote request email delivery failed")
-        else:
-            record.email_status = "sent"
-            record.email_error = None
 
     db.commit()
     db.refresh(record)
@@ -9375,16 +9324,24 @@ def update_quote_request_notification_settings(body: QuoteRequestNotificationSet
 
 @app.post("/api/settings/quote-request-email-test", response_model=QuoteRequestEmailTestResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"])
 async def send_quote_request_email_test(body: QuoteRequestEmailTestRequest):
-    if not SMTP_HOST:
-        raise HTTPException(status_code=400, detail="SMTP_HOST is not configured.")
+    if not SMTP_CONFIG.is_configured:
+        raise HTTPException(status_code=400, detail="SMTP is not configured.")
 
     recipient_email = _quote_request_clean(body.recipient_email, 160)
     if not recipient_email:
         raise HTTPException(status_code=400, detail="Recipient email is required.")
 
     try:
-        message = _build_quote_request_test_email(recipient_email)
-        await asyncio.to_thread(_send_quote_request_email, message)
+        sent = await asyncio.to_thread(
+            send_email,
+            recipient_email,
+            "Vent-Tech SMTP test",
+            "This is a test email from the Vent-Tech enquiry system.\n\n"
+            "If you received this message, SMTP delivery is working.",
+            config=SMTP_CONFIG,
+        )
+        if not sent:
+            raise RuntimeError("SMTP is not configured.")
     except Exception as exc:
         logger.exception("SMTP test email delivery failed")
         raise HTTPException(status_code=500, detail=f"Unable to send SMTP test email: {exc}") from exc

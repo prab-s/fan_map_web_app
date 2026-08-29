@@ -1180,15 +1180,6 @@ cat > "$ROOT_DIR/app/templates/series.html" <<'EOF'
       </section>
     {% endif %}
 
-    <h2 class="h4 mt-4">Products in this series</h2>
-
-    <div class="row g-3">
-      {% for product in series.products %}
-        <div class="col-md-6">
-          {% include "partials/product_card.html" %}
-        </div>
-      {% endfor %}
-    </div>
   </div>
 
   <aside class="col-lg-4">
