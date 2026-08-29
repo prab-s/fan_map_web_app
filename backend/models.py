@@ -798,6 +798,12 @@ class AppSettings(Base):
     band_graph_background_color = Column(String(32), nullable=True)
     band_graph_label_text_color = Column(String(32), nullable=True)
     quote_request_recipient_emails = Column(Text, nullable=True)
+    smtp_host = Column(String(255), nullable=True)
+    smtp_port = Column(Integer, nullable=True)
+    smtp_username = Column(String(255), nullable=True)
+    smtp_password_encrypted = Column(Text, nullable=True)
+    smtp_use_tls = Column(Boolean, nullable=True)
+    smtp_from_address = Column(String(255), nullable=True)
 
 
 class QuoteRequest(Base):

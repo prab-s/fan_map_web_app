@@ -79,7 +79,7 @@ from backend.models import (
 from backend.models import AppSettings
 from backend.timezone import APP_TIMEZONE, backend_now, backend_now_iso, file_mtime_milliseconds, generated_file_timestamp
 from backend.security import sanitize_rich_text, sanitizer_status, validate_zip_members
-from backend.email import SMTPConfig, send_email
+from backend.email import SMTPConfig, decrypt_smtp_password, encrypt_smtp_password, send_email
 
 PERMISSIBLE_USE_MODES = {"dedicated", "upper", "lower", "both", "none"}
 
@@ -155,6 +155,8 @@ from backend.schemas import (
     QuoteRequestResponse,
     QuoteRequestEmailTestRequest,
     QuoteRequestEmailTestResponse,
+    SMTPSettings,
+    SMTPSettingsUpdate,
     QuoteRequestStatusUpdate,
     AssociatedDocumentResponse,
 )
@@ -287,7 +289,7 @@ INTERNAL_CORS_ORIGINS = [
 ]
 SECURITY_CONFIGURATION_STRICT = os.getenv("SECURITY_CONFIGURATION_STRICT", "false").strip().lower() in {"1", "true", "yes", "on"}
 SECURITY_CONFIGURATION_FILE = os.getenv("SECURITY_CONFIGURATION_FILE", ".env.sit" if not SECURITY_CONFIGURATION_STRICT else ".env.deploy").strip()
-SMTP_CONFIG = SMTPConfig.from_environment()
+ENVIRONMENT_SMTP_CONFIG = SMTPConfig.from_environment()
 POSTGRES_CLIENT_IMAGE = os.getenv("PG_CLIENT_IMAGE", "docker.io/library/postgres:16").strip() or "docker.io/library/postgres:16"
 MAINTENANCE_JOBS: dict[str, dict] = {}
 
@@ -3940,6 +3942,41 @@ def get_or_create_app_settings(db: Session) -> AppSettings:
     return settings
 
 
+def _smtp_config_from_settings(db: Session) -> tuple[SMTPConfig, str]:
+    settings = get_or_create_app_settings(db)
+    if settings.smtp_host is None:
+        return ENVIRONMENT_SMTP_CONFIG, "environment"
+
+    password = ""
+    if settings.smtp_password_encrypted:
+        try:
+            password = decrypt_smtp_password(settings.smtp_password_encrypted, SESSION_SECRET)
+        except Exception:
+            logger.exception("Saved SMTP password could not be decrypted")
+
+    return SMTPConfig(
+        host=(settings.smtp_host or "").strip(),
+        port=settings.smtp_port or 0,
+        username=(settings.smtp_username or "").strip(),
+        password=password,
+        use_tls=bool(settings.smtp_use_tls),
+        from_address=(settings.smtp_from_address or "").strip(),
+    ), "saved"
+
+
+def _smtp_settings_response(config: SMTPConfig, source: str) -> SMTPSettings:
+    return SMTPSettings(
+        smtp_host=config.host,
+        smtp_port=config.port,
+        smtp_username=config.username,
+        smtp_use_tls=config.use_tls,
+        smtp_from_address=config.from_address,
+        password_configured=bool(config.password),
+        status="configured" if config.is_configured else "not_configured",
+        source=source,
+    )
+
+
 def sync_product_image_files(product: Product):
     ordered_images = sorted(product.product_images, key=lambda image: (image.sort_order, image.id))
     temp_paths = {}
@@ -7258,13 +7295,13 @@ def _quote_request_body(record: QuoteRequest) -> str:
     return "\n".join(lines)
 
 
-def _send_quote_request_email(record: QuoteRequest, recipient_emails: list[str]) -> bool:
+def _send_quote_request_email(record: QuoteRequest, recipient_emails: list[str], smtp_config: SMTPConfig) -> bool:
     return send_email(
         recipient_emails,
         _quote_request_subject(record),
         _quote_request_body(record),
         reply_to=record.email,
-        config=SMTP_CONFIG,
+        config=smtp_config,
     )
 
 
@@ -9276,13 +9313,14 @@ async def create_quote_request(body: QuoteRequestCreate, request: Request, db: S
     db.add(record)
     db.flush()
 
-    if not SMTP_CONFIG.is_configured:
+    smtp_config, _ = _smtp_config_from_settings(db)
+    if not smtp_config.is_configured:
         record.email_status = "not_configured"
         record.email_error = "SMTP is not configured."
         logger.info("Quote request email skipped because SMTP is not configured")
     else:
         try:
-            sent = await asyncio.to_thread(_send_quote_request_email, record, recipient_emails)
+            sent = await asyncio.to_thread(_send_quote_request_email, record, recipient_emails, smtp_config)
             if not sent:
                 record.email_status = "not_configured"
                 record.email_error = "SMTP is not configured."
@@ -9322,9 +9360,58 @@ def update_quote_request_notification_settings(body: QuoteRequestNotificationSet
     return QuoteRequestNotificationSettings(quote_request_recipient_emails=emails)
 
 
+@app.get("/api/settings/smtp", response_model=SMTPSettings, dependencies=[Depends(get_current_user)], tags=["Maintenance"])
+def get_smtp_settings(db: Session = Depends(get_db)):
+    config, source = _smtp_config_from_settings(db)
+    return _smtp_settings_response(config, source)
+
+
+@app.put("/api/settings/smtp", response_model=SMTPSettings, dependencies=[Depends(get_current_user)], tags=["Maintenance"])
+def update_smtp_settings(body: SMTPSettingsUpdate, db: Session = Depends(get_db)):
+    if body.smtp_port <= 0 or body.smtp_port > 65535:
+        raise HTTPException(status_code=400, detail="SMTP port must be between 1 and 65535.")
+
+    settings = get_or_create_app_settings(db)
+    settings.smtp_host = body.smtp_host.strip()
+    settings.smtp_port = body.smtp_port
+    settings.smtp_username = body.smtp_username.strip()
+    settings.smtp_use_tls = body.smtp_use_tls
+    settings.smtp_from_address = body.smtp_from_address.strip()
+    if body.smtp_password is not None:
+        if body.smtp_password:
+            try:
+                settings.smtp_password_encrypted = encrypt_smtp_password(body.smtp_password, SESSION_SECRET)
+            except ValueError as exc:
+                raise HTTPException(status_code=500, detail=str(exc)) from exc
+        else:
+            settings.smtp_password_encrypted = None
+    db.commit()
+    db.refresh(settings)
+    config, source = _smtp_config_from_settings(db)
+    return _smtp_settings_response(config, source)
+
+
+@app.delete("/api/settings/smtp", response_model=SMTPSettings, dependencies=[Depends(get_current_user)], tags=["Maintenance"])
+def clear_smtp_settings(db: Session = Depends(get_db)):
+    settings = get_or_create_app_settings(db)
+    for field in (
+        "smtp_host",
+        "smtp_port",
+        "smtp_username",
+        "smtp_password_encrypted",
+        "smtp_use_tls",
+        "smtp_from_address",
+    ):
+        setattr(settings, field, None)
+    db.commit()
+    config, source = _smtp_config_from_settings(db)
+    return _smtp_settings_response(config, source)
+
+
 @app.post("/api/settings/quote-request-email-test", response_model=QuoteRequestEmailTestResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"])
-async def send_quote_request_email_test(body: QuoteRequestEmailTestRequest):
-    if not SMTP_CONFIG.is_configured:
+async def send_quote_request_email_test(body: QuoteRequestEmailTestRequest, db: Session = Depends(get_db)):
+    smtp_config, _ = _smtp_config_from_settings(db)
+    if not smtp_config.is_configured:
         raise HTTPException(status_code=400, detail="SMTP is not configured.")
 
     recipient_email = _quote_request_clean(body.recipient_email, 160)
@@ -9338,7 +9425,7 @@ async def send_quote_request_email_test(body: QuoteRequestEmailTestRequest):
             "Vent-Tech SMTP test",
             "This is a test email from the Vent-Tech enquiry system.\n\n"
             "If you received this message, SMTP delivery is working.",
-            config=SMTP_CONFIG,
+            config=smtp_config,
         )
         if not sent:
             raise RuntimeError("SMTP is not configured.")

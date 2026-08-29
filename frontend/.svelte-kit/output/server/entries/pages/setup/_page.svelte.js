@@ -167,8 +167,19 @@ function _page($$renderer, $$props) {
     let newUsername = "";
     let newPassword = "";
     let newIsAdmin = false;
-    let smtpTestRecipient = "admin@venttech.co.nz";
+    let smtpTestRecipient = "";
     let sendingSmtpTest = false;
+    let smtpSettings = null;
+    let smtpForm = {
+      smtp_host: "",
+      smtp_port: 587,
+      smtp_username: "",
+      smtp_password: "",
+      smtp_use_tls: true,
+      smtp_from_address: ""
+    };
+    let savingSmtpSettings = false;
+    let clearingSmtpSettings = false;
     let maintenanceLoading = false;
     let maintenanceErrorToast = "";
     let mediaBackupFiles = [];
@@ -484,7 +495,19 @@ function _page($$renderer, $$props) {
     $$renderer2.push(`<!--]--> <button class="btn btn-primary align-self-start" type="submit"${attr("disabled", !currentPassword, true)}>${escape_html("Update Password")}</button></form></div></div> `);
     if (store_get($$store_subs ??= {}, "$auth", auth).is_admin) {
       $$renderer2.push("<!--[0-->");
-      $$renderer2.push(`<div class="card shadow-sm"><div class="card-body bg-body-secondary bg-opacity-10"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Access</p> <h2 class="h4">User Accounts</h2> <p class="text-body-secondary">Create and manage accounts for internal users.</p> <form class="vstack gap-3"><div><label class="form-label" for="new-user-username">Username</label> <input id="new-user-username" class="form-control"${attr("value", newUsername)}/></div> <div><label class="form-label" for="new-user-password">Password</label> <input id="new-user-password" class="form-control" type="password"${attr("value", newPassword)}/></div> <div class="form-check"><input id="new-user-admin" class="form-check-input" type="checkbox"${attr("checked", newIsAdmin, true)}/> <label class="form-check-label" for="new-user-admin">Admin access</label></div> <button class="btn btn-primary align-self-start" type="submit"${attr("disabled", !newUsername, true)}>${escape_html("Create User")}</button></form></div></div>`);
+      $$renderer2.push(`<div class="card shadow-sm mb-4"><div class="card-body bg-body-secondary bg-opacity-10"><div class="d-flex justify-content-between align-items-start gap-2"><div><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Enquiries</p> <h2 class="h4">SMTP configuration</h2> <p class="text-body-secondary mb-0">Configure the application’s generic SMTP connection for outbound email.</p></div> `);
+      {
+        $$renderer2.push("<!--[-1-->");
+      }
+      $$renderer2.push(`<!--]--></div> `);
+      {
+        $$renderer2.push("<!--[-1-->");
+      }
+      $$renderer2.push(`<!--]--> <form class="row g-3 mt-1"><div class="col-12 col-lg-8"><label class="form-label" for="smtp-host">SMTP host</label> <input id="smtp-host" class="form-control"${attr("value", smtpForm.smtp_host)} placeholder="smtp.example.com"${attr("disabled", savingSmtpSettings, true)}/></div> <div class="col-12 col-lg-4"><label class="form-label" for="smtp-port">Port</label> <input id="smtp-port" class="form-control" type="number" min="1" max="65535"${attr("value", smtpForm.smtp_port)}${attr("disabled", savingSmtpSettings, true)}/></div> <div class="col-12 col-lg-6"><label class="form-label" for="smtp-username">Username</label> <input id="smtp-username" class="form-control"${attr("value", smtpForm.smtp_username)}${attr("disabled", savingSmtpSettings, true)}/></div> <div class="col-12 col-lg-6"><label class="form-label" for="smtp-password">Password</label> <div class="input-group"><input id="smtp-password" class="form-control"${attr("type", "password")}${attr("value", smtpForm.smtp_password)}${attr("placeholder", "")} autocomplete="new-password"${attr("disabled", savingSmtpSettings, true)}/> <button class="btn btn-outline-secondary" type="button"${attr("disabled", savingSmtpSettings, true)}>${escape_html("Show")}</button></div> <div class="form-text">Existing passwords are never displayed. The toggle only reveals what you type here.</div></div> <div class="col-12 col-lg-6"><label class="form-label" for="smtp-from-address">From address</label> <input id="smtp-from-address" class="form-control" type="email"${attr("value", smtpForm.smtp_from_address)} placeholder="catalogue@example.com"${attr("disabled", savingSmtpSettings, true)}/></div> <div class="col-12 col-lg-6 d-flex align-items-end"><div class="form-check mb-2"><input id="smtp-use-tls" class="form-check-input" type="checkbox"${attr("checked", smtpForm.smtp_use_tls, true)}${attr("disabled", savingSmtpSettings, true)}/> <label class="form-check-label" for="smtp-use-tls">Use TLS</label></div></div> `);
+      {
+        $$renderer2.push("<!--[-1-->");
+      }
+      $$renderer2.push(`<!--]--> <div class="col-12 d-flex flex-wrap gap-2"><button class="btn btn-primary" type="submit"${attr("disabled", clearingSmtpSettings, true)}>${escape_html("Save SMTP Settings")}</button> <button class="btn btn-outline-danger" type="button"${attr("disabled", smtpSettings?.source !== "saved", true)}>${escape_html("Clear Saved Settings")}</button></div></form></div></div> <div class="card shadow-sm"><div class="card-body bg-body-secondary bg-opacity-10"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Access</p> <h2 class="h4">User Accounts</h2> <p class="text-body-secondary">Create and manage accounts for internal users.</p> <form class="vstack gap-3"><div><label class="form-label" for="new-user-username">Username</label> <input id="new-user-username" class="form-control"${attr("value", newUsername)}/></div> <div><label class="form-label" for="new-user-password">Password</label> <input id="new-user-password" class="form-control" type="password"${attr("value", newPassword)}/></div> <div class="form-check"><input id="new-user-admin" class="form-check-input" type="checkbox"${attr("checked", newIsAdmin, true)}/> <label class="form-check-label" for="new-user-admin">Admin access</label></div> <button class="btn btn-primary align-self-start" type="submit"${attr("disabled", !newUsername, true)}>${escape_html("Create User")}</button></form></div></div>`);
     } else {
       $$renderer2.push("<!--[-1-->");
     }
@@ -525,7 +548,7 @@ function _page($$renderer, $$props) {
     $$renderer2.push(`<!--]--></tbody></table></div></div></div> `);
     if (store_get($$store_subs ??= {}, "$auth", auth).is_admin) {
       $$renderer2.push("<!--[0-->");
-      $$renderer2.push(`<div class="card shadow-sm"><div class="card-body bg-body-secondary bg-opacity-10"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Enquiries</p> <h2 class="h4">SMTP test</h2> <p class="text-body-secondary mb-3">Send a quick test email through the current SMTP settings to confirm delivery is working.</p> <form class="vstack gap-3"><div><label class="form-label" for="smtp-test-recipient">Recipient email</label> <input id="smtp-test-recipient" class="form-control" type="email"${attr("value", smtpTestRecipient)} placeholder="admin@venttech.co.nz"/></div> `);
+      $$renderer2.push(`<div class="card shadow-sm"><div class="card-body bg-body-secondary bg-opacity-10"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Enquiries</p> <h2 class="h4">SMTP test</h2> <p class="text-body-secondary mb-3">Send a quick test email through the current SMTP settings to confirm delivery is working.</p> <form class="vstack gap-3"><div><label class="form-label" for="smtp-test-recipient">Recipient email</label> <input id="smtp-test-recipient" class="form-control" type="email"${attr("value", smtpTestRecipient)} placeholder="recipient@example.com"/></div> `);
       {
         $$renderer2.push("<!--[-1-->");
       }

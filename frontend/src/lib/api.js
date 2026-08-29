@@ -287,6 +287,25 @@ export async function sendQuoteRequestEmailTest(body) {
   return r.json();
 }
 
+export async function getSmtpSettings() {
+  const r = await apiFetch('/settings/smtp');
+  return r.json();
+}
+
+export async function updateSmtpSettings(body) {
+  const r = await apiFetch('/settings/smtp', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  return r.json();
+}
+
+export async function clearSmtpSettings() {
+  const r = await apiFetch('/settings/smtp', { method: 'DELETE' });
+  return r.json();
+}
+
 export async function updateQuoteRequestStatus(id, status) {
   const r = await apiFetch(`/quote-requests/${encodeURIComponent(String(id))}`, {
     method: 'PATCH',

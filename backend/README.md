@@ -62,7 +62,7 @@ SESSION_SECRET=A_LONG_RANDOM_SECRET
 AUTH_COOKIE_SECURE=false
 ```
 
-Enquiry requests are stored and emailed by this backend. The recipient list can be managed from the internal Setup page and is stored in the app settings table, with the environment variable as a fallback.
+Enquiry requests are stored and emailed by this backend. The recipient list can be managed from the internal Setup page and is stored in the app settings table, with the environment variable as a fallback. SMTP settings can also be saved from the admin Setup page; saved SMTP settings override environment values until cleared. The SMTP password is encrypted using `SESSION_SECRET` and is never returned to the browser.
 
 ```bash
 QUOTE_REQUEST_RECIPIENT_EMAILS=

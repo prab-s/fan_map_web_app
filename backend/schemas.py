@@ -849,6 +849,26 @@ class QuoteRequestNotificationSettings(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class SMTPSettings(BaseModel):
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_use_tls: bool = True
+    smtp_from_address: str = ""
+    password_configured: bool = False
+    status: Literal["configured", "not_configured"] = "not_configured"
+    source: Literal["saved", "environment"] = "environment"
+
+
+class SMTPSettingsUpdate(BaseModel):
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: Optional[str] = None
+    smtp_use_tls: bool = True
+    smtp_from_address: str = ""
+
+
 class QuoteRequestEmailTestRequest(BaseModel):
     recipient_email: str
 

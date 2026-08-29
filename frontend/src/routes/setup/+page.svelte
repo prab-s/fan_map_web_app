@@ -33,6 +33,9 @@
     startRestoreDatabaseBackupBundleJob,
     updateProductType,
     sendQuoteRequestEmailTest,
+    getSmtpSettings,
+    updateSmtpSettings,
+    clearSmtpSettings,
     updateUser,
     updateUserPassword,
     updateProductTypePresets
@@ -54,9 +57,16 @@
   let newUsername = '';
   let newPassword = '';
   let newIsAdmin = false;
-  let smtpTestRecipient = 'admin@venttech.co.nz';
+  let smtpTestRecipient = '';
   let sendingSmtpTest = false;
   let smtpTestError = '';
+  let smtpSettings = null;
+  let smtpForm = { smtp_host: '', smtp_port: 587, smtp_username: '', smtp_password: '', smtp_use_tls: true, smtp_from_address: '' };
+  let loadingSmtpSettings = false;
+  let savingSmtpSettings = false;
+  let clearingSmtpSettings = false;
+  let smtpSettingsError = '';
+  let smtpPasswordVisible = false;
   let maintenanceLoading = false;
   let maintenanceErrorToast = '';
   let maintenanceErrorToastTimeout = null;
@@ -160,6 +170,7 @@
       loadSeries();
       loadProductTypes();
       loadTemplates();
+      loadSmtpSettings();
       restoreMaintenanceJob();
     }
   });
@@ -302,6 +313,65 @@
       smtpTestError = error?.message || 'Unable to send SMTP test email.';
     } finally {
       sendingSmtpTest = false;
+    }
+  }
+
+  async function loadSmtpSettings() {
+    loadingSmtpSettings = true;
+    smtpSettingsError = '';
+    try {
+      smtpSettings = await getSmtpSettings();
+      smtpForm = {
+        smtp_host: smtpSettings.smtp_host || '',
+        smtp_port: smtpSettings.smtp_port || 587,
+        smtp_username: smtpSettings.smtp_username || '',
+        smtp_password: '',
+        smtp_use_tls: smtpSettings.smtp_use_tls ?? true,
+        smtp_from_address: smtpSettings.smtp_from_address || ''
+      };
+    } catch (error) {
+      smtpSettingsError = error?.message || 'Unable to load SMTP settings.';
+    } finally {
+      loadingSmtpSettings = false;
+    }
+  }
+
+  async function saveSmtpSettings() {
+    savingSmtpSettings = true;
+    smtpSettingsError = '';
+    clearSuccessToast();
+    try {
+      const payload = { ...smtpForm };
+      if (!payload.smtp_password && smtpSettings?.password_configured) delete payload.smtp_password;
+      smtpSettings = await updateSmtpSettings(payload);
+      smtpForm = { ...smtpForm, smtp_password: '' };
+      addSuccess('SMTP settings saved.');
+    } catch (error) {
+      smtpSettingsError = error?.message || 'Unable to save SMTP settings.';
+    } finally {
+      savingSmtpSettings = false;
+    }
+  }
+
+  async function resetSmtpSettings() {
+    if (!confirm('Clear the saved SMTP settings and use environment configuration instead?')) return;
+    clearingSmtpSettings = true;
+    smtpSettingsError = '';
+    try {
+      smtpSettings = await clearSmtpSettings();
+      smtpForm = {
+        smtp_host: smtpSettings.smtp_host || '',
+        smtp_port: smtpSettings.smtp_port || 587,
+        smtp_username: smtpSettings.smtp_username || '',
+        smtp_password: '',
+        smtp_use_tls: smtpSettings.smtp_use_tls ?? true,
+        smtp_from_address: smtpSettings.smtp_from_address || ''
+      };
+      addSuccess('Saved SMTP settings cleared.');
+    } catch (error) {
+      smtpSettingsError = error?.message || 'Unable to clear saved SMTP settings.';
+    } finally {
+      clearingSmtpSettings = false;
     }
   }
 
@@ -1156,6 +1226,76 @@
     </div>
 
     {#if $auth.is_admin}
+      <div class="card shadow-sm mb-4">
+        <div class="card-body bg-body-secondary bg-opacity-10">
+          <div class="d-flex justify-content-between align-items-start gap-2">
+            <div>
+              <p class="small text-uppercase text-body-secondary fw-semibold mb-1">Enquiries</p>
+              <h2 class="h4">SMTP configuration</h2>
+              <p class="text-body-secondary mb-0">Configure the application’s generic SMTP connection for outbound email.</p>
+            </div>
+            {#if smtpSettings}
+              <span class={`badge ${smtpSettings.status === 'configured' ? 'text-bg-success' : 'text-bg-warning'}`}>
+                {smtpSettings.status === 'configured' ? 'Configured' : 'Not configured'}
+              </span>
+            {/if}
+          </div>
+
+          {#if smtpSettings}
+            <p class="small text-body-secondary mt-3 mb-3">
+              Using {smtpSettings.source === 'saved' ? 'saved Setup page settings' : 'environment settings'}.
+              {#if smtpSettings.password_configured} Password is saved securely.{/if}
+            </p>
+          {/if}
+
+          <form class="row g-3 mt-1" on:submit|preventDefault={saveSmtpSettings}>
+            <div class="col-12 col-lg-8">
+              <label class="form-label" for="smtp-host">SMTP host</label>
+              <input id="smtp-host" class="form-control" bind:value={smtpForm.smtp_host} placeholder="smtp.example.com" disabled={loadingSmtpSettings || savingSmtpSettings}>
+            </div>
+            <div class="col-12 col-lg-4">
+              <label class="form-label" for="smtp-port">Port</label>
+              <input id="smtp-port" class="form-control" type="number" min="1" max="65535" bind:value={smtpForm.smtp_port} disabled={loadingSmtpSettings || savingSmtpSettings}>
+            </div>
+            <div class="col-12 col-lg-6">
+              <label class="form-label" for="smtp-username">Username</label>
+              <input id="smtp-username" class="form-control" bind:value={smtpForm.smtp_username} disabled={loadingSmtpSettings || savingSmtpSettings}>
+            </div>
+            <div class="col-12 col-lg-6">
+              <label class="form-label" for="smtp-password">Password</label>
+              <div class="input-group">
+                <input id="smtp-password" class="form-control" type={smtpPasswordVisible ? 'text' : 'password'} bind:value={smtpForm.smtp_password} placeholder={smtpSettings?.password_configured ? 'Enter a new password to replace it' : ''} autocomplete="new-password" disabled={loadingSmtpSettings || savingSmtpSettings}>
+                <button class="btn btn-outline-secondary" type="button" on:click={() => (smtpPasswordVisible = !smtpPasswordVisible)} disabled={loadingSmtpSettings || savingSmtpSettings}>
+                  {smtpPasswordVisible ? 'Hide' : 'Show'}
+                </button>
+              </div>
+              <div class="form-text">Existing passwords are never displayed. The toggle only reveals what you type here.</div>
+            </div>
+            <div class="col-12 col-lg-6">
+              <label class="form-label" for="smtp-from-address">From address</label>
+              <input id="smtp-from-address" class="form-control" type="email" bind:value={smtpForm.smtp_from_address} placeholder="catalogue@example.com" disabled={loadingSmtpSettings || savingSmtpSettings}>
+            </div>
+            <div class="col-12 col-lg-6 d-flex align-items-end">
+              <div class="form-check mb-2">
+                <input id="smtp-use-tls" class="form-check-input" type="checkbox" bind:checked={smtpForm.smtp_use_tls} disabled={loadingSmtpSettings || savingSmtpSettings}>
+                <label class="form-check-label" for="smtp-use-tls">Use TLS</label>
+              </div>
+            </div>
+            {#if smtpSettingsError}
+              <div class="col-12"><div class="alert alert-danger py-2 mb-0">{smtpSettingsError}</div></div>
+            {/if}
+            <div class="col-12 d-flex flex-wrap gap-2">
+              <button class="btn btn-primary" type="submit" disabled={loadingSmtpSettings || savingSmtpSettings || clearingSmtpSettings}>
+                {savingSmtpSettings ? 'Saving...' : 'Save SMTP Settings'}
+              </button>
+              <button class="btn btn-outline-danger" type="button" on:click={resetSmtpSettings} disabled={loadingSmtpSettings || savingSmtpSettings || clearingSmtpSettings || smtpSettings?.source !== 'saved'}>
+                {clearingSmtpSettings ? 'Clearing...' : 'Clear Saved Settings'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
       <div class="card shadow-sm">
         <div class="card-body bg-body-secondary bg-opacity-10">
           <p class="small text-uppercase text-body-secondary fw-semibold mb-1">Access</p>
@@ -1285,7 +1425,7 @@
                 class="form-control"
                 type="email"
                 bind:value={smtpTestRecipient}
-                placeholder="admin@venttech.co.nz"
+                placeholder="recipient@example.com"
               >
             </div>
 

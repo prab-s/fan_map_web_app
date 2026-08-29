@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import os
+import base64
+import hashlib
 import smtplib
 import ssl
 from dataclasses import dataclass
 from email.message import EmailMessage
 from collections.abc import Sequence
+
+from cryptography.fernet import Fernet
 
 
 _TRUE_VALUES = {"1", "true", "yes", "on"}
@@ -45,7 +49,27 @@ class SMTPConfig:
 
     @property
     def is_configured(self) -> bool:
-        return bool(self.host and self.from_address)
+        if not self.host or not self.from_address or self.port <= 0:
+            return False
+        return bool(self.username) == bool(self.password)
+
+
+def _fernet(secret: str | None = None) -> Fernet:
+    application_secret = secret if secret is not None else os.getenv("SESSION_SECRET", "")
+    if not application_secret:
+        raise ValueError("SESSION_SECRET is required to protect SMTP credentials")
+    key = base64.urlsafe_b64encode(hashlib.sha256(application_secret.encode("utf-8")).digest())
+    return Fernet(key)
+
+
+def encrypt_smtp_password(password: str, secret: str | None = None) -> str:
+    return _fernet(secret).encrypt(password.encode("utf-8")).decode("ascii")
+
+
+def decrypt_smtp_password(encrypted_password: str | None, secret: str | None = None) -> str:
+    if not encrypted_password:
+        return ""
+    return _fernet(secret).decrypt(encrypted_password.encode("ascii")).decode("utf-8")
 
 
 def send_email(
