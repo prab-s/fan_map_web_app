@@ -54,6 +54,32 @@
     updateValue();
   }
 
+  function applyInlineStyle(property, value) {
+    editor?.focus();
+    restoreSelection();
+    const selection = window.getSelection();
+    if (!selection?.rangeCount || selection.isCollapsed || !editor?.contains(selection.anchorNode)) return;
+    const span = document.createElement('span');
+    span.style[property] = value;
+    span.appendChild(selection.getRangeAt(0).extractContents());
+    selection.getRangeAt(0).insertNode(span);
+    updateValue();
+  }
+
+  function createLink() {
+    editor?.focus();
+    restoreSelection();
+    const url = window.prompt('Link URL');
+    if (url) command('createLink', url);
+  }
+
+  function insertImage() {
+    editor?.focus();
+    restoreSelection();
+    const url = window.prompt('Image URL');
+    if (url) command('insertImage', url);
+  }
+
   function chooseColor(event) {
     color = event.currentTarget.value;
     editor?.focus();
@@ -90,16 +116,28 @@
       {/each}
     </select>
     <div class="btn-group btn-group-sm" role="group" aria-label="Paragraph formatting">
+      <select class="form-select form-select-sm rich-text-editor__format" aria-label="Text style" on:change={(event) => { if (event.currentTarget.value) command('formatBlock', event.currentTarget.value); event.currentTarget.value = ''; }}>
+        <option value="">Style</option><option value="p">Paragraph</option><option value="h2">Heading 2</option><option value="h3">Heading 3</option><option value="h4">Heading 4</option>
+      </select>
       <button class="btn btn-outline-secondary" type="button" title="Decrease indent" aria-label="Decrease indent" on:mousedown|preventDefault={() => command('outdent')}>⇤</button>
       <button class="btn btn-outline-secondary" type="button" title="Increase indent" aria-label="Increase indent" on:mousedown|preventDefault={() => command('indent')}>⇥</button>
       <button class="btn btn-outline-secondary" type="button" title="Bulleted list" aria-label="Bulleted list" on:mousedown|preventDefault={() => command('insertUnorderedList')}>•</button>
       <button class="btn btn-outline-secondary" type="button" title="Numbered list" aria-label="Numbered list" on:mousedown|preventDefault={() => command('insertOrderedList')}>1.</button>
     </div>
+    <select class="form-select form-select-sm rich-text-editor__compact" aria-label="Font size" title="Font size" on:change={(event) => { if (event.currentTarget.value) applyInlineStyle('fontSize', event.currentTarget.value); event.currentTarget.value = ''; }}>
+      <option value="">Size</option><option value="0.75rem">Small</option><option value="1rem">Normal</option><option value="1.25rem">Large</option><option value="1.75rem">Display</option>
+    </select>
+    <select class="form-select form-select-sm rich-text-editor__compact" aria-label="Line spacing" title="Line spacing" on:change={(event) => { if (event.currentTarget.value) applyInlineStyle('lineHeight', event.currentTarget.value); event.currentTarget.value = ''; }}>
+      <option value="">Spacing</option><option value="1">Tight</option><option value="1.5">Normal</option><option value="2">Loose</option>
+    </select>
+    <button class="btn btn-sm btn-outline-secondary" type="button" title="Add link" aria-label="Add link" on:mousedown|preventDefault={createLink}>Link</button>
+    <button class="btn btn-sm btn-outline-secondary" type="button" title="Insert image" aria-label="Insert image" on:mousedown|preventDefault={insertImage}>Image</button>
     <label class="btn btn-sm btn-outline-secondary mb-0" title="Text colour" aria-label="Text colour">
       <span aria-hidden="true">A</span>
       <input class="rich-text-editor__color" type="color" bind:value={color} on:mousedown={saveSelection} on:change={chooseColor} />
     </label>
     <button class="btn btn-sm btn-outline-secondary" type="button" title="Remove formatting" aria-label="Remove formatting" on:mousedown|preventDefault={() => command('removeFormat')}>Clear</button>
+    <slot name="toolbar-end"></slot>
   </div>
   <div
     class="form-control rich-text-editor__surface"
@@ -130,9 +168,23 @@
     margin-bottom: 0.5rem;
   }
 
+  .rich-text-editor__toolbar :global(.btn-group) {
+    display: flex;
+    flex-wrap: wrap;
+  }
+
+  .rich-text-editor__toolbar :global(.btn),
+  .rich-text-editor__toolbar :global(.form-select),
+  .rich-text-editor__toolbar :global(label.btn) {
+    flex: 0 0 auto;
+  }
+
   .rich-text-editor__font {
     width: 9.5rem;
   }
+
+  .rich-text-editor__format { width: 8rem; }
+  .rich-text-editor__compact { width: 6.3rem; }
 
   .rich-text-editor__surface--short {
     min-height: 6rem;

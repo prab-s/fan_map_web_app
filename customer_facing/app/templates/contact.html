@@ -11,24 +11,24 @@
 <section class="page-hero mb-4">
   <div class="row g-4 align-items-end">
     <div class="col-lg-8">
-      <p class="section-kicker text-uppercase fw-semibold mb-2">Contact</p>
-      <h1 class="display-6 mb-3">Talk to Vent-Tech about selection, pricing, or project support</h1>
+      <p class="section-kicker text-uppercase fw-semibold mb-2">{{ cms.hero_kicker or 'Contact' }}</p>
+      <h1 class="display-6 mb-3">{{ cms.hero_heading or 'Talk to Vent-Tech about selection, pricing, or project support' }}</h1>
       <p class="lead text-muted mb-0">
-        Use the team below for direct help with product selection, quoting, and documentation.
+        {{ cms.hero_intro or 'Use the team below for direct help with product selection, quoting, and documentation.' }}
       </p>
     </div>
     <div class="col-lg-4">
       <div class="hero-callout card shadow-sm">
         <div class="card-body">
-          <div class="small text-uppercase text-muted fw-semibold mb-1">Request a quote</div>
-          <p class="text-muted mb-3">Send the project details through and the team can point you to the right product type, series, or model datasheet.</p>
+          <div class="small text-uppercase text-muted fw-semibold mb-1">{{ cms.quote_label or 'Request a quote' }}</div>
+          <p class="text-muted mb-3">{{ cms.quote_text or 'Send the project details through and the team can point you to the right product type, series, or model datasheet.' }}</p>
           <a
             class="btn btn-primary w-100"
             href="{{ site_contact.request_quote_url }}"
             data-quote-request-trigger
             data-bs-toggle="modal"
             data-bs-target="#quoteRequestModal"
-          >Enquire</a>
+          >{{ cms.quote_button or 'Enquire' }}</a>
         </div>
       </div>
     </div>
@@ -40,63 +40,32 @@
     <div class="card shadow-sm h-100">
       <div class="card-body">
         <p class="section-kicker text-uppercase fw-semibold mb-2">Address</p>
-        <h2 class="h6 mb-3">Vent-Tech 2018 Ltd.</h2>
+        <h2 class="h6 mb-3">{{ cms.address_heading or 'Vent-Tech 2018 Ltd.' }}</h2>
         <a
           class="h5 mb-0"
-          href="https://www.google.com/maps/search/?api=1&amp;query={{ site_contact.address|urlencode }}"
+          href="https://www.google.com/maps/search/?api=1&amp;query={{ (cms.address or site_contact.address)|urlencode }}"
           target="_blank"
           rel="noopener noreferrer"
-        >{{ site_contact.address }}</a>
-        <img src="/static/media/venttech_shop_front.jpg" class="img-fluid mt-3" alt="Shop front">
+        >{{ cms.address or site_contact.address }}</a>
+        <img src="{{ cms.shopfront_image or '/static/media/venttech_shop_front.jpg' }}" class="img-fluid mt-3" alt="Shop front">
       </div>
     </div>
   </div>
   <div class="col-lg-7">
     <div class="card shadow-sm h-100">
       <div class="card-body">
-        <p class="section-kicker text-uppercase fw-semibold mb-2">Direct contacts</p>
+        <p class="section-kicker text-uppercase fw-semibold mb-2">{{ cms.direct_contacts_label or 'Direct contacts' }}</p>
         <div class="row g-3">
-
+          {% for contact in cms.contacts or [] %}
           <div class="col-md-4">
             <div class="contact-block">
-              <div class="fw-semibold mb-1">Admin</div>
-              <div class="small text-muted mb-1">Shop - general</div>
-              <a href="mailto:{{ site_contact.admin_email }}">{{ site_contact.admin_email }}</a><br>
-              <a href="tel:{{ site_contact.admin_phone|phone_href }}" class="text-muted">{{ site_contact.admin_phone }}</a>
+              <div class="fw-semibold mb-1">{{ contact.name }}</div>
+              <div class="small text-muted mb-1">{{ contact.role }}</div>
+              <a href="mailto:{{ contact.email }}">{{ contact.email }}</a><br>
+              <a href="tel:{{ contact.phone|phone_href }}" class="text-muted">{{ contact.phone }}</a>
             </div>
           </div>
-          <div class="col-md-4">
-            <div class="contact-block">
-              <div class="fw-semibold mb-1">Gerald Keown</div>
-              <div class="small text-muted mb-1">Managing Director</div>
-              <a href="mailto:{{ site_contact.gerald_email }}">{{ site_contact.gerald_email }}</a><br>
-              <a href="tel:{{ site_contact.gerald_phone|phone_href }}" class="text-muted">{{ site_contact.gerald_phone }}</a>
-            </div>
-          </div>
-          <div class="col-md-4">
-            <div class="contact-block">
-              <div class="fw-semibold mb-1">Nilesh Patel</div>
-              <div class="small text-muted mb-1">Design / Technical / Sales</div>
-              <a href="mailto:{{ site_contact.nilesh_email }}">{{ site_contact.nilesh_email }}</a><br>
-              <a href="tel:{{ site_contact.nilesh_phone|phone_href }}" class="text-muted">{{ site_contact.nilesh_phone }}</a>
-            </div>
-          </div>
-          <div class="col-md-4">
-            <div class="contact-block">
-              <div class="fw-semibold mb-1">Alex Keown</div>
-              <div class="small text-muted mb-1">Operations Manager</div>
-              <a href="mailto:{{ site_contact.alex_email }}">{{ site_contact.alex_email }}</a><br>
-              <a href="tel:{{ site_contact.alex_phone|phone_href }}" class="text-muted">{{ site_contact.alex_phone }}</a>
-            </div>
-          </div>
-          <div class="col-md-4">
-            <div class="contact-block">
-              <div class="fw-semibold mb-1">Mahendra Dahya</div>
-              <div class="small text-muted mb-1">Technical / Sales</div>
-              <a href="mailto:{{ site_contact.mahendra_email }}">{{ site_contact.mahendra_email }}</a><br>
-              <a href="tel:{{ site_contact.mahendra_phone|phone_href }}" class="text-muted">{{ site_contact.mahendra_phone }}</a>
-            </div>
-          </div>
+          {% endfor %}
         </div>
       </div>
     </div>

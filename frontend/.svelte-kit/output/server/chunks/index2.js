@@ -3023,7 +3023,7 @@ function unsubscribe_stores(store_values) {
 function slot(renderer, $$props, name, slot_props, fallback_fn) {
   var slot_fn = $$props.$$slots?.[name];
   if (slot_fn === true) {
-    slot_fn = $$props["children"];
+    slot_fn = $$props[name === "default" ? "children" : name];
   }
   if (slot_fn !== void 0) {
     slot_fn(renderer, slot_props);
@@ -3112,10 +3112,10 @@ export {
   attr_class as c,
   ensure_array_like as d,
   escape_html as e,
-  bind_props as f,
+  attr_style as f,
   getContext as g,
   head as h,
-  attr_style as i,
+  bind_props as i,
   HYDRATION_END as j,
   HYDRATION_START as k,
   HYDRATION_START_ELSE as l,

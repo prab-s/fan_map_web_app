@@ -29,7 +29,7 @@ declare module "$app/types" {
 	type MatcherParam<M> = M extends (param : string) => param is (infer U extends string) ? U : string;
 
 	export interface AppTypes {
-		RouteId(): "/" | "/bulk-actions" | "/bulk-import" | "/catalogue" | "/editor" | "/editor/create" | "/editor/edit" | "/editor/edit/[product]" | "/editor/product-types" | "/editor/product-types/create" | "/editor/product-types/edit" | "/editor/product-types/edit/[product_type]" | "/editor/product" | "/editor/product/create" | "/editor/product/edit" | "/editor/quote-requests" | "/editor/series" | "/editor/series/create" | "/editor/series/edit" | "/editor/series/edit/[series]" | "/enquiries" | "/entry" | "/map" | "/products" | "/products/type" | "/products/type/[product_type]" | "/products/[product]" | "/quotes" | "/series" | "/series/[series]" | "/setup" | "/template-builder-v2" | "/template-builder" | "/viewer" | "/viewer/[tab]" | "/viewer/[tab]/[[record]]";
+		RouteId(): "/" | "/bulk-actions" | "/bulk-import" | "/catalogue" | "/cms-experimental" | "/cms" | "/editor" | "/editor/create" | "/editor/edit" | "/editor/edit/[product]" | "/editor/product-types" | "/editor/product-types/create" | "/editor/product-types/edit" | "/editor/product-types/edit/[product_type]" | "/editor/product" | "/editor/product/create" | "/editor/product/edit" | "/editor/quote-requests" | "/editor/series" | "/editor/series/create" | "/editor/series/edit" | "/editor/series/edit/[series]" | "/enquiries" | "/entry" | "/map" | "/products" | "/products/type" | "/products/type/[product_type]" | "/products/[product]" | "/quotes" | "/series" | "/series/[series]" | "/setup" | "/template-builder-v2" | "/template-builder" | "/viewer" | "/viewer/[tab]" | "/viewer/[tab]/[[record]]";
 		RouteParams(): {
 			"/editor/edit/[product]": { product: string };
 			"/editor/product-types/edit/[product_type]": { product_type: string };
@@ -45,6 +45,8 @@ declare module "$app/types" {
 			"/bulk-actions": Record<string, never>;
 			"/bulk-import": Record<string, never>;
 			"/catalogue": Record<string, never>;
+			"/cms-experimental": Record<string, never>;
+			"/cms": Record<string, never>;
 			"/editor": { product?: string; product_type?: string; series?: string };
 			"/editor/create": Record<string, never>;
 			"/editor/edit": { product?: string };
@@ -78,7 +80,7 @@ declare module "$app/types" {
 			"/viewer/[tab]": { tab: string; record?: string };
 			"/viewer/[tab]/[[record]]": { tab: string; record?: string }
 		};
-		Pathname(): "/" | "/bulk-actions" | "/bulk-import" | "/catalogue" | "/editor" | "/editor/create" | "/editor/edit" | `/editor/edit/${string}` & {} | "/editor/product-types" | "/editor/product-types/create" | "/editor/product-types/edit" | `/editor/product-types/edit/${string}` & {} | "/editor/quote-requests" | "/editor/series" | "/editor/series/create" | "/editor/series/edit" | `/editor/series/edit/${string}` & {} | "/enquiries" | "/entry" | "/map" | "/products" | `/products/type/${string}` & {} | `/products/${string}` & {} | "/quotes" | `/series/${string}` & {} | "/setup" | "/template-builder-v2" | "/template-builder" | "/viewer" | `/viewer/${string}${string}` & {};
+		Pathname(): "/" | "/bulk-actions" | "/bulk-import" | "/catalogue" | "/cms-experimental" | "/cms" | "/editor" | "/editor/create" | "/editor/edit" | `/editor/edit/${string}` & {} | "/editor/product-types" | "/editor/product-types/create" | "/editor/product-types/edit" | `/editor/product-types/edit/${string}` & {} | "/editor/quote-requests" | "/editor/series" | "/editor/series/create" | "/editor/series/edit" | `/editor/series/edit/${string}` & {} | "/enquiries" | "/entry" | "/map" | "/products" | `/products/type/${string}` & {} | `/products/${string}` & {} | "/quotes" | `/series/${string}` & {} | "/setup" | "/template-builder-v2" | "/template-builder" | "/viewer" | `/viewer/${string}${string}` & {};
 		ResolvedPathname(): `${"" | `/${string}`}${ReturnType<AppTypes['Pathname']>}`;
 		Asset(): "/favicon.ico" | "/favicon.png" | string & {};
 	}

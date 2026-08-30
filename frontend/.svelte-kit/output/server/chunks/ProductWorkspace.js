@@ -1,4 +1,4 @@
-import { b as attr, e as escape_html, a as slot, f as bind_props, d as ensure_array_like, s as store_get, u as unsubscribe_stores, c as attr_class, i as attr_style } from "./index2.js";
+import { b as attr, e as escape_html, a as slot, i as bind_props, d as ensure_array_like, s as store_get, u as unsubscribe_stores, c as attr_class, f as attr_style } from "./index2.js";
 import { o as onDestroy } from "./index-server.js";
 import "@sveltejs/kit/internal";
 import "./exports.js";

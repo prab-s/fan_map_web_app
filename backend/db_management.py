@@ -45,6 +45,8 @@ KNOWN_APP_TABLES = {
     "series_images",
     "quote_requests",
     "app_settings",
+    "site_pages",
+    "site_assets",
 }
 
 PRINTED_ONLINE_TEMPLATE_REVISION = "20260425_000011"
@@ -197,8 +199,13 @@ def prepare_database(database_url: str) -> None:
 
         if has_alembic_version:
             current_revision = _get_current_alembic_revision(engine)
+            # Never move a database backwards just because it contains the
+            # columns introduced by the legacy printed/online template
+            # migration. Newer revisions (including the CMS migration) may
+            # already have created additional tables that would then be
+            # attempted again during upgrade.
             if (
-                current_revision != PRINTED_ONLINE_TEMPLATE_REVISION
+                current_revision in {"20260418_000001"}
                 and _schema_matches_printed_online_template_revision(engine)
             ):
                 command.stamp(alembic_config, PRINTED_ONLINE_TEMPLATE_REVISION)

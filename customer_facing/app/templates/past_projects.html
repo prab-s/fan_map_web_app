@@ -11,20 +11,15 @@
 <section class="page-hero mb-4">
   <div class="row g-4 align-items-end">
     <div class="col-lg-8">
-      <p class="section-kicker text-uppercase fw-semibold mb-2">Past Projects</p>
-      <h1 class="display-6 mb-3">A quick look at previous project highlights</h1>
-      <p class="lead text-muted mb-0">
-        This page is a placeholder for now. We’ll use it to highlight finished jobs, case studies, before-and-after
-        examples, and the kinds of outcomes customers can expect when they work with Vent-Tech.
-      </p>
+      <p class="section-kicker text-uppercase fw-semibold mb-2">{{ cms.hero_kicker or 'Past Projects' }}</p>
+      <h1 class="display-6 mb-3">{{ cms.hero_heading or 'A quick look at previous project highlights' }}</h1>
+      <p class="lead text-muted mb-0">{{ cms.hero_intro or 'This page is a placeholder for now. We’ll use it to highlight finished jobs, case studies, before-and-after examples, and the kinds of outcomes customers can expect when they work with Vent-Tech.' }}</p>
     </div>
     <div class="col-lg-4">
       <div class="hero-callout card shadow-sm">
         <div class="card-body">
-          <div class="small text-uppercase text-muted fw-semibold mb-1">Coming soon</div>
-          <p class="text-muted mb-0">
-            Add project photos, short summaries, and key project details here once the content is ready.
-          </p>
+          <div class="small text-uppercase text-muted fw-semibold mb-1">{{ cms.hero_callout_label or 'Coming soon' }}</div>
+          <p class="text-muted mb-0">{{ cms.hero_callout_text or 'Add project photos, short summaries, and key project details here once the content is ready.' }}</p>
         </div>
       </div>
     </div>
@@ -36,10 +31,10 @@
     <div class="card-body p-3 p-md-4">
       <div class="d-flex flex-wrap align-items-end justify-content-between gap-2 mb-3">
         <div>
-          <p class="section-kicker text-uppercase fw-semibold mb-2">Project collage</p>
-          <h2 class="h5 mb-0">Compact carousel of previous work</h2>
+          <p class="section-kicker text-uppercase fw-semibold mb-2">{{ cms.carousel_label or 'Project collage' }}</p>
+          <h2 class="h5 mb-0">{{ cms.carousel_heading or 'Compact carousel of previous work' }}</h2>
         </div>
-        <p class="text-muted small mb-0">Placeholder visuals for now, ready to replace with real project images.</p>
+        <p class="text-muted small mb-0">{{ cms.carousel_intro or 'Placeholder visuals for now, ready to replace with real project images.' }}</p>
       </div>
 
       <div id="pastProjectsCarousel" class="carousel slide" data-bs-ride="carousel" data-bs-interval="5500">
@@ -52,34 +47,10 @@
         <div class="carousel-inner">
           <div class="carousel-item active">
             <div class="project-collage-grid">
-              <figure class="project-collage-tile project-collage-tile--wide">
-                <img src="/static/media/laser-cutter.svg" alt="Placeholder project image showing laser cutting work" loading="lazy">
-                <figcaption>
-                  <span class="project-collage-tile__label">Laser cutting</span>
-                  <span class="project-collage-tile__text">Precision sheet work and repeatable cut profiles</span>
-                </figcaption>
-              </figure>
-              <figure class="project-collage-tile">
-                <img src="/static/media/brake-press.svg" alt="Placeholder project image showing brake press work" loading="lazy">
-                <figcaption>
-                  <span class="project-collage-tile__label">Brake pressing</span>
-                  <span class="project-collage-tile__text">Clean folds, returns, and formed sections</span>
-                </figcaption>
-              </figure>
-              <figure class="project-collage-tile">
-                <img src="/static/media/roller.svg" alt="Placeholder project image showing rolling work" loading="lazy">
-                <figcaption>
-                  <span class="project-collage-tile__label">Rolling</span>
-                  <span class="project-collage-tile__text">Curved sections and controlled radii</span>
-                </figcaption>
-              </figure>
-              <figure class="project-collage-tile">
-                <img src="/static/media/flanger.svg" alt="Placeholder project image showing flanging work" loading="lazy">
-                <figcaption>
-                  <span class="project-collage-tile__label">Flanging</span>
-                  <span class="project-collage-tile__text">Stiffened edges and tidy assembly details</span>
-                </figcaption>
-              </figure>
+              {% for project in cms.projects or [] %}<figure class="project-collage-tile {% if loop.first %}project-collage-tile--wide{% endif %}">
+                <img src="{{ project.image }}" alt="{{ project.label }} project image" loading="lazy">
+                <figcaption><span class="project-collage-tile__label">{{ project.label }}</span><span class="project-collage-tile__text">{{ project.text }}</span></figcaption>
+              </figure>{% endfor %}
             </div>
           </div>
 
@@ -169,11 +140,8 @@
       <div class="card shadow-sm border-0 section-card h-100">
         <div class="card-body p-4">
           <p class="section-kicker text-uppercase fw-semibold mb-2">Project snapshots</p>
-          <h2 class="h5 mb-3">Short, visual summaries</h2>
-          <p class="text-muted mb-0">
-            This section can later hold a grid of project cards with photos, the problem to solve, and the finished
-            result.
-          </p>
+          <h2 class="h5 mb-3">{{ cms.snapshot_heading or 'Short, visual summaries' }}</h2>
+          <p class="text-muted mb-0">{{ cms.snapshot_text or 'This section can later hold a grid of project cards with photos, the problem to solve, and the finished result.' }}</p>
         </div>
       </div>
     </div>
@@ -181,11 +149,8 @@
       <div class="card shadow-sm border-0 section-card h-100">
         <div class="card-body p-4">
           <p class="section-kicker text-uppercase fw-semibold mb-2">Industries served</p>
-          <h2 class="h5 mb-3">Examples by sector</h2>
-          <p class="text-muted mb-0">
-            Use this space for industry-specific examples, like ventilation, fabrication support, commercial builds,
-            or custom engineering jobs.
-          </p>
+          <h2 class="h5 mb-3">{{ cms.industries_heading or 'Examples by sector' }}</h2>
+          <p class="text-muted mb-0">{{ cms.industries_text or 'Use this space for industry-specific examples, like ventilation, fabrication support, commercial builds, or custom engineering jobs.' }}</p>
         </div>
       </div>
     </div>
@@ -193,11 +158,8 @@
       <div class="card shadow-sm border-0 section-card h-100">
         <div class="card-body p-4">
           <p class="section-kicker text-uppercase fw-semibold mb-2">What to show</p>
-          <h2 class="h5 mb-3">A few useful details</h2>
-          <p class="text-muted mb-0">
-            Photos, project goals, fabrication steps, and any notable outcomes would all fit nicely here when the
-            content is available.
-          </p>
+          <h2 class="h5 mb-3">{{ cms.details_heading or 'A few useful details' }}</h2>
+          <p class="text-muted mb-0">{{ cms.details_text or 'Photos, project goals, fabrication steps, and any notable outcomes would all fit nicely here when the content is available.' }}</p>
         </div>
       </div>
     </div>

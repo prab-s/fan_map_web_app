@@ -259,6 +259,69 @@ export async function uploadTemplateAsset(templateType, templateId, body) {
   return r.json();
 }
 
+export async function getCmsPages() {
+  const r = await apiFetch('/cms/pages');
+  return r.json();
+}
+
+export async function getCmsNavigation() {
+  const r = await apiFetch('/cms/navigation');
+  return r.json();
+}
+
+export async function updateCmsNavigation(order) {
+  const r = await apiFetch('/cms/navigation', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ order })
+  });
+  return r.json();
+}
+
+export async function updateCmsPage(slug, body) {
+  const r = await apiFetch(`/cms/pages/${encodeURIComponent(slug)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  return r.json();
+}
+
+export async function createCmsPage(body) {
+  const r = await apiFetch('/cms/pages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  return r.json();
+}
+
+export async function publishCmsPage(slug) {
+  const r = await apiFetch(`/cms/pages/${encodeURIComponent(slug)}/publish`, { method: 'POST' });
+  return r.json();
+}
+
+export async function deleteCmsPage(slug) {
+  if (slug === 'enquiries-modal') {
+    throw new Error('The Enquiries modal is protected and cannot be deleted.');
+  }
+  const r = await apiFetch(`/cms/pages/${encodeURIComponent(slug)}`, { method: 'DELETE' });
+  return r.json();
+}
+
+export async function getCmsAssets() {
+  const r = await apiFetch('/cms/assets');
+  return r.json();
+}
+
+export async function uploadCmsAsset(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const r = await apiFetch('/cms/assets', { method: 'POST', body: formData });
+  return r.json();
+}
+
+export async function deleteCmsAsset(fileName) {
+  const r = await apiFetch(`/cms/assets/${encodeURIComponent(fileName)}`, { method: 'DELETE' });
+  return r.json();
+}
+
 export async function getSeries(params = {}) {
   const sp = new URLSearchParams(params).toString();
   const r = await apiFetch('/series' + (sp ? '?' + sp : ''));

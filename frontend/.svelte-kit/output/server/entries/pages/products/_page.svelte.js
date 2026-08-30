@@ -1,4 +1,4 @@
-import { h as head, e as escape_html, d as ensure_array_like, b as attr, f as bind_props } from "../../../chunks/index2.js";
+import { h as head, e as escape_html, d as ensure_array_like, b as attr, i as bind_props } from "../../../chunks/index2.js";
 import { f as fallback } from "../../../chunks/equality.js";
 function _page($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {

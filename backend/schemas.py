@@ -1,6 +1,7 @@
 """
 Pydantic schemas for request/response validation.
 """
+from datetime import datetime
 from typing import Annotated, Literal, Optional
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, confloat, field_validator, model_validator
 
@@ -304,6 +305,54 @@ class TemplateAssetUploadResponse(BaseModel):
     filename: str
     relative_path: str
     file_url: str
+
+
+class SitePageResponse(BaseModel):
+    id: int
+    slug: str
+    label: str
+    content_type: str
+    draft_content: dict = Field(default_factory=dict)
+    published_content: dict = Field(default_factory=dict)
+    draft_layout: Optional[list] = None
+    published_layout: Optional[list] = None
+    draft_seo: dict = Field(default_factory=dict)
+    published_seo: dict = Field(default_factory=dict)
+    status: str
+    updated_at: Optional[datetime] = None
+    published_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SitePageUpdateRequest(BaseModel):
+    content: dict = Field(default_factory=dict)
+    seo: dict = Field(default_factory=dict)
+    layout: Optional[list] = None
+
+
+class SitePageCreateRequest(BaseModel):
+    label: str
+    slug: Optional[str] = None
+    template: str = "standard"
+    layout: Optional[list] = None
+
+
+class CmsNavigationUpdateRequest(BaseModel):
+    order: list[str] = Field(default_factory=list)
+
+
+class SiteAssetResponse(BaseModel):
+    id: int
+    original_file_name: str
+    file_name: str
+    mime_type: Optional[str] = None
+    file_size_bytes: int = 0
+    created_at: Optional[datetime] = None
+    used_by: list[str] = Field(default_factory=list)
+    url: str
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class FileManagerEntryResponse(BaseModel):

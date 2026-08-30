@@ -11,22 +11,18 @@
 <section class="engineering-hero page-hero mb-4">
   <div class="row g-4 align-items-center">
     <div class="col-lg-7">
-      <p class="section-kicker text-uppercase fw-semibold mb-2">Engineering services</p>
-      <h1 class="display-6 mb-3">Fabrication support for custom metalwork and project build-outs</h1>
+      <p class="section-kicker text-uppercase fw-semibold mb-2">{{ cms.hero_kicker or 'Engineering services' }}</p>
+      <h1 class="display-6 mb-3">{{ cms.hero_heading or 'Fabrication support for custom metalwork and project build-outs' }}</h1>
       <p class="lead text-muted mb-0">
-        Our engineering services cover the practical workshop processes that turn flat material into usable parts.
-        We support laser cutting, brake pressing, rolling, and flanging for custom fabrication jobs, prototypes, and repeat work.
+        {{ cms.hero_intro or 'Our engineering services cover the practical workshop processes that turn flat material into usable parts. We support laser cutting, brake pressing, rolling, and flanging for custom fabrication jobs, prototypes, and repeat work.' }}
       </p>
     </div>
     <div class="col-lg-5">
       <div class="hero-callout card shadow-sm engineering-callout">
         <div class="card-body">
-          <div class="small text-uppercase text-muted fw-semibold mb-1">Workshop capabilities</div>
+          <div class="small text-uppercase text-muted fw-semibold mb-1">{{ cms.capabilities_label or 'Workshop capabilities' }}</div>
           <ul class="list-unstyled mb-0 d-grid gap-2">
-            <li class="d-flex gap-2"><span class="service-bullet">01</span><span>Laser cutting for clean, accurate part profiles</span></li>
-            <li class="d-flex gap-2"><span class="service-bullet">02</span><span>Brake pressing for folds, returns, and formed sections</span></li>
-            <li class="d-flex gap-2"><span class="service-bullet">03</span><span>Rolling for curved sections and controlled radii</span></li>
-            <li class="d-flex gap-2"><span class="service-bullet">04</span><span>Flanging for stiffened edges and better assembly</span></li>
+            {% for capability in cms.capabilities or [] %}<li class="d-flex gap-2"><span class="service-bullet">{{ '%02d'|format(loop.index) }}</span><span>{{ capability }}</span></li>{% endfor %}
           </ul>
           <div class="d-flex flex-wrap gap-2 mt-3">
             <a
@@ -49,18 +45,9 @@
       <div class="card shadow-sm border-0 section-card h-100">
         <div class="card-body p-4">
           <p class="section-kicker text-uppercase fw-semibold mb-2">What we do</p>
-          <h2 class="h4 mb-3">Reliable workshop processes that support fabrication and product development</h2>
+          <h2 class="h4 mb-3">{{ cms.what_we_do_heading or 'Reliable workshop processes that support fabrication and product development' }}</h2>
           <div class="hero-copy">
-            <p>
-              Engineering services are often the bridge between design intent and a finished component. We can help
-              with straightforward production work, one-off parts, and custom fabrication requirements where a clean,
-              accurate result matters.
-            </p>
-            <p>
-              The service list below focuses on the main processes people ask us for most often. If your job needs a
-              combination of these steps, we can usually sequence the work so the part moves from flat material to a
-              ready-to-use component without unnecessary rework.
-            </p>
+            {% for paragraph in cms.what_we_do_paragraphs or [] %}<p>{{ paragraph }}</p>{% endfor %}
           </div>
         </div>
       </div>
@@ -70,10 +57,7 @@
         <div class="card-body p-4">
           <p class="section-kicker text-uppercase fw-semibold mb-2">Best fit for</p>
           <ul class="mb-0 ps-3">
-            <li>Custom metal parts and small assemblies</li>
-            <li>Prototype work and repeat fabrication runs</li>
-            <li>Panels, brackets, guards, and formed components</li>
-            <li>Edge finishing and shape control on curved parts</li>
+            {% for item in cms.best_fit or [] %}<li>{{ item }}</li>{% endfor %}
           </ul>
         </div>
       </div>
@@ -112,16 +96,8 @@
   <div class="row g-4 align-items-center">
     <div class="col-lg-8">
       <p class="section-kicker text-uppercase fw-semibold mb-2">Custom design</p>
-      <h2 class="h3 mb-3">Need something made for a specific space, duty, or application?</h2>
-      <p class="text-muted mb-3">
-        Our fabrication capabilities can support more than standard catalogue items. From an early concept or rough
-        sketch through to formed panels, brackets, ducting, guards, and other practical components, we can help explore
-        a solution that fits the job.
-      </p>
-      <p class="text-muted mb-0">
-        Share your dimensions, drawings, photos, performance requirements, or simply describe the problem. The team
-        can review the details and come back with the next best step.
-      </p>
+      <h2 class="h3 mb-3">{{ cms.custom_heading or 'Need something made for a specific space, duty, or application?' }}</h2>
+      {% for paragraph in cms.custom_paragraphs or [] %}<p class="text-muted {% if loop.last %}mb-0{% else %}mb-3{% endif %}">{{ paragraph }}</p>{% endfor %}
     </div>
     <div class="col-lg-4">
       <div class="custom-design-panel card shadow-sm">
@@ -135,7 +111,7 @@
             data-quote-request-default-type="tailored"
             data-bs-toggle="modal"
             data-bs-target="#quoteRequestModal"
-          >Tell us about your project</a>
+          >{{ cms.custom_button or 'Tell us about your project' }}</a>
         </div>
       </div>
     </div>

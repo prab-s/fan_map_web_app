@@ -132,6 +132,8 @@ async def not_found(request: Request, exc):
                 "description": "The requested page could not be found.",
                 "canonical": str(request.url),
             },
+            "enquiry_cms": {},
+            "site_navigation": [],
         },
         status_code=404,
     )

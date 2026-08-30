@@ -81,7 +81,20 @@ async def common_context():
             product_types = await api.product_types()
         except Exception:
             product_types = []
-    return {"product_types": product_types}
+    enquiry_page = await site_page_context("enquiries-modal")
+    try:
+        site_navigation = await api.site_navigation()
+    except Exception:
+        site_navigation = []
+    return {"product_types": product_types, "enquiry_cms": enquiry_page.get("content", {}), "site_navigation": site_navigation}
+
+
+async def site_page_context(slug):
+    """Return published CMS content while keeping the public site resilient."""
+    try:
+        return await api.site_page(slug)
+    except Exception:
+        return {"content": {}, "seo": {}}
 
 
 def build_downloads(record: dict | None, pdf_keys: tuple[str, ...], pdf_label: str) -> list[dict]:
@@ -448,14 +461,16 @@ async def homepage(request: Request):
 @router.get("/contact")
 async def contact_page(request: Request):
     context = await common_context()
+    cms = await site_page_context("contact")
     context.update({
         "request": request,
         "request_quote_url": "#quoteRequestModal",
         "seo": seo_meta(
-            "Contact",
-            "Contact Vent-Tech for product selection, pricing, engineering support, and project enquiries.",
+            cms.get("seo", {}).get("title") or "Contact",
+            cms.get("seo", {}).get("description") or "Contact Vent-Tech for product selection, pricing, engineering support, and project enquiries.",
             "/contact",
         ),
+        "cms": cms.get("content", {}),
     })
     return templates.TemplateResponse(request, "contact.html", context)
 
@@ -463,13 +478,15 @@ async def contact_page(request: Request):
 @router.get("/engineering-services")
 async def engineering_services_page(request: Request):
     context = await common_context()
+    cms = await site_page_context("engineering-services")
     context.update({
         "request": request,
         "request_quote_url": "#quoteRequestModal",
-        "services": ENGINEERING_SERVICES,
+        "services": cms.get("content", {}).get("services") or ENGINEERING_SERVICES,
+        "cms": cms.get("content", {}),
         "seo": seo_meta(
-            "Engineering Services",
-            "Explore Vent-Tech engineering services including laser cutting, brake pressing, rolling, and flanging.",
+            cms.get("seo", {}).get("title") or "Engineering Services",
+            cms.get("seo", {}).get("description") or "Explore Vent-Tech engineering services including laser cutting, brake pressing, rolling, and flanging.",
             "/engineering-services",
         ),
     })
@@ -479,13 +496,15 @@ async def engineering_services_page(request: Request):
 @router.get("/past-projects")
 async def past_projects_page(request: Request):
     context = await common_context()
+    cms = await site_page_context("past-projects")
     context.update({
         "request": request,
         "seo": seo_meta(
-            "Past Projects",
-            "Explore Vent-Tech fabrication and engineering project highlights.",
+            cms.get("seo", {}).get("title") or "Past Projects",
+            cms.get("seo", {}).get("description") or "Explore Vent-Tech fabrication and engineering project highlights.",
             "/past-projects",
         ),
+        "cms": cms.get("content", {}),
     })
     return templates.TemplateResponse(request, "past_projects.html", context)
 
@@ -493,13 +512,15 @@ async def past_projects_page(request: Request):
 @router.get("/about-us")
 async def about_us_page(request: Request):
     context = await common_context()
+    cms = await site_page_context("about-us")
     context.update({
         "request": request,
         "seo": seo_meta(
-            "About Us",
-            "Learn more about Vent-Tech, our placeholder company story, values, capabilities, and team.",
+            cms.get("seo", {}).get("title") or "About Us",
+            cms.get("seo", {}).get("description") or "Learn more about Vent-Tech, our placeholder company story, values, capabilities, and team.",
             "/about-us",
         ),
+        "cms": cms.get("content", {}),
     })
     return templates.TemplateResponse(request, "about_us.html", context)
 
@@ -676,3 +697,20 @@ async def product_page(request: Request, product_slug: str):
     })
 
     return templates.TemplateResponse(request, "product.html", context)
+
+
+@router.get("/{page_slug}")
+async def cms_page(request: Request, page_slug: str):
+    if page_slug in {"api", "static", "products", "series", "contact", "about-us", "engineering-services", "past-projects"}:
+        raise HTTPException(status_code=404)
+    cms = await site_page_context(page_slug)
+    if not cms.get("content"):
+        raise HTTPException(status_code=404)
+    context = await common_context()
+    context.update({
+        "request": request,
+        "page": {"label": cms.get("label") or page_slug.replace("-", " ").title(), "layout": cms.get("layout") or []},
+        "content": cms.get("content", {}),
+        "seo": seo_meta(cms.get("seo", {}).get("title") or page_slug.replace("-", " ").title(), cms.get("seo", {}).get("description") or "", f"/{page_slug}"),
+    })
+    return templates.TemplateResponse(request, "cms_page.html", context)

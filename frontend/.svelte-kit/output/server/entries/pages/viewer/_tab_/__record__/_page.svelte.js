@@ -1,4 +1,4 @@
-import { s as store_get, h as head, c as attr_class, b as attr, d as ensure_array_like, e as escape_html, u as unsubscribe_stores, f as bind_props } from "../../../../../chunks/index2.js";
+import { s as store_get, h as head, c as attr_class, b as attr, d as ensure_array_like, e as escape_html, u as unsubscribe_stores, i as bind_props } from "../../../../../chunks/index2.js";
 import { o as onDestroy } from "../../../../../chunks/index-server.js";
 import "@sveltejs/kit/internal";
 import "../../../../../chunks/exports.js";
@@ -7,7 +7,7 @@ import { f as fallback } from "../../../../../chunks/equality.js";
 import "@sveltejs/kit/internal/server";
 import "../../../../../chunks/root.js";
 import "../../../../../chunks/state.svelte.js";
-import { D as getProductChartData, A as getSeries, i as getSeriesById, E as getProductTypePdfContext, g as getProducts, c as getProduct } from "../../../../../chunks/api.js";
+import { D as getProductChartData, A as getSeries, n as getSeriesById, E as getProductTypePdfContext, g as getProducts, c as getProduct } from "../../../../../chunks/api.js";
 import { E as ECharts, g as getChartTheme, b as buildFullChartOption } from "../../../../../chunks/fullChart.js";
 import { t as theme } from "../../../../../chunks/config.js";
 import { a as getDescriptionSections } from "../../../../../chunks/descriptionSections.js";

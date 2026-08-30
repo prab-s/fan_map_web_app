@@ -106,6 +106,33 @@ def init_db():
     _seed_product_types(engine)
     _ensure_product_type_sort_order(engine)
     _migrate_legacy_map_points(engine)
+    _seed_site_pages()
+
+
+def _seed_site_pages():
+    """Create the initial CMS records without overwriting client changes."""
+    from backend.models import SitePage
+    from backend.site_cms import default_site_pages
+
+    with SessionLocal() as db:
+        changed = False
+        for seed in default_site_pages():
+            if db.query(SitePage).filter(SitePage.slug == seed["slug"]).first():
+                continue
+            db.add(SitePage(
+                slug=seed["slug"],
+                label=seed["label"],
+                content_type=seed["content_type"],
+                draft_content=seed["content"],
+                published_content=seed["content"],
+                draft_seo=seed["seo"],
+                published_seo=seed["seo"],
+                status="published",
+                published_at=datetime.now(timezone.utc),
+            ))
+            changed = True
+        if changed:
+            db.commit()
 
 
 def sanitize_stored_rich_text(models, sanitizer, *, dry_run: bool = False) -> dict:

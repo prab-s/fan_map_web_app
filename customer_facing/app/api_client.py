@@ -51,6 +51,12 @@ class CatalogueApi:
     async def series(self, series_id):
         return await self._get(f"/api/public/series/{series_id}")
 
+    async def site_page(self, slug):
+        return await self._get(f"/api/public/site-pages/{slug}")
+
+    async def site_navigation(self):
+        return await self._get("/api/public/site-navigation")
+
     async def all_product_types_pdf(self):
         metadata_path = "/api/public/catalogue/all-product-types-pdf"
         media_path = "/api/public/media/all-product-types-pdf"

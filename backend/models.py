@@ -804,6 +804,40 @@ class AppSettings(Base):
     smtp_password_encrypted = Column(Text, nullable=True)
     smtp_use_tls = Column(Boolean, nullable=True)
     smtp_from_address = Column(String(255), nullable=True)
+    cms_navigation_order = Column(Text, nullable=True)
+
+
+class SitePage(Base):
+    """Structured content for the small set of customer-facing marketing pages."""
+
+    __tablename__ = "site_pages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    slug = Column(String(80), nullable=False, unique=True, index=True)
+    label = Column(String(160), nullable=False)
+    content_type = Column(String(32), nullable=False, default="page")
+    draft_content = Column(JSON, nullable=False, default=dict)
+    published_content = Column(JSON, nullable=False, default=dict)
+    draft_layout = Column(JSON, nullable=True)
+    published_layout = Column(JSON, nullable=True)
+    draft_seo = Column(JSON, nullable=False, default=dict)
+    published_seo = Column(JSON, nullable=False, default=dict)
+    status = Column(String(32), nullable=False, default="published")
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    published_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class SiteAsset(Base):
+    """CMS-managed media with usage metadata kept separate from page JSON."""
+
+    __tablename__ = "site_assets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    original_file_name = Column(String(512), nullable=False)
+    file_name = Column(String(512), nullable=False, unique=True)
+    mime_type = Column(String(255), nullable=True)
+    file_size_bytes = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
 class QuoteRequest(Base):

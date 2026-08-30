@@ -55,10 +55,10 @@
   <div class="col-12 col-lg-6">
     <div class="card shadow-sm h-100">
       <div class="card-body d-flex flex-column gap-2 bg-body-secondary bg-opacity-10">
-        <p class="small text-uppercase text-body-secondary fw-semibold mb-1">Visual Template Editing</p>
-        <h2 class="h4">Template Builder</h2>
-        <p>Open the PDF template files in a drag-and-drop builder, edit the template body visually, and save the HTML/CSS back into the controlled template library.</p>
-        <button class="btn btn-primary align-self-start" type="button" on:click={() => goto('/template-builder')}>Open Template Builder</button>
+        <p class="small text-uppercase text-body-secondary fw-semibold mb-1">Public Site Content</p>
+        <h2 class="h4">CMS</h2>
+        <p>Edit the About us, Contact, Engineering services, Past projects, and Enquiries modal content from one focused page editor.</p>
+        <button class="btn btn-primary align-self-start" type="button" on:click={() => goto('/cms')}>Open CMS</button>
       </div>
     </div>
   </div>

@@ -84,7 +84,7 @@
       "_equality.js"
     ],
     "css": [
-      "_app/immutable/assets/RichTextEditor.B1D0py3-.css"
+      "_app/immutable/assets/RichTextEditor.WXTMFd2b.css"
     ]
   },
   "_SeriesWorkspace.js": {
@@ -335,6 +335,38 @@
       "_utils.js",
       "_root.js",
       "_state.svelte.js"
+    ]
+  },
+  "src/routes/cms-experimental/+page.svelte": {
+    "file": "entries/pages/cms-experimental/_page.svelte.js",
+    "name": "entries/pages/cms-experimental/_page.svelte",
+    "src": "src/routes/cms-experimental/+page.svelte",
+    "isEntry": true,
+    "imports": [
+      "_index2.js",
+      "_RichTextEditor.js",
+      "_equality.js"
+    ],
+    "css": [
+      "_app/immutable/assets/_page.BPOdF9OR.css"
+    ]
+  },
+  "src/routes/cms/+page.js": {
+    "file": "entries/pages/cms/_page.js",
+    "name": "entries/pages/cms/_page",
+    "src": "src/routes/cms/+page.js",
+    "isEntry": true
+  },
+  "src/routes/cms/+page.svelte": {
+    "file": "entries/pages/cms/_page.svelte.js",
+    "name": "entries/pages/cms/_page.svelte",
+    "src": "src/routes/cms/+page.svelte",
+    "isEntry": true,
+    "imports": [
+      "_index2.js"
+    ],
+    "css": [
+      "_app/immutable/assets/_page.BRhTXjX3.css"
     ]
   },
   "src/routes/editor/+page.svelte": {

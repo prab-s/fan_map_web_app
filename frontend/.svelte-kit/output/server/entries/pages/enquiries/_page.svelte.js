@@ -1,4 +1,4 @@
-import { h as head, f as bind_props, e as escape_html, b as attr, d as ensure_array_like, c as attr_class } from "../../../chunks/index2.js";
+import { h as head, i as bind_props, e as escape_html, b as attr, d as ensure_array_like, c as attr_class } from "../../../chunks/index2.js";
 import { M as ManagePageShell } from "../../../chunks/ManagePageShell.js";
 import { f as fallback } from "../../../chunks/equality.js";
 function _page($$renderer, $$props) {

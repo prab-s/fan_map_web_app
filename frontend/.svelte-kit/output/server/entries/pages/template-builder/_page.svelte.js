@@ -9,10 +9,10 @@ function _page($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
     head("yl845", $$renderer2, ($$renderer3) => {
       $$renderer3.title(($$renderer4) => {
-        $$renderer4.push(`<title>Template Builder | Internal Facing</title>`);
+        $$renderer4.push(`<title>CMS | Internal Facing</title>`);
       });
     });
-    $$renderer2.push(`<div class="alert alert-info">Redirecting to the Template Builder V2 experience.</div>`);
+    $$renderer2.push(`<div class="alert alert-info">Redirecting to the CMS experience.</div>`);
   });
 }
 export {

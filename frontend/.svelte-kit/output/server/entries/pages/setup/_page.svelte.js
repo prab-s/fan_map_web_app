@@ -1,4 +1,4 @@
-import { e as escape_html, b as attr, d as ensure_array_like, f as bind_props, s as store_get, h as head, c as attr_class, u as unsubscribe_stores, aa as clsx } from "../../../chunks/index2.js";
+import { e as escape_html, b as attr, d as ensure_array_like, i as bind_props, s as store_get, h as head, c as attr_class, u as unsubscribe_stores, aa as clsx } from "../../../chunks/index2.js";
 import { b as browser } from "../../../chunks/false.js";
 import { o as onDestroy } from "../../../chunks/index-server.js";
 import { a as auth } from "../../../chunks/auth.js";

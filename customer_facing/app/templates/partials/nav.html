@@ -27,45 +27,9 @@
 
         <span class="nav-actions-divider d-none d-lg-block" aria-hidden="true"></span>
 
-        <a
-          class="btn btn-outline-light nav-service-button btn-sm"
-          href="/engineering-services"
-          {% if request.url.path.startswith('/engineering-services') %}
-            aria-current="page"
-          {% endif %}
-        >
-          Engineering Services
-        </a>
-
-        <a
-          class="btn btn-outline-light nav-projects-button btn-sm"
-          href="/past-projects"
-          {% if request.url.path.startswith('/past-projects') %}
-            aria-current="page"
-          {% endif %}
-        >
-          Past Projects
-        </a>
-
-        <a
-          class="btn btn-outline-light nav-about-button btn-sm"
-          href="/about-us"
-          {% if request.url.path.startswith('/about-us') %}
-            aria-current="page"
-          {% endif %}
-        >
-          About Us
-        </a>
-
-        <a
-          class="btn btn-outline-light nav-contact-button btn-sm"
-          href="/contact"
-          {% if request.url.path.startswith('/contact') %}
-            aria-current="page"
-          {% endif %}
-        >
-          Contact
-        </a>
+        {% for nav_page in site_navigation or [] %}
+          <a class="btn btn-outline-light nav-cms-page-button nav-cms-{{ nav_page.slug }} btn-sm" href="/{{ nav_page.slug }}" {% if request.url.path.startswith('/' ~ nav_page.slug) %}aria-current="page"{% endif %}>{{ nav_page.label }}</a>
+        {% endfor %}
 
       </div>
     </div>

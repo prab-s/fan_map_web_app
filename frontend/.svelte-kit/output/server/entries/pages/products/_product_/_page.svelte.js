@@ -1,4 +1,4 @@
-import { s as store_get, h as head, e as escape_html, b as attr, d as ensure_array_like, u as unsubscribe_stores, f as bind_props } from "../../../../chunks/index2.js";
+import { s as store_get, h as head, e as escape_html, b as attr, d as ensure_array_like, u as unsubscribe_stores, i as bind_props } from "../../../../chunks/index2.js";
 import { g as getChartTheme, b as buildFullChartOption, E as ECharts } from "../../../../chunks/fullChart.js";
 import { t as theme } from "../../../../chunks/config.js";
 import { a as getDescriptionSections } from "../../../../chunks/descriptionSections.js";

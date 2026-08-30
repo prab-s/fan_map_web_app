@@ -3,14 +3,14 @@
   import { goto } from '$app/navigation';
 
   onMount(() => {
-    void goto('/template-builder-v2', { replaceState: true });
+    void goto('/cms', { replaceState: true });
   });
 </script>
 
 <svelte:head>
-  <title>Template Builder | Internal Facing</title>
+  <title>CMS | Internal Facing</title>
 </svelte:head>
 
 <div class="alert alert-info">
-  Redirecting to the Template Builder V2 experience.
+  Redirecting to the CMS experience.
 </div>

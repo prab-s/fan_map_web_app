@@ -1,4 +1,4 @@
-import { e as escape_html, d as ensure_array_like, f as bind_props } from "./index2.js";
+import { e as escape_html, d as ensure_array_like, i as bind_props } from "./index2.js";
 import { f as fallback } from "./equality.js";
 function SeriesNamesBadgeList($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {

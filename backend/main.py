@@ -75,6 +75,8 @@ from backend.models import (
     QuoteRequest,
     User,
     InternalDeviceActivity,
+    SitePage,
+    SiteAsset,
 )
 from backend.models import AppSettings
 from backend.timezone import APP_TIMEZONE, backend_now, backend_now_iso, file_mtime_milliseconds, generated_file_timestamp
@@ -159,6 +161,11 @@ from backend.schemas import (
     SMTPSettingsUpdate,
     QuoteRequestStatusUpdate,
     AssociatedDocumentResponse,
+    SitePageResponse,
+    SitePageUpdateRequest,
+    SitePageCreateRequest,
+    CmsNavigationUpdateRequest,
+    SiteAssetResponse,
 )
 
 SAFE_CHARS_RE = re.compile(r"[^a-z0-9]+")
@@ -168,6 +175,7 @@ PRODUCT_IMAGES_DIR = Path(DEFAULT_DATA_DIR) / "product_images"
 PUBLIC_IMAGE_MAX_SIZE = 1600
 PUBLIC_IMAGE_QUALITY = 82
 SERIES_IMAGES_DIR = Path(DEFAULT_DATA_DIR) / "series_images"
+CMS_MEDIA_DIR = Path(DEFAULT_DATA_DIR) / "cms_media"
 PRODUCT_GRAPHS_DIR = Path(DEFAULT_DATA_DIR) / "product_graphs"
 IMPORTS_DIR = Path(DEFAULT_DATA_DIR) / "bulk_imports"
 PRODUCT_PDFS_DIR = Path(DEFAULT_DATA_DIR) / "product_pdfs"
@@ -7173,6 +7181,74 @@ def require_admin_user(current_user: User = Depends(get_current_user)) -> User:
     return current_user
 
 
+def _site_page_response(page: SitePage) -> dict:
+    return {
+        "id": page.id,
+        "slug": page.slug,
+        "label": page.label,
+        "content_type": page.content_type,
+        "draft_content": page.draft_content or {},
+        "published_content": page.published_content or {},
+        "draft_layout": page.draft_layout,
+        "published_layout": page.published_layout,
+        "draft_seo": page.draft_seo or {},
+        "published_seo": page.published_seo or {},
+        "status": page.status,
+        "updated_at": page.updated_at,
+        "published_at": page.published_at,
+    }
+
+
+PROTECTED_SITE_PAGE_SLUGS = {"enquiries-modal"}
+ENQUIRY_MODAL_OPTION_VALUES = ("standard", "tailored", "unsure")
+ENQUIRY_MODAL_REQUIRED_KEYS = {
+    "kicker", "heading", "context_loading", "name_label", "company_label",
+    "email_label", "phone_label", "request_heading", "request_help",
+    "request_options", "submit_label", "footer_text",
+}
+
+
+def _validate_site_page_content(page: SitePage, content: dict) -> dict:
+    """Keep protected components editable without allowing their behaviour to change."""
+    if page.slug not in PROTECTED_SITE_PAGE_SLUGS:
+        return content
+    merged = dict(page.draft_content or {})
+    merged.update(content or {})
+    missing = sorted(key for key in ENQUIRY_MODAL_REQUIRED_KEYS if not merged.get(key))
+    if missing:
+        raise HTTPException(status_code=400, detail=f"The Enquiries modal is missing protected content: {', '.join(missing)}")
+    options = merged.get("request_options")
+    if not isinstance(options, list) or len(options) != len(ENQUIRY_MODAL_OPTION_VALUES):
+        raise HTTPException(status_code=400, detail="The Enquiries modal must retain its three request options.")
+    for expected_value, option in zip(ENQUIRY_MODAL_OPTION_VALUES, options):
+        if not isinstance(option, dict) or option.get("value") != expected_value:
+            raise HTTPException(status_code=400, detail="The Enquiries modal request option values are protected.")
+        if not isinstance(option.get("title"), str) or not option["title"].strip():
+            raise HTTPException(status_code=400, detail="Each Enquiries modal option needs a title.")
+        if not isinstance(option.get("text"), str):
+            raise HTTPException(status_code=400, detail="Each Enquiries modal option needs descriptive text.")
+    return merged
+
+
+def _site_asset_usage(db: Session, asset: SiteAsset) -> list[str]:
+    token = str(asset.file_name or "")
+    used_by = []
+
+    def contains(value):
+        if isinstance(value, str):
+            return token in value
+        if isinstance(value, dict):
+            return any(contains(item) for item in value.values())
+        if isinstance(value, list):
+            return any(contains(item) for item in value)
+        return False
+
+    for page in db.query(SitePage).all():
+        if contains(page.draft_content) or contains(page.published_content):
+            used_by.append(page.label)
+    return used_by
+
+
 QUOTE_REQUEST_REQUEST_TYPE_LABELS = {
     "standard": "Quote this item",
     "tailored": "Tailored product",
@@ -8018,6 +8094,163 @@ app = FastAPI(
     redoc_url=None,
     openapi_url=None,
 )
+
+
+@app.get("/api/cms/pages", response_model=list[SitePageResponse], dependencies=[Depends(require_admin_user)], tags=["CMS"])
+def list_site_pages(db: Session = Depends(get_db)):
+    return [_site_page_response(page) for page in db.query(SitePage).order_by(SitePage.id).all()]
+
+
+@app.post("/api/cms/pages", response_model=SitePageResponse, dependencies=[Depends(require_admin_user)], tags=["CMS"])
+def create_site_page(body: SitePageCreateRequest, db: Session = Depends(get_db)):
+    label = body.label.strip()
+    slug = (body.slug or SAFE_CHARS_RE.sub("-", label.lower()).strip("-")).strip().lower()
+    if not label or not slug or not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", slug):
+        raise HTTPException(status_code=400, detail="Provide a valid page name and URL slug.")
+    if db.query(SitePage).filter(SitePage.slug == slug).first():
+        raise HTTPException(status_code=409, detail="A CMS page with that slug already exists.")
+    template = body.template if body.template in {"standard", "cards", "image-text"} else "standard"
+    page = SitePage(slug=slug, label=label, content_type="page", draft_content={"page_template": template}, published_content={}, draft_seo={}, published_seo={}, status="draft", draft_layout=body.layout or [])
+    db.add(page)
+    db.commit()
+    db.refresh(page)
+    return _site_page_response(page)
+
+
+def _cms_navigation_order(db: Session) -> list[str]:
+    settings = get_or_create_app_settings(db)
+    try:
+        configured = json.loads(settings.cms_navigation_order or "[]")
+    except (TypeError, ValueError):
+        configured = []
+    available = [page.slug for page in db.query(SitePage).filter(SitePage.content_type == "page").all()]
+    ordered = [slug for slug in configured if slug in available]
+    ordered.extend(slug for slug in available if slug not in ordered)
+    return ordered
+
+
+@app.get("/api/cms/navigation", dependencies=[Depends(require_admin_user)], tags=["CMS"])
+def get_cms_navigation(db: Session = Depends(get_db)):
+    pages = {page.slug: page for page in db.query(SitePage).filter(SitePage.content_type == "page").all()}
+    return [{"slug": slug, "label": pages[slug].label, "status": pages[slug].status} for slug in _cms_navigation_order(db)]
+
+
+@app.put("/api/cms/navigation", dependencies=[Depends(require_admin_user)], tags=["CMS"])
+def update_cms_navigation(body: CmsNavigationUpdateRequest, db: Session = Depends(get_db)):
+    available = {page.slug for page in db.query(SitePage).filter(SitePage.content_type == "page").all()}
+    order = list(dict.fromkeys(slug for slug in body.order if slug in available))
+    order.extend(slug for slug in available if slug not in order)
+    settings = get_or_create_app_settings(db)
+    settings.cms_navigation_order = json.dumps(order)
+    db.commit()
+    return {"order": _cms_navigation_order(db)}
+
+
+@app.get("/api/public/site-navigation", tags=["Public"])
+def get_public_site_navigation(db: Session = Depends(get_db)):
+    pages = {page.slug: page for page in db.query(SitePage).filter(SitePage.content_type == "page").all()}
+    return [{"slug": slug, "label": pages[slug].label} for slug in _cms_navigation_order(db) if pages[slug].status == "published" and pages[slug].published_content]
+
+
+@app.put("/api/cms/pages/{slug}", response_model=SitePageResponse, dependencies=[Depends(require_admin_user)], tags=["CMS"])
+def update_site_page(slug: str, body: SitePageUpdateRequest, db: Session = Depends(get_db)):
+    page = db.query(SitePage).filter(SitePage.slug == slug).first()
+    if page is None:
+        raise HTTPException(status_code=404, detail="CMS page not found.")
+    page.draft_content = _validate_site_page_content(page, body.content)
+    page.draft_seo = body.seo or {}
+    if body.layout is not None:
+        page.draft_layout = body.layout
+    page.status = "draft" if page.draft_content != (page.published_content or {}) or page.draft_seo != (page.published_seo or {}) or page.draft_layout != page.published_layout else "published"
+    db.commit()
+    db.refresh(page)
+    return _site_page_response(page)
+
+
+@app.post("/api/cms/pages/{slug}/publish", response_model=SitePageResponse, dependencies=[Depends(require_admin_user)], tags=["CMS"])
+def publish_site_page(slug: str, db: Session = Depends(get_db)):
+    page = db.query(SitePage).filter(SitePage.slug == slug).first()
+    if page is None:
+        raise HTTPException(status_code=404, detail="CMS page not found.")
+    page.draft_content = _validate_site_page_content(page, page.draft_content or {})
+    page.published_content = page.draft_content or {}
+    page.published_layout = page.draft_layout
+    page.published_seo = page.draft_seo or {}
+    page.status = "published"
+    page.published_at = backend_now()
+    db.commit()
+    db.refresh(page)
+    return _site_page_response(page)
+
+
+@app.delete("/api/cms/pages/{slug}", dependencies=[Depends(require_admin_user)], tags=["CMS"])
+def delete_site_page(slug: str, db: Session = Depends(get_db)):
+    page = db.query(SitePage).filter(SitePage.slug == slug).first()
+    if page is None:
+        raise HTTPException(status_code=404, detail="CMS page not found.")
+    if page.slug in PROTECTED_SITE_PAGE_SLUGS:
+        raise HTTPException(status_code=400, detail="The Enquiries modal is a protected system component and cannot be deleted.")
+    db.delete(page)
+    db.commit()
+    return {"ok": True}
+
+
+@app.get("/api/public/site-pages/{slug}", tags=["Public"])
+def get_public_site_page(slug: str, db: Session = Depends(get_db)):
+    page = db.query(SitePage).filter(SitePage.slug == slug).first()
+    if page is None:
+        raise HTTPException(status_code=404, detail="Site page not found.")
+    if not page.published_content:
+        raise HTTPException(status_code=404, detail="Site page not found.")
+    return {"slug": page.slug, "label": page.label, "content_type": page.content_type, "content": page.published_content or {}, "seo": page.published_seo or {}, "layout": page.published_layout or []}
+
+
+@app.get("/api/cms/assets", response_model=list[SiteAssetResponse], dependencies=[Depends(require_admin_user)], tags=["CMS"])
+def list_site_assets(db: Session = Depends(get_db)):
+    return [{**SiteAssetResponse.model_validate(asset).model_dump(), "used_by": _site_asset_usage(db, asset), "url": f"/api/public/cms-media/{asset.file_name}"} for asset in db.query(SiteAsset).order_by(SiteAsset.created_at.desc()).all()]
+
+
+@app.post("/api/cms/assets", response_model=SiteAssetResponse, dependencies=[Depends(require_admin_user)], tags=["CMS"])
+async def upload_site_asset(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    filename = Path(file.filename or "").name.strip()
+    if not filename:
+        raise HTTPException(status_code=400, detail="A filename is required.")
+    content = await file.read()
+    if not content or len(content) > 15 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Choose a non-empty image up to 15 MB.")
+    if not (file.content_type or "").startswith("image/"):
+        raise HTTPException(status_code=400, detail="CMS assets must be images.")
+    CMS_MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+    stored_name = f"{uuid4().hex}_{filename}"
+    (CMS_MEDIA_DIR / stored_name).write_bytes(content)
+    asset = SiteAsset(original_file_name=filename, file_name=stored_name, mime_type=file.content_type, file_size_bytes=len(content))
+    db.add(asset)
+    db.commit()
+    db.refresh(asset)
+    return {**SiteAssetResponse.model_validate(asset).model_dump(), "used_by": [], "url": f"/api/public/cms-media/{asset.file_name}"}
+
+
+@app.delete("/api/cms/assets/{file_name}", dependencies=[Depends(require_admin_user)], tags=["CMS"])
+def delete_site_asset(file_name: str, db: Session = Depends(get_db)):
+    asset = db.query(SiteAsset).filter(SiteAsset.file_name == Path(file_name).name).first()
+    if asset is None:
+        raise HTTPException(status_code=404, detail="CMS asset not found.")
+    used_by = _site_asset_usage(db, asset)
+    if used_by:
+        raise HTTPException(status_code=400, detail=f"Asset is still used by: {', '.join(used_by)}")
+    (CMS_MEDIA_DIR / asset.file_name).unlink(missing_ok=True)
+    db.delete(asset)
+    db.commit()
+    return {"ok": True}
+
+
+@app.get("/api/public/cms-media/{file_name:path}", tags=["Public Media"])
+def serve_public_cms_asset(file_name: str):
+    safe_name = Path(file_name).name
+    path = CMS_MEDIA_DIR / safe_name
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="CMS asset not found.")
+    return FileResponse(path)
 
 app.add_middleware(
     SessionMiddleware,

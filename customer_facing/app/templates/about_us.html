@@ -11,18 +11,15 @@
 <section class="page-hero mb-4">
   <div class="row g-4 align-items-center">
     <div class="col-lg-8">
-      <p class="section-kicker text-uppercase fw-semibold mb-2">About Us · Placeholder content</p>
-      <h1 class="display-6 mb-3">Practical products, thoughtful engineering, and people who care about the details.</h1>
-      <p class="lead text-muted mb-0">
-        This page is a placeholder introduction to Vent-Tech. Replace the copy, statistics, team profiles, and imagery
-        below with approved company information when the final content is ready.
-      </p>
+      <p class="section-kicker text-uppercase fw-semibold mb-2">{{ cms.hero_kicker or 'About Us · Placeholder content' }}</p>
+      <h1 class="display-6 mb-3">{{ cms.hero_heading or 'Practical products, thoughtful engineering, and people who care about the details.' }}</h1>
+      <p class="lead text-muted mb-0">{{ cms.hero_intro or 'This page is a placeholder introduction to Vent-Tech. Replace the copy, statistics, team profiles, and imagery below with approved company information when the final content is ready.' }}</p>
     </div>
     <div class="col-lg-4">
       <div class="hero-callout card shadow-sm">
         <div class="card-body">
-          <div class="small text-uppercase text-muted fw-semibold mb-1">Placeholder note</div>
-          <p class="text-muted mb-0">Add a team photograph, workshop image, or short brand video here in the next content pass.</p>
+          <div class="small text-uppercase text-muted fw-semibold mb-1">{{ cms.hero_callout_label or 'Placeholder note' }}</div>
+          <p class="text-muted mb-0">{{ cms.hero_callout_text or 'Add a team photograph, workshop image, or short brand video here in the next content pass.' }}</p>
         </div>
       </div>
     </div>
@@ -34,22 +31,10 @@
     <div class="col-lg-7">
       <div class="card shadow-sm border-0 section-card h-100">
         <div class="card-body p-4">
-          <p class="section-kicker text-uppercase fw-semibold mb-2">Our story</p>
-          <h2 class="h4 mb-3">A placeholder story about where we came from and where we are going</h2>
+          <p class="section-kicker text-uppercase fw-semibold mb-2">{{ cms.story_kicker or 'Our story' }}</p>
+          <h2 class="h4 mb-3">{{ cms.story_heading or 'A placeholder story about where we came from and where we are going' }}</h2>
           <div class="hero-copy">
-            <p>
-              Vent-Tech was established to help customers find dependable air-management and ventilation products
-              without unnecessary complexity. This paragraph should eventually explain the company’s founding, its
-              original purpose, and the people who helped shape the business.
-            </p>
-            <p>
-              Today, our placeholder story is about combining useful product information with practical support. Add
-              the real milestones, locations, customer types, and achievements here once they have been confirmed.
-            </p>
-            <p class="mb-0">
-              We believe good service starts with listening carefully, asking useful questions, and helping customers
-              make decisions they can feel confident about.
-            </p>
+            {% for paragraph in cms.story_paragraphs or [] %}<p class="{% if loop.last %}mb-0{% endif %}">{{ paragraph }}</p>{% endfor %}
           </div>
         </div>
       </div>
@@ -59,10 +44,7 @@
         <div class="card-body p-4">
           <p class="section-kicker text-uppercase fw-semibold mb-2">At a glance</p>
           <div class="row g-3">
-            <div class="col-6"><div class="about-stat"><strong>2018</strong><span>Placeholder founding year</span></div></div>
-            <div class="col-6"><div class="about-stat"><strong>25+</strong><span>Placeholder years of experience</span></div></div>
-            <div class="col-6"><div class="about-stat"><strong>4</strong><span>Placeholder workshop services</span></div></div>
-            <div class="col-6"><div class="about-stat"><strong>100%</strong><span>Placeholder commitment to service</span></div></div>
+            {% for stat in cms.stats or [] %}<div class="col-6"><div class="about-stat"><strong>{{ stat.value }}</strong><span>{{ stat.label }}</span></div></div>{% endfor %}
           </div>
           <p class="small text-muted mt-3 mb-0">All figures on this panel are illustrative placeholders.</p>
         </div>
@@ -74,30 +56,18 @@
 <section class="surface-section mb-4">
   <div class="d-flex flex-wrap align-items-end justify-content-between gap-2 mb-3">
     <div>
-      <p class="section-kicker text-uppercase fw-semibold mb-2">What matters to us</p>
-      <h2 class="h4 mb-0">Placeholder values for the team</h2>
+      <p class="section-kicker text-uppercase fw-semibold mb-2">{{ cms.values_kicker or 'What matters to us' }}</p>
+      <h2 class="h4 mb-0">{{ cms.values_heading or 'Placeholder values for the team' }}</h2>
     </div>
     <span class="badge text-bg-light border">Replace with approved values</span>
   </div>
   <div class="row g-4">
-    <div class="col-md-4">
+    {% for value in cms.get('values', []) %}<div class="col-md-4">
       <article class="card shadow-sm border-0 section-card h-100"><div class="card-body p-4">
-        <div class="about-value-icon">01</div><h3 class="h5">Be useful</h3>
-        <p class="text-muted mb-0">Make product information clear, answer questions directly, and keep the next step easy to understand.</p>
+        <div class="about-value-icon">{{ '%02d'|format(loop.index) }}</div><h3 class="h5">{{ value.title }}</h3>
+        <p class="text-muted mb-0">{{ value.text }}</p>
       </div></article>
-    </div>
-    <div class="col-md-4">
-      <article class="card shadow-sm border-0 section-card h-100"><div class="card-body p-4">
-        <div class="about-value-icon">02</div><h3 class="h5">Build with care</h3>
-        <p class="text-muted mb-0">Pay attention to materials, measurements, finishes, and the small details that make a result dependable.</p>
-      </div></article>
-    </div>
-    <div class="col-md-4">
-      <article class="card shadow-sm border-0 section-card h-100"><div class="card-body p-4">
-        <div class="about-value-icon">03</div><h3 class="h5">Keep improving</h3>
-        <p class="text-muted mb-0">Learn from every project and keep refining our products, processes, and customer experience.</p>
-      </div></article>
-    </div>
+    </div>{% endfor %}
   </div>
 </section>
 
@@ -106,13 +76,11 @@
     <div class="col-lg-5">
       <div class="card shadow-sm border-0 section-card h-100">
         <div class="card-body p-4">
-          <p class="section-kicker text-uppercase fw-semibold mb-2">Our team</p>
-          <h2 class="h5 mb-3">The people behind the work</h2>
-          <p class="text-muted">Use this section for approved team biographies, roles, profile photos, and a short introduction to the way the team works together.</p>
+          <p class="section-kicker text-uppercase fw-semibold mb-2">{{ cms.team_kicker or 'Our team' }}</p>
+          <h2 class="h5 mb-3">{{ cms.team_heading or 'The people behind the work' }}</h2>
+          <p class="text-muted">{{ cms.team_intro or 'Use this section for approved team biographies, roles, profile photos, and a short introduction to the way the team works together.' }}</p>
           <ul class="list-unstyled d-grid gap-2 mb-0">
-            <li><strong>Team member one</strong> · Placeholder role</li>
-            <li><strong>Team member two</strong> · Placeholder role</li>
-            <li><strong>Team member three</strong> · Placeholder role</li>
+            {% for member in cms.team_members or [] %}<li>{{ member }}</li>{% endfor %}
           </ul>
         </div>
       </div>
@@ -120,13 +88,15 @@
     <div class="col-lg-7">
       <div class="card shadow-sm border-0 section-card h-100">
         <div class="card-body p-4">
-          <p class="section-kicker text-uppercase fw-semibold mb-2">How we help</p>
-          <h2 class="h5 mb-3">From the first question to the finished solution</h2>
+          <p class="section-kicker text-uppercase fw-semibold mb-2">{{ cms.process_kicker or 'How we help' }}</p>
+          <h2 class="h5 mb-3">{{ cms.process_heading or 'From the first question to the finished solution' }}</h2>
           <div class="row g-3">
-            <div class="col-sm-6"><div class="about-process"><span>01</span><div><strong>Listen</strong><p>Understand the application, constraints, and desired outcome.</p></div></div></div>
-            <div class="col-sm-6"><div class="about-process"><span>02</span><div><strong>Recommend</strong><p>Point customers toward suitable products or services.</p></div></div></div>
-            <div class="col-sm-6"><div class="about-process"><span>03</span><div><strong>Support</strong><p>Provide documentation, technical context, and practical guidance.</p></div></div></div>
-            <div class="col-sm-6"><div class="about-process"><span>04</span><div><strong>Follow through</strong><p>Keep communication clear from enquiry through delivery.</p></div></div></div>
+            {% for step in cms.process_steps or [
+              {'title': 'Listen', 'text': 'Understand the application, constraints, and desired outcome.'},
+              {'title': 'Recommend', 'text': 'Point customers toward suitable products or services.'},
+              {'title': 'Support', 'text': 'Provide documentation, technical context, and practical guidance.'},
+              {'title': 'Follow through', 'text': 'Keep communication clear from enquiry through delivery.'}
+            ] %}<div class="col-sm-6"><div class="about-process"><span>{{ '%02d'|format(loop.index) }}</span><div><strong>{{ step.title }}</strong><p>{{ step.text }}</p></div></div></div>{% endfor %}
           </div>
         </div>
       </div>
@@ -138,10 +108,10 @@
   <div class="row g-4 align-items-center">
     <div class="col-lg-8">
       <p class="section-kicker text-uppercase fw-semibold mb-2">Start a conversation</p>
-      <h2 class="h4 mb-2">Have a question about a product, project, or custom requirement?</h2>
-      <p class="text-muted mb-0">This placeholder call to action can become a short, specific invitation to contact the team.</p>
+      <h2 class="h4 mb-2">{{ cms.cta_heading or 'Have a question about a product, project, or custom requirement?' }}</h2>
+      <p class="text-muted mb-0">{{ cms.cta_text or 'This placeholder call to action can become a short, specific invitation to contact the team.' }}</p>
     </div>
-    <div class="col-lg-4 text-lg-end"><a class="btn btn-primary btn-lg" href="/contact">Contact us</a></div>
+    <div class="col-lg-4 text-lg-end"><a class="btn btn-primary btn-lg" href="{{ site_contact.request_quote_url }}" data-quote-request-trigger data-bs-toggle="modal" data-bs-target="#quoteRequestModal">{{ cms.cta_label or 'Contact us' }}</a></div>
   </div>
 </section>
 {% endblock %}
