@@ -213,6 +213,9 @@ function _page($$renderer, $$props) {
     let backupJobs = {};
     let backupLoading = {};
     let backupPollTimeouts = {};
+    let regenerationOverview = {
+      last_completed_by_type: {}
+    };
     let pendingMaintenanceConfirmation = null;
     let products = [];
     let productsLoaded = false;
@@ -260,6 +263,12 @@ function _page($$renderer, $$props) {
       }
       const productItem = productsByIdMap.get(id);
       return productItem?.model ? `Product ${id} · ${productItem.model}` : `Product ${id}`;
+    }
+    function lastSuccessfulLabel(jobType) {
+      const completedAt = regenerationOverview.last_completed_by_type?.[jobType]?.completed_at;
+      if (!completedAt) return "";
+      const date = new Date(completedAt);
+      return Number.isNaN(date.getTime()) ? completedAt : date.toLocaleString();
     }
     async function loadProducts() {
       loadingProducts = true;
@@ -632,7 +641,11 @@ function _page($$renderer, $$props) {
         title: "Template File Manager",
         description: "Browse and manage template folders and files in the deployment volume. This covers the live template tree used for PDF generation."
       });
-      $$renderer2.push(`<!----></div> <div class="card border mb-3"><div class="card-body"><div class="mb-3"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Generation</p> <h3 class="h5 mb-1">Graphs and PDFs</h3> <p class="mb-0 text-body-secondary">Regenerate individual output groups, or run the complete graph and PDF generation workflow in one pass.</p></div> <div class="card border mb-3"><div class="card-body bg-primary-subtle bg-opacity-25"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h4 class="h6 mb-1">Regenerate Everything</h4> <p class="mb-0 text-body-secondary">Regenerate all product and series graph images, every PDF type, and the combined catalogue PDF in one long-running job.</p></div> <button class="btn btn-primary btn-sm" type="button"${attr("disabled", pendingMaintenanceConfirmation, true)}>Regenerate Everything</button></div> `);
+      $$renderer2.push(`<!----></div> <div class="card border mb-3"><div class="card-body"><div class="mb-3"><p class="small text-uppercase text-body-secondary fw-semibold mb-1">Generation</p> <h3 class="h5 mb-1">Graphs and PDFs</h3> <p class="mb-0 text-body-secondary">Regenerate individual output groups, or run the complete graph and PDF generation workflow in one pass.</p> `);
+      {
+        $$renderer2.push("<!--[-1-->");
+      }
+      $$renderer2.push(`<!--]--></div> <div class="card border mb-3"><div class="card-body bg-primary-subtle bg-opacity-25"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h4 class="h6 mb-1">Regenerate Everything</h4> <p class="mb-0 text-body-secondary">Regenerate all product and series graph images, every PDF type, and the combined catalogue PDF in one long-running job.</p></div> <button class="btn btn-primary btn-sm" type="button"${attr("disabled", pendingMaintenanceConfirmation, true)}>Regenerate Everything</button></div> `);
       if (pendingMaintenanceConfirmation?.starter === startRegenerateEverythingJob) {
         $$renderer2.push("<!--[0-->");
         $$renderer2.push(`<div class="alert alert-warning mt-3 mb-0 py-2"><div class="small mb-2">Regenerate all graph images and PDFs? This may take a long time.</div> <div class="d-flex gap-2"><button class="btn btn-warning btn-sm" type="button">Confirm regeneration</button> <button class="btn btn-outline-secondary btn-sm" type="button">Cancel</button></div></div>`);
@@ -641,6 +654,13 @@ function _page($$renderer, $$props) {
       }
       $$renderer2.push(`<!--]--> `);
       {
+        $$renderer2.push("<!--[-1-->");
+      }
+      $$renderer2.push(`<!--]--> `);
+      if (lastSuccessfulLabel("regenerate_everything")) {
+        $$renderer2.push("<!--[0-->");
+        $$renderer2.push(`<div class="small text-body-secondary mt-2">Last successful regeneration: ${escape_html(lastSuccessfulLabel("regenerate_everything"))}</div>`);
+      } else {
         $$renderer2.push("<!--[-1-->");
       }
       $$renderer2.push(`<!--]--></div></div> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Product Graph Images</h3> <p class="mb-0 text-body-secondary">Generate all product graph images in one pass, or clear them so they can be regenerated later.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Regenerate Product Graphs</button> <button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", pendingMaintenanceConfirmation, true)}>Clear Graph Images</button></div></div> `);
@@ -654,20 +674,55 @@ function _page($$renderer, $$props) {
       {
         $$renderer2.push("<!--[-1-->");
       }
+      $$renderer2.push(`<!--]--> `);
+      if (lastSuccessfulLabel("regenerate_all_graph_images")) {
+        $$renderer2.push("<!--[0-->");
+        $$renderer2.push(`<div class="small text-body-secondary mt-2">Last successful regeneration: ${escape_html(lastSuccessfulLabel("regenerate_all_graph_images"))}</div>`);
+      } else {
+        $$renderer2.push("<!--[-1-->");
+      }
       $$renderer2.push(`<!--]--></div></div> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Product PDFs</h3> <p class="mb-0 text-body-secondary">Generate or re-generate all product PDFs in one pass using the current product templates and graph data.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Regenerate Product PDFs</button></div></div> `);
       {
+        $$renderer2.push("<!--[-1-->");
+      }
+      $$renderer2.push(`<!--]--> `);
+      if (lastSuccessfulLabel("regenerate_all_product_pdfs")) {
+        $$renderer2.push("<!--[0-->");
+        $$renderer2.push(`<div class="small text-body-secondary mt-2">Last successful regeneration: ${escape_html(lastSuccessfulLabel("regenerate_all_product_pdfs"))}</div>`);
+      } else {
         $$renderer2.push("<!--[-1-->");
       }
       $$renderer2.push(`<!--]--></div></div> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Series PDFs</h3> <p class="mb-0 text-body-secondary">Generate or re-generate all series PDFs in one pass using the current series templates and linked product data.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Regenerate Series PDFs</button></div></div> `);
       {
         $$renderer2.push("<!--[-1-->");
       }
+      $$renderer2.push(`<!--]--> `);
+      if (lastSuccessfulLabel("regenerate_all_series_pdfs")) {
+        $$renderer2.push("<!--[0-->");
+        $$renderer2.push(`<div class="small text-body-secondary mt-2">Last successful regeneration: ${escape_html(lastSuccessfulLabel("regenerate_all_series_pdfs"))}</div>`);
+      } else {
+        $$renderer2.push("<!--[-1-->");
+      }
       $$renderer2.push(`<!--]--></div></div> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">Product Type PDFs</h3> <p class="mb-0 text-body-secondary">Generate or re-generate all product type PDFs in one pass using the current product type templates and series data.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Regenerate Product Type PDFs</button></div></div> `);
       {
         $$renderer2.push("<!--[-1-->");
       }
+      $$renderer2.push(`<!--]--> `);
+      if (lastSuccessfulLabel("regenerate_all_product_type_pdfs")) {
+        $$renderer2.push("<!--[0-->");
+        $$renderer2.push(`<div class="small text-body-secondary mt-2">Last successful regeneration: ${escape_html(lastSuccessfulLabel("regenerate_all_product_type_pdfs"))}</div>`);
+      } else {
+        $$renderer2.push("<!--[-1-->");
+      }
       $$renderer2.push(`<!--]--></div></div> <div class="card border mb-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h3 class="h6 mb-1">All Product Types PDF</h3> <p class="mb-0 text-body-secondary">Build one combined catalogue with shared front matter and a contents page for each product type.</p></div> <div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary btn-sm" type="button"${attr("disabled", maintenanceLoading, true)}>Generate Combined PDF</button> <a class="btn btn-outline-secondary btn-sm" href="/api/public/media/all-product-types-pdf" target="_blank" rel="noreferrer">Open PDF</a></div></div> `);
       {
+        $$renderer2.push("<!--[-1-->");
+      }
+      $$renderer2.push(`<!--]--> `);
+      if (lastSuccessfulLabel("refresh_all_product_types_pdf")) {
+        $$renderer2.push("<!--[0-->");
+        $$renderer2.push(`<div class="small text-body-secondary mt-2">Last successful regeneration: ${escape_html(lastSuccessfulLabel("refresh_all_product_types_pdf"))}</div>`);
+      } else {
         $$renderer2.push("<!--[-1-->");
       }
       $$renderer2.push(`<!--]--></div></div></div></div> <div class="card border"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-2"><div><h3 class="h6 mb-1">Type Presets</h3> <p class="mb-0 text-body-secondary">Edit the grouped specification presets, RPM line presets, and efficiency/permissible presets that

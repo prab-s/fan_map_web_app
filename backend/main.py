@@ -77,6 +77,7 @@ from backend.models import (
     InternalDeviceActivity,
     SitePage,
     SiteAsset,
+    MaintenanceJob,
 )
 from backend.models import AppSettings
 from backend.timezone import APP_TIMEZONE, backend_now, backend_now_iso, file_mtime_milliseconds, generated_file_timestamp
@@ -312,6 +313,18 @@ def is_localhost_database_url(database_url: str) -> bool:
 
 AUTH_COOKIE_SECURE = AUTH_COOKIE_SECURE and not is_localhost_database_url(DATABASE_URL)
 MAINTENANCE_JOBS_LOCK = threading.Lock()
+REGENERATION_JOB_TYPES = {
+    "regenerate_everything",
+    "regenerate_all_graph_images",
+    "regenerate_all_product_pdfs",
+    "regenerate_all_series_pdfs",
+    "regenerate_all_product_type_pdfs",
+    "refresh_all_product_types_pdf",
+}
+
+
+class JobCancelled(Exception):
+    """Raised by a maintenance worker after an administrator requests cancellation."""
 bulk_import_router = APIRouter(tags=["Maintenance"])
 
 
@@ -7808,6 +7821,20 @@ def create_maintenance_job(job_type: str) -> dict:
         "completed_at": None,
     }
     with MAINTENANCE_JOBS_LOCK:
+        if job_type in REGENERATION_JOB_TYPES:
+            with SessionLocal() as db:
+                active = db.query(MaintenanceJob).filter(
+                    MaintenanceJob.job_type.in_(REGENERATION_JOB_TYPES),
+                    MaintenanceJob.status.in_(["queued", "running"]),
+                ).first()
+                if active:
+                    raise HTTPException(status_code=409, detail="Another regeneration job is already in progress.")
+                db.add(MaintenanceJob(**job))
+                db.commit()
+        else:
+            with SessionLocal() as db:
+                db.add(MaintenanceJob(**job))
+                db.commit()
         MAINTENANCE_JOBS[job_id] = job
     return job
 
@@ -7816,16 +7843,42 @@ def update_maintenance_job(job_id: str, **updates):
     with MAINTENANCE_JOBS_LOCK:
         job = MAINTENANCE_JOBS.get(job_id)
         if not job:
+            with SessionLocal() as db:
+                record = db.get(MaintenanceJob, job_id)
+                if not record:
+                    return
+                for key, value in updates.items():
+                    if hasattr(record, key):
+                        setattr(record, key, value)
+                db.commit()
             return
         job.update(updates)
+        with SessionLocal() as db:
+            record = db.get(MaintenanceJob, job_id)
+            if record:
+                for key, value in updates.items():
+                    if hasattr(record, key):
+                        setattr(record, key, value)
+                db.commit()
+
+
+def maintenance_job_cancel_requested(job_id: str) -> bool:
+    with MAINTENANCE_JOBS_LOCK:
+        job = MAINTENANCE_JOBS.get(job_id)
+        if job and job.get("cancel_requested"):
+            return True
+        with SessionLocal() as db:
+            record = db.get(MaintenanceJob, job_id)
+            return bool(record and record.cancel_requested)
 
 
 def get_maintenance_job_or_404(job_id: str) -> dict:
     with MAINTENANCE_JOBS_LOCK:
-        job = MAINTENANCE_JOBS.get(job_id)
-        if not job:
-            raise HTTPException(status_code=404, detail="Maintenance job not found")
-        return dict(job)
+        with SessionLocal() as db:
+            record = db.get(MaintenanceJob, job_id)
+            if not record:
+                raise HTTPException(status_code=404, detail="Maintenance job not found")
+            return {column.name: getattr(record, column.name) for column in MaintenanceJob.__table__.columns if column.name != "cancel_requested"}
 
 
 def serialize_maintenance_job(job: dict) -> MaintenanceJobResponse:
@@ -7846,6 +7899,8 @@ def start_maintenance_job(job_type: str, work):
         logger.info("[maintenance:%s] starting", job_label)
 
         def progress(message: str, current: int | None = None, total: int | None = None):
+            if maintenance_job_cancel_requested(job["id"]):
+                raise JobCancelled()
             updates = {"progress_message": message}
             if current is not None:
                 updates["progress_current"] = current
@@ -7876,6 +7931,11 @@ def start_maintenance_job(job_type: str, work):
             result_updates["completed_at"] = backend_now_iso()
             update_maintenance_job(job["id"], **result_updates)
             logger.info("[maintenance:%s] completed with result: %s", job_label, result_updates.get("result_message") or "Completed")
+        except JobCancelled:
+            update_maintenance_job(
+                job["id"], status="cancelled", progress_message="Cancelled", completed_at=backend_now_iso()
+            )
+            logger.info("[maintenance:%s] cancelled", job_label)
         except Exception as exc:
             logger.exception("[maintenance:%s] failed", job_label)
             update_maintenance_job(
@@ -7890,6 +7950,41 @@ def start_maintenance_job(job_type: str, work):
     thread = threading.Thread(target=runner, daemon=True, name=f"maintenance-{job['id']}")
     thread.start()
     return job
+
+
+def get_regeneration_overview() -> dict:
+    with SessionLocal() as db:
+        records = db.query(MaintenanceJob).filter(MaintenanceJob.job_type.in_(REGENERATION_JOB_TYPES)).order_by(MaintenanceJob.created_at.desc()).all()
+        active = next((record for record in records if record.status in {"queued", "running"}), None)
+        latest_attempt = {}
+        latest_completed = {}
+        for record in records:
+            payload = {column.name: getattr(record, column.name) for column in MaintenanceJob.__table__.columns if column.name != "cancel_requested"}
+            latest_attempt.setdefault(record.job_type, payload)
+            if record.status == "completed":
+                latest_completed.setdefault(record.job_type, payload)
+        active_payload = None
+        if active:
+            active_payload = {column.name: getattr(active, column.name) for column in MaintenanceJob.__table__.columns if column.name != "cancel_requested"}
+        return {
+            "active_job": active_payload,
+            "latest_attempt_by_type": latest_attempt,
+            "last_completed_by_type": latest_completed,
+        }
+
+
+def mark_interrupted_maintenance_jobs():
+    with SessionLocal() as db:
+        records = db.query(MaintenanceJob).filter(MaintenanceJob.status.in_(["queued", "running"])).all()
+        if not records:
+            return
+        interrupted_at = backend_now_iso()
+        for record in records:
+            record.status = "failed"
+            record.error = "The server restarted before this job completed."
+            record.progress_message = "Interrupted by server restart"
+            record.completed_at = interrupted_at
+        db.commit()
 
 
 def _make_progress_window(progress_callback, start_percent: int, end_percent: int):
@@ -8443,6 +8538,7 @@ async def parse_graph_data_upload(file: UploadFile = File(...)):
 def startup():
     ensure_auth_config()
     init_db()
+    mark_interrupted_maintenance_jobs()
     ensure_bootstrap_admin()
     configuration = security_configuration()
     logger.info("=" * 60)
@@ -11554,6 +11650,27 @@ async def start_restore_media_backup_bundle_job_old(file: UploadFile = File(...)
 
 @app.get("/api/maintenance/jobs/{job_id}", response_model=MaintenanceJobResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"], summary="Get maintenance job status")
 def get_maintenance_job(job_id: str):
+    return serialize_maintenance_job(get_maintenance_job_or_404(job_id))
+
+
+@app.get("/api/maintenance/regeneration/overview", dependencies=[Depends(get_current_user)], tags=["Maintenance"], summary="Get shared regeneration status")
+def get_regeneration_status_overview():
+    return get_regeneration_overview()
+
+
+@app.post("/api/maintenance/jobs/{job_id}/cancel", response_model=MaintenanceJobResponse, dependencies=[Depends(get_current_user)], tags=["Maintenance"], summary="Cancel a running maintenance job")
+def cancel_maintenance_job(job_id: str):
+    with MAINTENANCE_JOBS_LOCK:
+        with SessionLocal() as db:
+            record = db.get(MaintenanceJob, job_id)
+            if not record:
+                raise HTTPException(status_code=404, detail="Maintenance job not found")
+            if record.status in {"queued", "running"}:
+                record.cancel_requested = True
+                db.commit()
+                job = MAINTENANCE_JOBS.get(job_id)
+                if job:
+                    job["cancel_requested"] = True
     return serialize_maintenance_job(get_maintenance_job_or_404(job_id))
 
 

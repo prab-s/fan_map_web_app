@@ -807,6 +807,25 @@ class AppSettings(Base):
     cms_navigation_order = Column(Text, nullable=True)
 
 
+class MaintenanceJob(Base):
+    __tablename__ = "maintenance_jobs"
+
+    id = Column(String(64), primary_key=True)
+    job_type = Column(String(160), nullable=False, index=True)
+    status = Column(String(32), nullable=False, index=True)
+    progress_message = Column(Text, nullable=True)
+    progress_current = Column(Integer, nullable=True)
+    progress_total = Column(Integer, nullable=True)
+    progress_percent = Column(Float, nullable=True)
+    error = Column(Text, nullable=True)
+    result_message = Column(Text, nullable=True)
+    result_download_url = Column(Text, nullable=True)
+    created_at = Column(String(64), nullable=False)
+    started_at = Column(String(64), nullable=True)
+    completed_at = Column(String(64), nullable=True)
+    cancel_requested = Column(Boolean, nullable=False, default=False)
+
+
 class SitePage(Base):
     """Structured content for the small set of customer-facing marketing pages."""
 

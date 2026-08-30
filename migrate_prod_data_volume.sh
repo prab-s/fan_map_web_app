@@ -20,6 +20,12 @@ APP_TEMPLATES_VOLUME="${APP_TEMPLATES_VOLUME:-${COMPOSE_PROJECT_NAME}_fan_graphs
 SOURCE_DIR="${SOURCE_DIR:-data}"
 ALPINE_IMAGE="${ALPINE_IMAGE:-docker.io/library/alpine:3.20}"
 TEMPLATE_DIRS=(product series product_type registry.json)
+TEMPLATE_ASSETS=(
+  vent-tech-customer_site_logo.png
+  vent-tech-customer_site_logo_grey_bg.png
+  white_Vent-tech_logo_transparent_2.png
+  Red_white_Vent-tech_logo_transparent.png
+)
 MEDIA_DIRS=(product_images series_images product_graphs product_pdfs product_type_pdfs series_graphs series_pdfs)
 
 if [[ ! -d "$SOURCE_DIR" ]]; then
@@ -40,6 +46,11 @@ if [[ -d "$template_source" ]]; then
   for template_dir in "${TEMPLATE_DIRS[@]}"; do
     if [[ -e "${template_source}/${template_dir}" ]]; then
       existing_templates+=("$template_dir")
+    fi
+  done
+  for template_asset in "${TEMPLATE_ASSETS[@]}"; do
+    if [[ -f "${template_source}/${template_asset}" ]]; then
+      existing_templates+=("$template_asset")
     fi
   done
 fi

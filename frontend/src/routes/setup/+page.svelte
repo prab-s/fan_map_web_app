@@ -15,6 +15,8 @@
     downloadMaintenanceJobFile,
     getTemplates,
     getMaintenanceJob,
+    getRegenerationOverview,
+    cancelMaintenanceJob,
     getProducts,
     getProductTypes,
     getUsers,
@@ -86,6 +88,8 @@
   let backupLoading = {};
   let backupPollTimeouts = {};
   let maintenanceJob = null;
+  let regenerationOverview = { active_job: null, latest_attempt_by_type: {}, last_completed_by_type: {} };
+  let maintenanceCancelLoading = false;
   let maintenancePollTimeout = null;
   let pendingMaintenanceConfirmation = null;
   let products = [];
@@ -235,6 +239,37 @@
   function maintenanceJobTypeIncludes(...needles) {
     const jobType = String(maintenanceJob?.job_type || '');
     return needles.some((needle) => jobType.includes(needle));
+  }
+
+  function lastSuccessfulLabel(jobType) {
+    const completedAt = regenerationOverview.last_completed_by_type?.[jobType]?.completed_at;
+    if (!completedAt) return '';
+    const date = new Date(completedAt);
+    return Number.isNaN(date.getTime()) ? completedAt : date.toLocaleString();
+  }
+
+  function maintenanceJobFor(jobType) {
+    if (maintenanceJob?.job_type === jobType) {
+      return maintenanceJob;
+    }
+    if (regenerationOverview.active_job?.job_type === jobType) {
+      return regenerationOverview.active_job;
+    }
+    return regenerationOverview.latest_attempt_by_type?.[jobType]
+      || null;
+  }
+
+  function setRegenerationJob(job) {
+    if (!job) return;
+    maintenanceJob = job;
+    regenerationOverview = {
+      ...regenerationOverview,
+      active_job: ['queued', 'running'].includes(job.status) ? job : null,
+      latest_attempt_by_type: { ...regenerationOverview.latest_attempt_by_type, [job.job_type]: job },
+      last_completed_by_type: job.status === 'completed'
+        ? { ...regenerationOverview.last_completed_by_type, [job.job_type]: job }
+        : regenerationOverview.last_completed_by_type
+    };
   }
 
   function isPdfMaintenanceJob() {
@@ -892,7 +927,7 @@
   async function pollMaintenanceJob(jobId, options = {}) {
     try {
       const job = await getMaintenanceJob(jobId);
-      maintenanceJob = job;
+      setRegenerationJob(job);
 
       if (job.status === 'completed') {
         maintenanceLoading = false;
@@ -918,6 +953,12 @@
         return;
       }
 
+      if (job.status === 'cancelled') {
+        maintenanceLoading = false;
+        addMaintenanceError('The regeneration was cancelled.');
+        return;
+      }
+
       maintenancePollTimeout = setTimeout(() => pollMaintenanceJob(jobId, options), 1500);
     } catch (error) {
       maintenanceLoading = false;
@@ -930,15 +971,27 @@
 
   async function restoreMaintenanceJob() {
     if (!browser) return;
-    const savedJobId = window.localStorage.getItem(MAINTENANCE_JOB_STORAGE_KEY);
-    if (!savedJobId || maintenanceLoading) return;
-
-    maintenanceLoading = true;
     clearMaintenanceErrorToast();
     try {
-      await pollMaintenanceJob(savedJobId, {
-        successMessage: 'Maintenance task completed while this page was closed.'
-      });
+      const overview = await getRegenerationOverview();
+      regenerationOverview = overview;
+      const activeJob = overview?.active_job;
+      const latestJob = activeJob || Object.values(overview?.latest_attempt_by_type || {})[0];
+      if (latestJob) {
+        maintenanceJob = latestJob;
+        maintenanceLoading = ['queued', 'running'].includes(latestJob.status);
+        if (maintenanceLoading) {
+          await pollMaintenanceJob(latestJob.id, { successMessage: 'Regeneration completed while this page was closed.' });
+        }
+      }
+    } catch (error) {
+      const savedJobId = window.localStorage.getItem(MAINTENANCE_JOB_STORAGE_KEY);
+      if (savedJobId) {
+        maintenanceLoading = true;
+        await pollMaintenanceJob(savedJobId, { successMessage: 'Regeneration completed while this page was closed.' });
+      } else {
+        addMaintenanceError(error?.message || 'Unable to read regeneration status.');
+      }
     } finally {
       if (!maintenanceLoading && maintenancePollTimeout) {
         clearTimeout(maintenancePollTimeout);
@@ -954,7 +1007,7 @@
     clearSuccessToast();
     try {
       const job = await starter();
-      maintenanceJob = job;
+      setRegenerationJob(job);
       if (browser && job?.id) {
         window.localStorage.setItem(MAINTENANCE_JOB_STORAGE_KEY, job.id);
       }
@@ -967,6 +1020,20 @@
         clearTimeout(maintenancePollTimeout);
         maintenancePollTimeout = null;
       }
+    }
+  }
+
+  async function cancelCurrentMaintenanceJob(jobToCancel = maintenanceJob) {
+    if (!jobToCancel?.id || !['queued', 'running'].includes(jobToCancel.status)) return;
+    maintenanceCancelLoading = true;
+    try {
+      const job = await cancelMaintenanceJob(jobToCancel.id);
+      setRegenerationJob(job);
+      await pollMaintenanceJob(job.id);
+    } catch (error) {
+      addMaintenanceError(error?.message || 'Unable to cancel the regeneration.');
+    } finally {
+      maintenanceCancelLoading = false;
     }
   }
 
@@ -1706,6 +1773,11 @@
                 <p class="mb-0 text-body-secondary">
                   Regenerate individual output groups, or run the complete graph and PDF generation workflow in one pass.
                 </p>
+                {#if maintenanceLoading && maintenanceJob}
+                  <div class="small text-warning-emphasis mt-2">
+                    A regeneration is currently running from the “{maintenanceJob.job_type}” card. All regeneration controls are disabled until it finishes.
+                  </div>
+                {/if}
               </div>
 
               <div class="card border mb-3">
@@ -1742,8 +1814,11 @@
                       </div>
                     </div>
                   {/if}
-                  {#if maintenanceJob && maintenanceJob.job_type === 'regenerate_everything'}
-                    <JobProgressPanel job={maintenanceJob} label="Regenerate everything" />
+                  {#if maintenanceJob?.job_type === 'regenerate_everything'}
+                    <JobProgressPanel job={maintenanceJob} label="Regenerate everything" showCancel={true} cancelLoading={maintenanceCancelLoading} onCancel={() => cancelCurrentMaintenanceJob(maintenanceJob)} />
+                  {/if}
+                  {#if lastSuccessfulLabel('regenerate_everything')}
+                    <div class="small text-body-secondary mt-2">Last successful regeneration: {lastSuccessfulLabel('regenerate_everything')}</div>
                   {/if}
                 </div>
               </div>
@@ -1793,8 +1868,11 @@
                   </div>
                 </div>
               {/if}
-              {#if maintenanceJob && isGraphImageMaintenanceJob()}
-                <JobProgressPanel job={maintenanceJob} label="Product Graph Images" />
+              {#if maintenanceJob?.job_type === 'regenerate_all_graph_images'}
+                <JobProgressPanel job={maintenanceJob} label="Product Graph Images" showCancel={true} cancelLoading={maintenanceCancelLoading} onCancel={() => cancelCurrentMaintenanceJob(maintenanceJob)} />
+              {/if}
+              {#if lastSuccessfulLabel('regenerate_all_graph_images')}
+                <div class="small text-body-secondary mt-2">Last successful regeneration: {lastSuccessfulLabel('regenerate_all_graph_images')}</div>
               {/if}
             </div>
           </div>
@@ -1819,8 +1897,11 @@
                   </button>
                 </div>
               </div>
-              {#if maintenanceJob && isProductPdfMaintenanceJob()}
-                <JobProgressPanel job={maintenanceJob} label="Product PDF regeneration" />
+              {#if maintenanceJob?.job_type === 'regenerate_all_product_pdfs'}
+                <JobProgressPanel job={maintenanceJob} label="Product PDF regeneration" showCancel={true} cancelLoading={maintenanceCancelLoading} onCancel={() => cancelCurrentMaintenanceJob(maintenanceJob)} />
+              {/if}
+              {#if lastSuccessfulLabel('regenerate_all_product_pdfs')}
+                <div class="small text-body-secondary mt-2">Last successful regeneration: {lastSuccessfulLabel('regenerate_all_product_pdfs')}</div>
               {/if}
             </div>
           </div>
@@ -1845,8 +1926,11 @@
                   </button>
                 </div>
               </div>
-              {#if maintenanceJob && isSeriesPdfMaintenanceJob()}
-                <JobProgressPanel job={maintenanceJob} label="Series PDF regeneration" />
+              {#if maintenanceJob?.job_type === 'regenerate_all_series_pdfs'}
+                <JobProgressPanel job={maintenanceJob} label="Series PDF regeneration" showCancel={true} cancelLoading={maintenanceCancelLoading} onCancel={() => cancelCurrentMaintenanceJob(maintenanceJob)} />
+              {/if}
+              {#if lastSuccessfulLabel('regenerate_all_series_pdfs')}
+                <div class="small text-body-secondary mt-2">Last successful regeneration: {lastSuccessfulLabel('regenerate_all_series_pdfs')}</div>
               {/if}
             </div>
           </div>
@@ -1871,8 +1955,11 @@
                   </button>
                 </div>
               </div>
-              {#if maintenanceJob && isProductTypePdfMaintenanceJob()}
-                <JobProgressPanel job={maintenanceJob} label="Product Type PDF regeneration" />
+              {#if maintenanceJob?.job_type === 'regenerate_all_product_type_pdfs'}
+                <JobProgressPanel job={maintenanceJob} label="Product Type PDF regeneration" showCancel={true} cancelLoading={maintenanceCancelLoading} onCancel={() => cancelCurrentMaintenanceJob(maintenanceJob)} />
+              {/if}
+              {#if lastSuccessfulLabel('regenerate_all_product_type_pdfs')}
+                <div class="small text-body-secondary mt-2">Last successful regeneration: {lastSuccessfulLabel('regenerate_all_product_type_pdfs')}</div>
               {/if}
             </div>
           </div>
@@ -1900,8 +1987,11 @@
                   </a>
                 </div>
               </div>
-              {#if maintenanceJob && maintenanceJobTypeIncludes('all_product_types_pdf')}
-                <JobProgressPanel job={maintenanceJob} label="Combined catalogue PDF" />
+              {#if maintenanceJob?.job_type === 'refresh_all_product_types_pdf'}
+                <JobProgressPanel job={maintenanceJob} label="Combined catalogue PDF" showCancel={true} cancelLoading={maintenanceCancelLoading} onCancel={() => cancelCurrentMaintenanceJob(maintenanceJob)} />
+              {/if}
+              {#if lastSuccessfulLabel('refresh_all_product_types_pdf')}
+                <div class="small text-body-secondary mt-2">Last successful regeneration: {lastSuccessfulLabel('refresh_all_product_types_pdf')}</div>
               {/if}
             </div>
           </div>

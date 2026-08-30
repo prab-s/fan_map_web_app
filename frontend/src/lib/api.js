@@ -1116,6 +1116,16 @@ export async function getMaintenanceJob(jobId) {
   return r.json();
 }
 
+export async function getRegenerationOverview() {
+  const r = await apiFetch('/maintenance/regeneration/overview');
+  return r.json();
+}
+
+export async function cancelMaintenanceJob(jobId) {
+  const r = await apiFetch(`/maintenance/jobs/${jobId}/cancel`, { method: 'POST' });
+  return r.json();
+}
+
 export function getSetupLogsStreamUrl(afterId = 0) {
   const sp = new URLSearchParams();
   if (afterId) sp.set('after_id', String(afterId));

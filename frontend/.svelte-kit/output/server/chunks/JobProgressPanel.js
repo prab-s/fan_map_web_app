@@ -74,6 +74,9 @@ function JobProgressPanel($$renderer, $$props) {
     let progressPercent, isRunning, isCompleted, isFailed, isPdfRenderHeartbeat, elapsedMs, staleForMs, showsStalled, startedLabel, staleLabel;
     let job = fallback($$props["job"], null);
     let label = fallback($$props["label"], "Generating PDF");
+    let showCancel = fallback($$props["showCancel"], false);
+    let cancelLoading = fallback($$props["cancelLoading"], false);
+    let onCancel = fallback($$props["onCancel"], null);
     let now = Date.now();
     let lastProgressSignature = "";
     let lastProgressChangeAt = Date.now();
@@ -94,7 +97,7 @@ function JobProgressPanel($$renderer, $$props) {
       }
     });
     progressPercent = maintenanceJobProgressPercent(job);
-    isRunning = job?.status === "running";
+    isRunning = ["queued", "running"].includes(job?.status);
     isCompleted = job?.status === "completed";
     isFailed = job?.status === "failed";
     isPdfRenderHeartbeat = isRunning && /^Rendering PDF in Chromium \(/.test(job?.progress_message ?? "");
@@ -125,7 +128,14 @@ function JobProgressPanel($$renderer, $$props) {
     staleLabel = formatMaintenanceDuration(staleForMs);
     if (job) {
       $$renderer2.push("<!--[0-->");
-      $$renderer2.push(`<div class="mt-3 rounded border bg-body-secondary bg-opacity-10 p-3" aria-live="polite"><div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-2"><div class="fw-semibold">${escape_html(label)}</div> <span${attr_class(`badge ${isCompleted ? "text-bg-success" : isFailed ? "text-bg-danger" : "text-bg-secondary"}`)}>${escape_html(job.status)}</span></div> `);
+      $$renderer2.push(`<div class="mt-3 rounded border bg-body-secondary bg-opacity-10 p-3" aria-live="polite"><div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-2"><div class="fw-semibold">${escape_html(label)}</div> <div class="d-flex align-items-center gap-2"><span${attr_class(`badge ${isCompleted ? "text-bg-success" : isFailed || job.status === "cancelled" ? "text-bg-danger" : "text-bg-secondary"}`)}>${escape_html(job.status)}</span> `);
+      if (showCancel && isRunning) {
+        $$renderer2.push("<!--[0-->");
+        $$renderer2.push(`<button class="btn btn-outline-danger btn-sm" type="button"${attr("disabled", cancelLoading, true)}>${escape_html(cancelLoading ? "Cancelling..." : "Cancel")}</button>`);
+      } else {
+        $$renderer2.push("<!--[-1-->");
+      }
+      $$renderer2.push(`<!--]--></div></div> `);
       if (job.progress_message) {
         $$renderer2.push("<!--[0-->");
         $$renderer2.push(`<div class="small text-body-secondary mb-2">${escape_html(job.progress_message)}</div>`);
@@ -143,6 +153,13 @@ function JobProgressPanel($$renderer, $$props) {
       if (isFailed && job.error) {
         $$renderer2.push("<!--[0-->");
         $$renderer2.push(`<div class="small text-danger-emphasis fw-semibold mb-2">Failure reason: ${escape_html(job.error)}</div>`);
+      } else {
+        $$renderer2.push("<!--[-1-->");
+      }
+      $$renderer2.push(`<!--]--> `);
+      if (job.status === "cancelled") {
+        $$renderer2.push("<!--[0-->");
+        $$renderer2.push(`<div class="small text-danger-emphasis fw-semibold mb-2">This regeneration attempt was cancelled.</div>`);
       } else {
         $$renderer2.push("<!--[-1-->");
       }
@@ -203,7 +220,7 @@ function JobProgressPanel($$renderer, $$props) {
       $$renderer2.push("<!--[-1-->");
     }
     $$renderer2.push(`<!--]-->`);
-    bind_props($$props, { job, label });
+    bind_props($$props, { job, label, showCancel, cancelLoading, onCancel });
   });
 }
 export {

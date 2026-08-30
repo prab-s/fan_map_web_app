@@ -4,6 +4,9 @@
 
   export let job = null;
   export let label = 'Generating PDF';
+  export let showCancel = false;
+  export let cancelLoading = false;
+  export let onCancel = null;
 
   let now = Date.now();
   let lastProgressSignature = '';
@@ -11,7 +14,7 @@
   let heartbeat = null;
 
   $: progressPercent = maintenanceJobProgressPercent(job);
-  $: isRunning = job?.status === 'running';
+  $: isRunning = ['queued', 'running'].includes(job?.status);
   $: isCompleted = job?.status === 'completed';
   $: isFailed = job?.status === 'failed';
   $: isPdfRenderHeartbeat = isRunning && /^Rendering PDF in Chromium \(/.test(job?.progress_message ?? '');
@@ -63,9 +66,16 @@
   <div class="mt-3 rounded border bg-body-secondary bg-opacity-10 p-3" aria-live="polite">
     <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-2">
       <div class="fw-semibold">{label}</div>
-      <span class={`badge ${isCompleted ? 'text-bg-success' : isFailed ? 'text-bg-danger' : 'text-bg-secondary'}`}>
-        {job.status}
-      </span>
+      <div class="d-flex align-items-center gap-2">
+        <span class={`badge ${isCompleted ? 'text-bg-success' : isFailed || job.status === 'cancelled' ? 'text-bg-danger' : 'text-bg-secondary'}`}>
+          {job.status}
+        </span>
+        {#if showCancel && isRunning}
+          <button class="btn btn-outline-danger btn-sm" type="button" on:click={onCancel} disabled={cancelLoading}>
+            {cancelLoading ? 'Cancelling...' : 'Cancel'}
+          </button>
+        {/if}
+      </div>
     </div>
     {#if job.progress_message}
       <div class="small text-body-secondary mb-2">{job.progress_message}</div>
@@ -75,6 +85,9 @@
     {/if}
     {#if isFailed && job.error}
       <div class="small text-danger-emphasis fw-semibold mb-2">Failure reason: {job.error}</div>
+    {/if}
+    {#if job.status === 'cancelled'}
+      <div class="small text-danger-emphasis fw-semibold mb-2">This regeneration attempt was cancelled.</div>
     {/if}
     <div
       class="progress"

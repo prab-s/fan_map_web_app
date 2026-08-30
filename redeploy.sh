@@ -158,6 +158,8 @@ refresh_templates_volume_from_image() {
   local shared_assets=(
     vent-tech-customer_site_logo.png
     vent-tech-customer_site_logo_grey_bg.png
+    white_Vent-tech_logo_transparent_2.png
+    Red_white_Vent-tech_logo_transparent.png
   )
 
   if ! ${PODMAN_BIN} volume inspect "${APP_TEMPLATES_VOLUME}" >/dev/null 2>&1; then
@@ -177,6 +179,8 @@ verify_template_volume_assets() {
   local shared_logo_assets=(
     "vent-tech-customer_site_logo.png"
     "vent-tech-customer_site_logo_grey_bg.png"
+    "white_Vent-tech_logo_transparent_2.png"
+    "Red_white_Vent-tech_logo_transparent.png"
   )
   local missing=()
   local asset
@@ -210,7 +214,9 @@ report_template_volume_assets() {
       /target/product/default/template.html \
       /target/product/default/template.css \
       /target/vent-tech-customer_site_logo.png \
-      /target/vent-tech-customer_site_logo_grey_bg.png
+      /target/vent-tech-customer_site_logo_grey_bg.png \
+      /target/white_Vent-tech_logo_transparent_2.png \
+      /target/Red_white_Vent-tech_logo_transparent.png
     do
       if [ -f "$path" ]; then
         printf "  - %s\n" "${path#/target/}"
