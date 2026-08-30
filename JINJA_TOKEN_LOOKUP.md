@@ -26,6 +26,8 @@ These are replaced in product PDF templates.
 | `{{product.features_html}}` | Alias for description 2 |
 | `{{product.specifications_html}}` | Alias for description 3 |
 | `{{product.comments_html}}` | Comments rich-text block |
+| `{{product.summary_stats_html}}` | Compact headline specification statistics HTML |
+| `{{product.final_heading_html}}` | Product Final 1 heading metadata HTML |
 | `{{product.grouped_specs_table}}` | Full grouped specification table HTML |
 | `{{product.grouped_specs_cards}}` | Full grouped specification card HTML |
 | `{{product.grouped_specs_main_table}}` | Main grouped specification table HTML |
@@ -38,6 +40,7 @@ These are replaced in product PDF templates.
 | `{{product.image_gallery_from_third}}` | Image gallery starting from the third image |
 | `{{product.secondary_product_image_html}}` | Secondary product image HTML block |
 | `{{product.company_logo_url}}` | Company logo URL |
+| `{{product.footer_logo_url}}` | Footer logo URL for Product Final 1 |
 | `{{product.primary_product_image_url}}` | Primary product image URL |
 | `{{product.graph_image_url}}` | Product graph image URL |
 
@@ -68,6 +71,9 @@ These are replaced in series PDF templates.
 | `{{series.performance_column_3_label}}` | Third performance column label |
 | `{{series.performance_table_rows}}` | Performance table rows HTML |
 | `{{series.company_logo_url}}` | Company logo URL |
+| `{{series.footer_logo_url}}` | Footer logo URL for Series Final-1 |
+| `{{series.final_panels_html}}` | Description/testing panels for Series Final-1 |
+| `{{series.performance_table_html}}` | Customer-facing series performance table HTML |
 
 ## Product Type Tokens
 

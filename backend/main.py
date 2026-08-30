@@ -4210,6 +4210,81 @@ def build_grouped_spec_group_token_map(product: Product) -> dict[str, str]:
     return replacements
 
 
+def render_product_summary_stats(product: Product) -> str:
+    """Render the compact headline statistics used by the Product Final-1 sheet."""
+    preferred = [
+        ("impeller", "size"),
+        ("motor", "power"),
+        ("motor", "speed"),
+        ("motor", "ip_rating"),
+        ("motor", "type"),
+        ("fan", "weight"),
+    ]
+    candidates: list[tuple[str, str, ProductParameter]] = []
+    groups = sorted(product.parameter_groups or [], key=lambda group: (group.sort_order, group.id))
+    for group in groups:
+        group_key = template_token_slug(group.group_name or "")
+        for parameter in sorted(group.parameters or [], key=lambda item: (item.sort_order, item.id)):
+            if format_parameter_value(parameter).strip():
+                candidates.append((group_key, template_token_slug(parameter.parameter_name or ""), parameter))
+
+    selected: list[tuple[str, ProductParameter]] = []
+    used: set[int] = set()
+    for group_key, parameter_key in preferred:
+        match = next(
+            ((key, parameter) for key, candidate_key, parameter in candidates
+             if key == group_key and candidate_key == parameter_key and parameter.id not in used),
+            None,
+        )
+        if match:
+            selected.append(match)
+            used.add(match[1].id)
+
+    for _, parameter_key, parameter in candidates:
+        if len(selected) >= 6:
+            break
+        if parameter.id not in used:
+            selected.append((parameter_key, parameter))
+            used.add(parameter.id)
+
+    icons = ("impeller", "power", "speed", "rating", "type", "weight")
+    stats: list[str] = []
+    for index, (parameter_key, parameter) in enumerate(selected):
+        stats.append(
+            '<div class="summary-stat">'
+            f'<span class="summary-stat__icon summary-stat__icon--{icons[index] if index < len(icons) else "detail"}" aria-hidden="true"></span>'
+            '<span class="summary-stat__text">'
+            f'<strong>{html.escape(format_parameter_value(parameter))}</strong>'
+            f'<small>{html.escape(parameter.parameter_name)}</small>'
+            '</span></div>'
+        )
+    return "".join(stats) or '<p class="placeholder">No summary specifications available.</p>'
+
+
+def render_final_product_heading(product: Product) -> str:
+    """Render the compact product identity and main-group metadata for final-1."""
+    main_parameters: list[str] = []
+    for group in sorted(product.parameter_groups or [], key=lambda item: (item.sort_order, item.id)):
+        if template_token_slug(group.group_name or "") != "main":
+            continue
+        for parameter in sorted(group.parameters or [], key=lambda item: (item.sort_order, item.id)):
+            value = format_parameter_value(parameter).strip()
+            if value:
+                main_parameters.append(
+                    f"{html.escape(parameter.parameter_name)}: {html.escape(value)}"
+                )
+        break
+
+    first_line = " | ".join(main_parameters[:2])
+    second_line = " | ".join(main_parameters[2:])
+    lines = []
+    if first_line:
+        lines.append(f'<span class="masthead__spec-line">{first_line}</span>')
+    if second_line:
+        lines.append(f'<span class="masthead__spec-line">{second_line}</span>')
+    return "".join(lines)
+
+
 def render_grouped_specs_cards(product: Product, excluded_group_names: set[str] | None = None) -> str:
     excluded_group_names = excluded_group_names or set()
     groups = sorted(product.parameter_groups, key=lambda group: (group.sort_order, group.id))
@@ -4241,8 +4316,8 @@ def render_grouped_specs_cards(product: Product, excluded_group_names: set[str] 
 
         group_class = f"grouped-spec-group--{group_key}" if group_key else "grouped-spec-group--custom"
         cards.append(
-            '<section class="spec-card">'
-            f'<h2 class="spec-card__title">{html.escape(group.group_name)}</h2>'
+            f'<section class="spec-card spec-card--{group_key or "custom"}">'
+            f'<h2 class="spec-card__title"><span class="spec-card__icon" aria-hidden="true"></span>{html.escape(group.group_name)}</h2>'
             f'<div class="grouped-spec-group {group_class}">'
             + (
                 '<dl class="spec-list">'
@@ -4454,16 +4529,24 @@ def render_lower_visual_panels_html(product: Product) -> tuple[str, str]:
 
 def resolve_pdf_logo_uri(project_root: Path, template_path: Path) -> str:
     logo_filename = "vent-tech-customer_site_logo_grey_bg.png"
-    logo_candidates = [
+    logo_candidates = []
+    if template_path.parent.name == "final-1":
+        logo_candidates.append(project_root / "templates" / "white_Vent-tech_logo_transparent_2.png")
+    logo_candidates.extend([
         project_root / "templates" / logo_filename,
         template_path.parent / logo_filename,
-    ]
+    ])
     for logo_path in logo_candidates:
         if logo_path.is_file():
             return logo_path.resolve().as_uri()
 
     checked_paths = ", ".join(str(path) for path in logo_candidates)
     raise RuntimeError(f"PDF template logo is missing: {checked_paths}")
+
+
+def resolve_pdf_footer_logo_uri(project_root: Path, fallback_uri: str) -> str:
+    footer_logo_path = project_root / "templates" / "Red_white_Vent-tech_logo_transparent.png"
+    return footer_logo_path.resolve().as_uri() if footer_logo_path.is_file() else fallback_uri
 
 
 def build_product_pdf_html(product: Product) -> tuple[str, str]:
@@ -4497,6 +4580,7 @@ def build_product_pdf_html(product: Product) -> tuple[str, str]:
             primary_image_uri = first_image_path.as_uri()
 
     logo_uri = resolve_pdf_logo_uri(project_root, template_path)
+    footer_logo_uri = resolve_pdf_footer_logo_uri(project_root, logo_uri)
 
     graph_image_uri = ""
     if product.graph_image_path:
@@ -4517,6 +4601,8 @@ def build_product_pdf_html(product: Product) -> tuple[str, str]:
         "{{product.features_html}}": render_richtext_html(product.description2_html),
         "{{product.specifications_html}}": render_richtext_html(product.description3_html),
         "{{product.comments_html}}": render_richtext_html(product.comments_html),
+        "{{product.summary_stats_html}}": render_product_summary_stats(product),
+        "{{product.final_heading_html}}": render_final_product_heading(product),
         "{{product.grouped_specs_cards}}": render_grouped_specs_cards(product),
         "{{product.grouped_specs_table}}": render_grouped_specs_table(product),
         "{{product.grouped_specs_main_table}}": render_grouped_specs_table_for_group(product, "main"),
@@ -4532,6 +4618,7 @@ def build_product_pdf_html(product: Product) -> tuple[str, str]:
         "{{product.lower_grid_layout_class}}": lower_grid_layout_class,
         "{{product.lower_visual_panels_html}}": lower_visual_panels_html,
         "{{product.company_logo_url}}": logo_uri,
+        "{{product.footer_logo_url}}": footer_logo_uri,
         "{{product.primary_product_image_url}}": primary_image_uri,
         "{{product.graph_image_url}}": graph_image_uri,
     }
@@ -5157,7 +5244,41 @@ def render_series_products_summary_table(series: Series) -> str:
     )
 
 
-def render_series_performance_table_html(series: Series) -> str:
+def render_series_final_panels(series: Series) -> str:
+    """Render the descriptive cards used by the Series Final-1 overview."""
+    panels = [
+        ("Specifications", series.description1_html),
+        ("Impellers", series.description2_html),
+        ("Motor", series.description3_html),
+        ("Case", series.description4_html),
+    ]
+    rendered: list[str] = []
+    icons = ("specifications", "impellers", "motor", "case")
+    for index, (label, content) in enumerate(panels):
+        content_html = render_richtext_html(content)
+        if not content_html.strip():
+            continue
+        rendered.append(
+            f'<section class="series-info-card series-info-card--{icons[index]}">'
+            f'<h2><span class="series-info-card__icon" aria-hidden="true"></span>{label}</h2>'
+            f'<div class="series-info-card__body">{content_html}</div>'
+            '</section>'
+        )
+
+    testing_content = (
+        f'<p><strong>Products:</strong> {html.escape(str(series.product_count))}</p>'
+        f'<p><strong>Performance:</strong> {html.escape(series_graph_rule_label())}</p>'
+    )
+    rendered.append(
+        '<section class="series-info-card series-info-card--testing">'
+        '<h2><span class="series-info-card__icon" aria-hidden="true"></span>Testing</h2>'
+        f'<div class="series-info-card__body">{testing_content}</div>'
+        '</section>'
+    )
+    return "".join(rendered)
+
+
+def render_series_performance_table_html(series: Series, include_product_links: bool = True) -> str:
     ordered_products = sorted(series.products or [], key=lambda product: (product.model or "").lower())
     if not ordered_products:
         return '<p class="performance-table__empty placeholder">No products are linked to this series yet.</p>'
@@ -5176,7 +5297,7 @@ def render_series_performance_table_html(series: Series) -> str:
     table_rows = render_series_performance_table_rows(
         series,
         performance_columns,
-        include_product_links=True,
+        include_product_links=include_product_links,
         include_rpm=True,
     )
     return (
@@ -5345,6 +5466,7 @@ def build_series_pdf_html(series: Series, temp_dir: Path) -> tuple[str, str]:
         performance_column_labels.append("—")
 
     logo_uri = resolve_pdf_logo_uri(project_root, template_path)
+    footer_logo_uri = resolve_pdf_footer_logo_uri(project_root, logo_uri)
 
     left_cover_page_path = _build_series_cover_page_image_path(series, 1, temp_dir, include_title=True)
     right_cover_page_path = _build_series_cover_page_image_path(series, 2, temp_dir, include_title=False)
@@ -5384,6 +5506,9 @@ def build_series_pdf_html(series: Series, temp_dir: Path) -> tuple[str, str]:
         "{{series.performance_column_3_label}}": html.escape(performance_column_labels[2]),
         "{{series.performance_table_rows}}": render_series_performance_table_rows(series, performance_columns),
         "{{series.company_logo_url}}": logo_uri,
+        "{{series.footer_logo_url}}": footer_logo_uri,
+        "{{series.final_panels_html}}": render_series_final_panels(series),
+        "{{series.performance_table_html}}": render_series_performance_table_html(series, include_product_links=False),
     }
 
     rendered = html_template

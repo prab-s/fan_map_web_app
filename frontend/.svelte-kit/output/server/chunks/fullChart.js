@@ -396,9 +396,9 @@ function getSeriesGraphLabelPadding(rpmLine, resolvedLabelTextScale) {
   const paddingRight = (rpmLine?.line_role === "high" ? 2 : 5) * safeScale;
   return { paddingY, paddingLeft, paddingRight };
 }
-function buildSeriesGraphLegendGraphics(rpmLines, graphConfig, chartTheme, legendX = 1300) {
+function buildSeriesGraphLegendGraphics(rpmLines, graphConfig, chartTheme, legendX = 1300, textSizeOffset = 0) {
   const firstRowY = 86;
-  const rowHeight = 22;
+  const rowHeight = 30;
   const lineWidth = 30;
   const labelGap = 10;
   return rpmLines.filter((line) => line?.display_label || line?.rpm != null).flatMap((line, index) => {
@@ -426,7 +426,7 @@ function buildSeriesGraphLegendGraphics(rpmLines, graphConfig, chartTheme, legen
           x: 0,
           y: 0,
           fill: chartTheme.text,
-          font: `16px ${chartTheme.fontFamily ?? "sans-serif"}`,
+          font: `${16 + textSizeOffset}px ${chartTheme.fontFamily ?? "sans-serif"}`,
           textVerticalAlign: "middle"
         },
         silent: true
@@ -1176,8 +1176,9 @@ function buildRpmBandPolygonSeries(rpmCurveEntries, rpmLines, chartTheme, permis
     return series;
   });
 }
-function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, permissibleBoundaryData, lowerPermissibleBoundaryData, permissibleUseMode, clipRpmAreaToPermissibleUse, showRpmBandShading, maximumVisibleFlow = null, pressureAxisMax = null, rpmBandLabelColor = null, fadedBandOpacity = CHART_STYLE.rpmBandFadedOpacity, graphConfig = DEFAULT_GRAPH_CONFIG, labelTextScale = 1, graphMode = "product", colorRpmLinesByBand = false, showSeriesGraphLineLabels = true, showSeriesGraphLegend = false, seriesGraphLegendX = 1300, seriesGraphGridRight = "20%") {
+function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, permissibleBoundaryData, lowerPermissibleBoundaryData, permissibleUseMode, clipRpmAreaToPermissibleUse, showRpmBandShading, maximumVisibleFlow = null, pressureAxisMax = null, rpmBandLabelColor = null, fadedBandOpacity = CHART_STYLE.rpmBandFadedOpacity, graphConfig = DEFAULT_GRAPH_CONFIG, labelTextScale = 1, graphMode = "product", colorRpmLinesByBand = false, showSeriesGraphLineLabels = true, showSeriesGraphLegend = false, seriesGraphLegendX = 1300, seriesGraphGridRight = "20%", textSizeOffset = 0) {
   const resolvedLabelTextScale = Number.isFinite(Number(labelTextScale)) && Number(labelTextScale) > 0 ? Number(labelTextScale) : 1;
+  const resolvedTextSizeOffset = Number.isFinite(Number(textSizeOffset)) ? Number(textSizeOffset) : 0;
   const normalizedGraphMode = String(graphMode || "").trim().toLowerCase();
   function buildBandLabelAnchorData(lineData) {
     if (lineData.length < 2) return lineData;
@@ -1297,7 +1298,7 @@ function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, per
                 x: finalLabelPoint[0],
                 y: finalLabelPoint[1] + SERIES_GRAPH_LABEL_Y_OFFSET,
                 fill: lineColor,
-                font: `${SERIES_GRAPH_LABEL_FONT_SIZE * resolvedLabelTextScale}px ${chartFontFamily}`,
+                font: `${SERIES_GRAPH_LABEL_FONT_SIZE * resolvedLabelTextScale + resolvedTextSizeOffset}px ${chartFontFamily}`,
                 textAlign: "center",
                 textVerticalAlign: "middle",
                 backgroundColor: "rgba(255, 255, 255, 0.96)",
@@ -1362,7 +1363,7 @@ function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, per
                     x: textPoint[0],
                     y: textPoint[1],
                     fill: labelColor,
-                    font: `${CHART_STYLE.dragHandleFontSize * resolvedLabelTextScale}px ${chartFontFamily}`,
+                    font: `${CHART_STYLE.dragHandleFontSize * resolvedLabelTextScale + resolvedTextSizeOffset}px ${chartFontFamily}`,
                     textAlign: "center",
                     textVerticalAlign: "middle",
                     backgroundColor: "rgba(255, 255, 255, 0.92)",
@@ -1401,7 +1402,7 @@ function buildRpmSeries(rpmLines, rpmPoints, chartTheme, includeDragHandles, per
                 x: anchorPoint[0] + textOffsetX,
                 y: anchorPoint[1] + textOffsetY,
                 fill: "#000000",
-                font: `${CHART_STYLE.dragHandleFontSize * resolvedLabelTextScale}px ${chartFontFamily}`,
+                font: `${CHART_STYLE.dragHandleFontSize * resolvedLabelTextScale + resolvedTextSizeOffset}px ${chartFontFamily}`,
                 textAlign: "center",
                 textVerticalAlign: "middle",
                 backgroundColor: "rgba(255, 255, 255, 0.96)",
@@ -1551,8 +1552,9 @@ function buildDecoratedOverlayLineSeries({
     }
   ];
 }
-function buildEfficiencyAndPermissibleSeries(points, chartTheme, includeDragHandles, lineDefinitions, { permissibleLabelColor = null } = {}, labelTextScale = 1, permissibleLabelOffset = null) {
+function buildEfficiencyAndPermissibleSeries(points, chartTheme, includeDragHandles, lineDefinitions, { permissibleLabelColor = null } = {}, labelTextScale = 1, permissibleLabelOffset = null, textSizeOffset = 0) {
   const resolvedLabelTextScale = Number.isFinite(Number(labelTextScale)) && Number(labelTextScale) > 0 ? Number(labelTextScale) : 1;
+  const resolvedTextSizeOffset = Number.isFinite(Number(textSizeOffset)) ? Number(textSizeOffset) : 0;
   const resolvedPermissibleLabelOffset = {
     x: Number.isFinite(Number(permissibleLabelOffset?.x)) ? Number(permissibleLabelOffset.x) : 0,
     y: Number.isFinite(Number(permissibleLabelOffset?.y)) ? Number(permissibleLabelOffset.y) : 0
@@ -1607,7 +1609,7 @@ function buildEfficiencyAndPermissibleSeries(points, chartTheme, includeDragHand
               backgroundColor: "rgba(255, 255, 255, 0.92)",
               padding: [3 * resolvedLabelTextScale, 6 * resolvedLabelTextScale],
               borderRadius: 4,
-              font: `${CHART_STYLE.permissibleLabelFontSize * resolvedLabelTextScale}px ${chartTheme.fontFamily ?? "sans-serif"}`,
+              font: `${CHART_STYLE.permissibleLabelFontSize * resolvedLabelTextScale + resolvedTextSizeOffset}px ${chartTheme.fontFamily ?? "sans-serif"}`,
               textAlign: "center",
               textVerticalAlign: "middle"
             },
@@ -1669,9 +1671,11 @@ function buildFullChartOption({
   showSeriesGraphLineLabels = true,
   showSeriesGraphLegend = false,
   seriesGraphLegendX = 1300,
-  seriesGraphGridRight = "20%"
+  seriesGraphGridRight = "20%",
+  textSizeOffset = 0
 }) {
   const resolvedLabelTextScale = Number.isFinite(Number(labelTextScale)) && Number(labelTextScale) > 0 ? Number(labelTextScale) : 1;
+  const resolvedTextSizeOffset = Number.isFinite(Number(textSizeOffset)) ? Number(textSizeOffset) : 0;
   const resolvedGraphConfig = resolveGraphConfig(graphConfig);
   const normalizedPermissibleUseMode = ["dedicated", "upper", "lower", "both", "none"].includes(permissibleUseMode) ? permissibleUseMode : "both";
   const lineDefinitions = resolvedGraphConfig.supports_graph_overlays ? normalizedPermissibleUseMode === "dedicated" ? FULL_CHART_LINE_DEFINITIONS : FULL_CHART_LINE_DEFINITIONS.filter((definition) => definition.key !== "permissible_use") : [];
@@ -1737,10 +1741,11 @@ function buildFullChartOption({
     graphMode,
     colorRpmLinesByBand,
     showSeriesGraphLineLabels,
-    showSeriesGraphLegend
+    showSeriesGraphLegend,
+    resolvedTextSizeOffset
   );
   const chartFontFamily = chartTheme.fontFamily ?? "sans-serif";
-  const chartTitleFontSize = CHART_STYLE.titleFontSize - 6;
+  const chartTitleFontSize = CHART_STYLE.titleFontSize - 6 + resolvedTextSizeOffset;
   return {
     backgroundColor: resolvedBandGraphBackgroundColor ?? chartTheme.background,
     textStyle: {
@@ -1776,7 +1781,8 @@ function buildFullChartOption({
           rpmLines,
           resolvedGraphConfig,
           chartTheme,
-          seriesGraphLegendX
+          seriesGraphLegendX,
+          resolvedTextSizeOffset
         )
       ]
     } : {},
@@ -1797,13 +1803,13 @@ function buildFullChartOption({
       nameTextStyle: {
         color: chartTheme.text,
         fontFamily: chartFontFamily,
-        fontSize: AXIS_NAME_FONT_SIZE,
+        fontSize: AXIS_NAME_FONT_SIZE + resolvedTextSizeOffset,
         fontWeight: AXIS_NAME_FONT_WEIGHT
       },
       axisLabel: {
         color: chartTheme.text,
         fontFamily: chartFontFamily,
-        fontSize: AXIS_LABEL_FONT_SIZE,
+        fontSize: AXIS_LABEL_FONT_SIZE + resolvedTextSizeOffset,
         fontWeight: AXIS_LABEL_FONT_WEIGHT,
         show: true,
         formatter: buildAxisLabelFormatter(flowAxisMax, flowAxisTickInterval)
@@ -1827,13 +1833,13 @@ function buildFullChartOption({
       nameTextStyle: {
         color: chartTheme.text,
         fontFamily: chartFontFamily,
-        fontSize: AXIS_NAME_FONT_SIZE,
+        fontSize: AXIS_NAME_FONT_SIZE + resolvedTextSizeOffset,
         fontWeight: AXIS_NAME_FONT_WEIGHT
       },
       axisLabel: {
         color: chartTheme.text,
         fontFamily: chartFontFamily,
-        fontSize: AXIS_LABEL_FONT_SIZE,
+        fontSize: AXIS_LABEL_FONT_SIZE + resolvedTextSizeOffset,
         fontWeight: AXIS_LABEL_FONT_WEIGHT,
         show: true,
         formatter: buildAxisLabelFormatter(pressureAxisMax, pressureAxisTickInterval)
@@ -1851,7 +1857,8 @@ function buildFullChartOption({
         lineDefinitions,
         { permissibleLabelColor },
         resolvedLabelTextScale,
-        permissibleLabelOffset
+        permissibleLabelOffset,
+        resolvedTextSizeOffset
       )
     ]
   };

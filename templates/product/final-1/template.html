@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>{{product.model}} | Product PDF</title>
+  <link rel="stylesheet" href="./template.css" />
+</head>
+<body class="final-1-sheet">
+  <main class="page">
+    <header class="masthead">
+      <div class="masthead__brand"><img src="{{product.company_logo_url}}" alt="Vent-Tech" /></div>
+      <div class="masthead__product">
+        <h1><span class="masthead__series">{{product.series_name}}</span>-<span class="masthead__model">{{product.model}}</span></h1>
+        {{product.final_heading_html}}
+      </div>
+    </header>
+
+    <section class="hero-grid">
+      <div class="hero-image-wrap"><img src="{{product.primary_product_image_url}}" alt="{{product.model}}" class="hero-image" /></div>
+      <div class="graph-wrap">
+        <img src="{{product.graph_image_url}}" alt="{{product.model}} performance graph" class="graph-image" />
+      </div>
+    </section>
+
+    <section class="summary-strip">{{product.summary_stats_html}}</section>
+
+    <section class="spec-grid">{{product.grouped_specs_cards}}</section>
+
+    <section class="performance-section">
+      <div class="section-heading">Performance Data</div>
+      {{product.fan_acoustic_table}}
+    </section>
+
+    <section class="dimensions-section">
+      <div class="dimensions-image">{{product.secondary_product_image_html}}</div>
+      <div class="additional-images">{{product.image_gallery_from_third}}</div>
+    </section>
+
+    <footer class="footer">
+      <img src="{{product.footer_logo_url}}" alt="Vent-Tech" />
+      <span class="footer__contact"><b class="footer__icon" aria-hidden="true">☎</b>04 595 1404</span><i></i><span class="footer__contact"><b class="footer__icon" aria-hidden="true">✉</b>admin@venttech.co.nz</span><i></i><span class="footer__contact"><b class="footer__icon footer__icon--web" aria-hidden="true">◎</b>www.venttech.co.nz</span>
+    </footer>
+  </main>
+</body>
+</html>

@@ -40,6 +40,7 @@ async function main() {
     graphStyle: payload.graphStyle ?? null,
     labelTextScale: 1.25,
     permissibleLabelOffset: { x: 20, y: -15 },
+    textSizeOffset: 10,
     showSeriesGraphLineLabels: payload.graphMode !== 'series',
     showSeriesGraphLegend: payload.graphMode === 'series',
     seriesGraphLegendX: 1300,
@@ -59,10 +60,12 @@ async function main() {
     (longest, label) => Math.max(longest, label.length),
     0
   );
-  const legendWidth = Math.max(260, longestLegendLabelLength * 8.5 + 40);
-  const legendRightMargin = 15;
+  // The legend text is rendered at 26px in PNGs (16px + 10px), so reserve
+  // enough width for it without adding unnecessary space at the image edge.
+  const legendWidth = Math.max(260, longestLegendLabelLength * 14 + 30);
+  const legendRightMargin = 5;
   const legendX = width - legendRightMargin - legendWidth;
-  const graphRightEdge = Math.max(720, legendX - 20);
+  const graphRightEdge = Math.max(720, legendX - 10);
   const seriesGraphGridRight = `${((width - graphRightEdge) / width) * 100}%`;
   option.grid.right = payload.graphMode === 'series' ? seriesGraphGridRight : option.grid.right;
   if (payload.graphMode === 'series' && Array.isArray(option.graphic)) {
