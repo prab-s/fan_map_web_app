@@ -33,7 +33,9 @@ function fanPowerSupplyValue(parameterGroups = []) {
     if (String(group?.group_name ?? "").trim().toLowerCase() !== "motor") continue;
     for (const parameter of group.parameters ?? []) {
       if (String(parameter?.parameter_name ?? "").trim().toLowerCase() !== "power supply") continue;
-      return String(parameter?.value_string ?? "").trim();
+      return String(
+        parameter?.value_string ?? parameter?.value_number ?? ""
+      ).trim();
     }
   }
   return "";

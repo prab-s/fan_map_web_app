@@ -17,7 +17,8 @@
     createDescriptionFieldPayload,
     createDescriptionSectionDrafts,
     getDescriptionFieldCount,
-    renumberDescriptionSections
+    renumberDescriptionSections,
+    MAX_DESCRIPTION_SECTIONS
   } from '$lib/descriptionSections.js';
   import SeriesMediaPanel from '$lib/editor/SeriesMediaPanel.svelte';
   import RichTextEditor from '$lib/editor/RichTextEditor.svelte';
@@ -147,6 +148,7 @@
   }
 
   function addSeriesDescriptionSection() {
+    if (seriesDescriptionSections.length >= MAX_DESCRIPTION_SECTIONS) return;
     seriesDescriptionSections = renumberDescriptionSections([
       ...seriesDescriptionSections,
       {
@@ -248,7 +250,9 @@
     try {
       [productTypes, seriesRecords, templateRegistry] = await Promise.all([getProductTypes(), getSeries(), getTemplates()]);
       if (mode === 'edit' && selectedSeriesId) {
-        hydrateSelectedSeries();
+        const selected = seriesRecords.find((item) => String(item.id) === String(selectedSeriesId));
+        if (selected) hydrateSelectedSeries();
+        else seriesHydrationError = 'Series not found.';
       } else if (!selectedSeriesId && !initialSeriesId) {
         seriesDraft = resetDraft();
         seriesImages = [];
@@ -275,6 +279,7 @@
           title: section.title,
           html: section.html
         })),
+        description_field_count: seriesDescriptionSections.length,
         ...createDescriptionFieldPayload(
           seriesDescriptionSections,
           seriesDescriptionFieldCount
@@ -495,9 +500,9 @@
             <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
               <div>
                 <div class="form-label mb-0">Description sections</div>
-                <div class="form-text">Add or remove as many HTML blocks as this series needs.</div>
+                <div class="form-text">Add or remove HTML blocks as this series needs. Maximum 10 description sections.</div>
               </div>
-              <button class="btn btn-outline-primary btn-sm" type="button" on:click={addSeriesDescriptionSection}>Add section</button>
+              <button class="btn btn-outline-primary btn-sm" type="button" on:click={addSeriesDescriptionSection} disabled={seriesDescriptionSections.length >= MAX_DESCRIPTION_SECTIONS}>Add section</button>
             </div>
             <div class="vstack gap-3">
               {#each seriesDescriptionSections as section, sectionIndex}

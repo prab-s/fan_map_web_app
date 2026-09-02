@@ -1,19 +1,5 @@
-import { error, redirect } from '@sveltejs/kit';
-
 export async function load({ fetch, params }) {
   const series = params.series || '';
-
-  if (series) {
-    const response = await fetch('/api/series');
-    if (!response.ok) {
-      throw error(response.status, 'Unable to load series.');
-    }
-
-    const seriesRecords = await response.json();
-    if (!seriesRecords.some((seriesRecord) => String(seriesRecord.id) === String(series))) {
-      throw redirect(307, '/editor/series/edit');
-    }
-  }
 
   return {
     series

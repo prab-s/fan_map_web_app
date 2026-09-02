@@ -158,6 +158,8 @@ def build_description_sections(record: dict) -> list[dict]:
             html_value = section.get("html") if isinstance(section, dict) else None
             if html_value in (None, "") and isinstance(section, dict):
                 html_value = section.get("content") or section.get("body")
+            if not str(html_value or "").strip():
+                continue
             sections.append({
                 "key": (section.get("key") if isinstance(section, dict) else None) or f"description{index}_html",
                 "title": (section.get("title") if isinstance(section, dict) else None)
@@ -172,6 +174,8 @@ def build_description_sections(record: dict) -> list[dict]:
     for key, value in record.items():
         match = pattern.match(str(key))
         if not match:
+            continue
+        if not str(value or "").strip() or int(match.group(1)) > 10:
             continue
         sections.append({
             "key": key,

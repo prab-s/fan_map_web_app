@@ -22,6 +22,14 @@ These are replaced in product PDF templates.
 | `{{product.description1_html}}` | First rich-text description block |
 | `{{product.description2_html}}` | Second rich-text description block |
 | `{{product.description3_html}}` | Third rich-text description block |
+| `{{product.description4_html}}` | Fourth rich-text description block |
+| `{{product.description5_html}}` | Fifth rich-text description block |
+| `{{product.description6_html}}` | Sixth rich-text description block |
+| `{{product.description7_html}}` | Seventh rich-text description block |
+| `{{product.description8_html}}` | Eighth rich-text description block |
+| `{{product.description9_html}}` | Ninth rich-text description block |
+| `{{product.description10_html}}` | Tenth rich-text description block |
+| `{{product.description_sections_html}}` | All non-empty product description blocks, in numeric order |
 | `{{product.description_html}}` | Alias for description 1 |
 | `{{product.features_html}}` | Alias for description 2 |
 | `{{product.specifications_html}}` | Alias for description 3 |
@@ -60,6 +68,13 @@ These are replaced in series PDF templates.
 | `{{series.description2_html}}` | Second series description block |
 | `{{series.description3_html}}` | Third series description block |
 | `{{series.description4_html}}` | Fourth series description block |
+| `{{series.description5_html}}` | Fifth series description block |
+| `{{series.description6_html}}` | Sixth series description block |
+| `{{series.description7_html}}` | Seventh series description block |
+| `{{series.description8_html}}` | Eighth series description block |
+| `{{series.description9_html}}` | Ninth series description block |
+| `{{series.description10_html}}` | Tenth series description block |
+| `{{series.description_sections_html}}` | All non-empty series description blocks, in numeric order |
 | `{{series.comments_html}}` | Alias for description 4 |
 | `{{series.template_label}}` | Template label |
 | `{{series.product_count}}` | Number of products in the series |

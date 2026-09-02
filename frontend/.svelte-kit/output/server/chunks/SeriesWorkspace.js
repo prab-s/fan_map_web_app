@@ -2,7 +2,7 @@ import { b as attr, d as ensure_array_like, e as escape_html, i as bind_props, h
 import { f as fallback } from "./equality.js";
 import { g as goto } from "./client.js";
 import { n as getSeriesById, o as deleteSeriesImage, p as reorderSeriesImages, q as uploadSeriesImages } from "./api.js";
-import { c as createDescriptionSectionDrafts, g as getDescriptionFieldCount } from "./descriptionSections.js";
+import { c as createDescriptionSectionDrafts, g as getDescriptionFieldCount, M as MAX_DESCRIPTION_SECTIONS } from "./descriptionSections.js";
 import { A as AssociatedDocumentsPanel } from "./AssociatedDocumentsPanel.js";
 import { R as RichTextEditor } from "./RichTextEditor.js";
 function SeriesMediaPanel($$renderer, $$props) {
@@ -332,7 +332,7 @@ function SeriesWorkspace($$renderer, $$props) {
           }
         });
       }
-      $$renderer3.push(`<!----> <div class="form-text">Rich-text description used only on the product type PDF contents page.</div></div> <div class="col-12"><div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2"><div><div class="form-label mb-0">Description sections</div> <div class="form-text">Add or remove as many HTML blocks as this series needs.</div></div> <button class="btn btn-outline-primary btn-sm" type="button">Add section</button></div> <div class="vstack gap-3"><!--[-->`);
+      $$renderer3.push(`<!----> <div class="form-text">Rich-text description used only on the product type PDF contents page.</div></div> <div class="col-12"><div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2"><div><div class="form-label mb-0">Description sections</div> <div class="form-text">Add or remove HTML blocks as this series needs. Maximum 10 description sections.</div></div> <button class="btn btn-outline-primary btn-sm" type="button"${attr("disabled", seriesDescriptionSections.length >= MAX_DESCRIPTION_SECTIONS, true)}>Add section</button></div> <div class="vstack gap-3"><!--[-->`);
       const each_array_4 = ensure_array_like(seriesDescriptionSections);
       for (let sectionIndex = 0, $$length = each_array_4.length; sectionIndex < $$length; sectionIndex++) {
         let section = each_array_4[sectionIndex];

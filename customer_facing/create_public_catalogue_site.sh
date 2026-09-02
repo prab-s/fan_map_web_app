@@ -275,6 +275,8 @@ def build_description_sections(record: dict) -> list[dict]:
         for index, section in enumerate(explicit_sections, start=1):
             section = section if isinstance(section, dict) else {}
             html_value = section.get("html") or section.get("content") or section.get("body") or ""
+            if not str(html_value).strip():
+                continue
             sections.append({
                 "key": section.get("key") or f"description{index}_html",
                 "title": section.get("title") or section.get("label") or f"Description {index}",
@@ -287,6 +289,8 @@ def build_description_sections(record: dict) -> list[dict]:
     for key, value in record.items():
         match = pattern.match(str(key))
         if match:
+            if not str(value or "").strip() or int(match.group(1)) > 10:
+                continue
             sections.append({
                 "key": key,
                 "title": f"Description {int(match.group(1))}",

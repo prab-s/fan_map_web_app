@@ -168,7 +168,9 @@
     try {
       [productTypes, templateRegistry] = await Promise.all([getProductTypes(), getTemplates()]);
       if (mode === 'edit' && selectedProductTypeId) {
-        hydrateSelectedProductType();
+        const selected = productTypes.find((item) => String(item.id) === String(selectedProductTypeId));
+        if (selected) hydrateSelectedProductType();
+        else error = 'Product type not found.';
       }
     } catch (e) {
       error = e.message;

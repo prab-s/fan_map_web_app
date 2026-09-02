@@ -87,28 +87,13 @@ function _page($$renderer, $$props) {
       return String(value || "").replace(/href=(['"])\/products?\/(\d+)(?:-[^"']*)?\1/g, (_match, quote, productId) => `href=${quote}/viewer/product/${productId}${quote}`);
     }
     function productEditorUrl(productId) {
-      const params = new URLSearchParams();
-      if (productId != null && productId !== "") {
-        params.set("product", String(productId));
-      }
-      const search2 = params.toString();
-      return `/editor/edit${search2 ? `?${search2}` : ""}`;
+      return productId != null && productId !== "" ? `/editor/edit/${encodeURIComponent(String(productId))}` : "/editor/edit";
     }
     function seriesEditorUrl(seriesId) {
-      const params = new URLSearchParams();
-      if (seriesId != null && seriesId !== "") {
-        params.set("series", String(seriesId));
-      }
-      const search2 = params.toString();
-      return `/editor/series/edit${search2 ? `?${search2}` : ""}`;
+      return seriesId != null && seriesId !== "" ? `/editor/series/edit/${encodeURIComponent(String(seriesId))}` : "/editor/series/edit";
     }
     function productTypeEditorUrl(productTypeId) {
-      const params = new URLSearchParams();
-      if (productTypeId != null && productTypeId !== "") {
-        params.set("product_type", String(productTypeId));
-      }
-      const search2 = params.toString();
-      return `/editor/product-types/edit${search2 ? `?${search2}` : ""}`;
+      return productTypeId != null && productTypeId !== "" ? `/editor/product-types/edit/${encodeURIComponent(String(productTypeId))}` : "/editor/product-types/edit";
     }
     function getCurrentProductType() {
       return productTypes.find((item) => item.key === selectedProduct?.product_type_key) || null;
@@ -307,6 +292,7 @@ function _page($$renderer, $$props) {
       } finally {
       }
       if (seriesTabSeriesId && !seriesTabOptions.some((series) => Number(series.id) === Number(seriesTabSeriesId))) {
+        error = "Series not found.";
         seriesTabSeriesId = "";
       }
     }

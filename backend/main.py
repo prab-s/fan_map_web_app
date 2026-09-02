@@ -4050,6 +4050,41 @@ def sync_series_image_files(series: Series):
         image.sort_order = index - 1
 
 
+DESCRIPTION_FIELDS = tuple(f"description{index}_html" for index in range(1, 11))
+
+
+def normalize_description_field_count(value) -> int:
+    try:
+        return max(0, min(10, int(value or 0)))
+    except (TypeError, ValueError):
+        return 0
+
+
+def description_values(record) -> list[str]:
+    values = []
+    for field in DESCRIPTION_FIELDS:
+        value = getattr(record, field, None)
+        if field == "description4_html" and not value:
+            value = getattr(record, "comments_html", None)
+        if value and str(value).strip():
+            values.append(str(value))
+    return values
+
+
+def render_all_descriptions_html(record) -> str:
+    return "".join(render_richtext_html(value) for value in description_values(record))
+
+
+def build_description_token_map(prefix: str, record) -> dict[str, str]:
+    return {
+        f"{{{{{prefix}.description{index}_html}}}}": render_richtext_html(
+            getattr(record, f"description{index}_html", None)
+            or (getattr(record, "comments_html", None) if index == 4 else None)
+        )
+        for index in range(1, 11)
+    }
+
+
 def render_richtext_html(value: str | None) -> str:
     return value or ""
 
@@ -4614,6 +4649,7 @@ def build_product_pdf_html(product: Product) -> tuple[str, str]:
         "{{product.features_html}}": render_richtext_html(product.description2_html),
         "{{product.specifications_html}}": render_richtext_html(product.description3_html),
         "{{product.comments_html}}": render_richtext_html(product.comments_html),
+        "{{product.description_sections_html}}": render_all_descriptions_html(product),
         "{{product.summary_stats_html}}": render_product_summary_stats(product),
         "{{product.final_heading_html}}": render_final_product_heading(product),
         "{{product.grouped_specs_cards}}": render_grouped_specs_cards(product),
@@ -4637,6 +4673,7 @@ def build_product_pdf_html(product: Product) -> tuple[str, str]:
     }
     replacements.update(build_grouped_spec_group_token_map(product))
     replacements.update(build_grouped_spec_token_map(product))
+    replacements.update(build_description_token_map("product", product))
 
     rendered = html_template
     for token, value in replacements.items():
@@ -5509,6 +5546,7 @@ def build_series_pdf_html(series: Series, temp_dir: Path) -> tuple[str, str]:
         "{{series.description3_html}}": render_richtext_html(series.description3_html),
         "{{series.description4_html}}": render_richtext_html(series.description4_html),
         "{{series.comments_html}}": render_richtext_html(series.description4_html),
+        "{{series.description_sections_html}}": render_all_descriptions_html(series),
         "{{series.template_label}}": html.escape(get_template_label(template_id or series.template_id, "series")),
         "{{series.product_count}}": html.escape(str(series.product_count)),
         "{{series.graph_rule_label}}": html.escape(series_graph_rule_label()),
@@ -5524,6 +5562,7 @@ def build_series_pdf_html(series: Series, temp_dir: Path) -> tuple[str, str]:
         "{{series.performance_table_html}}": render_series_performance_table_html(series, include_product_links=False),
     }
 
+    replacements.update(build_description_token_map("series", series))
     rendered = html_template
     for token, value in replacements.items():
         rendered = rendered.replace(token, value)
@@ -9534,6 +9573,13 @@ def create_series(body: SeriesCreate, db: Session = Depends(get_db)):
         description2_html=sanitize_rich_text(body.description2_html),
         description3_html=sanitize_rich_text(body.description3_html),
         description4_html=sanitize_rich_text(body.description4_html),
+        description5_html=sanitize_rich_text(body.description5_html),
+        description6_html=sanitize_rich_text(body.description6_html),
+        description7_html=sanitize_rich_text(body.description7_html),
+        description8_html=sanitize_rich_text(body.description8_html),
+        description9_html=sanitize_rich_text(body.description9_html),
+        description10_html=sanitize_rich_text(body.description10_html),
+        description_field_count=normalize_description_field_count(body.description_field_count),
         contents_description=sanitize_rich_text((body.contents_description or "").strip() or None),
         printed_template_id=printed_template_id,
         online_template_id=online_template_id,
@@ -9576,11 +9622,13 @@ def update_series(series_id: int, body: SeriesUpdate, db: Session = Depends(get_
         if existing:
             raise HTTPException(status_code=400, detail="A series with that name already exists for this product type.")
         series.name = name
-    for field in ("description1_html", "description2_html", "description3_html", "description4_html"):
+    for field in tuple(f"description{index}_html" for index in range(1, 11)):
         if field in updates:
             setattr(series, field, sanitize_rich_text(updates[field]))
     if "contents_description" in updates:
         series.contents_description = sanitize_rich_text((updates["contents_description"] or "").strip() or None)
+    if "description_field_count" in updates:
+        series.description_field_count = normalize_description_field_count(updates.pop("description_field_count"))
     if any(field in updates for field in ("template_id", "printed_template_id", "online_template_id")):
         printed_template_id, online_template_id = resolve_template_pair(
             "series",
@@ -10448,9 +10496,13 @@ def apply_bulk_action(body: BulkActionRequest, db: Session = Depends(get_db)):
 @app.post("/api/products", response_model=ProductResponse, dependencies=[Depends(get_current_user)], tags=["Products"], summary="Create a product")
 def create_product(body: ProductCreate, db: Session = Depends(get_db)):
     product_data = body.model_dump()
-    for field in ("description1_html", "description2_html", "description3_html", "comments_html"):
+    for field in (*DESCRIPTION_FIELDS, "comments_html"):
         if field in product_data:
             product_data[field] = sanitize_rich_text(product_data[field])
+    if not product_data.get("description4_html") and product_data.get("comments_html"):
+        product_data["description4_html"] = product_data["comments_html"]
+    product_data["comments_html"] = None
+    product_data["description_field_count"] = normalize_description_field_count(product_data.get("description_field_count"))
     product_data["permissible_use_mode"] = normalize_permissible_use_mode(product_data.get("permissible_use_mode"))
     product_type = get_product_type_by_key(db, product_data.pop("product_type_key", "fan"))
     series = get_series_by_id(db, product_data.pop("series_id", None))
@@ -10601,8 +10653,15 @@ def update_product(product_id: int, body: ProductUpdate, db: Session = Depends(g
             product.online_template_id = online_template_id
         product.template_id = product.online_template_id or product.printed_template_id
     for k, v in updates.items():
-        if k in {"description1_html", "description2_html", "description3_html", "comments_html"}:
+        if k in {*DESCRIPTION_FIELDS, "comments_html"}:
+            if k == "comments_html":
+                k = "description4_html"
             setattr(product, k, sanitize_rich_text(v))
+            if k == "description4_html":
+                product.comments_html = None
+            continue
+        if k == "description_field_count":
+            product.description_field_count = normalize_description_field_count(v)
             continue
         if k == "permissible_use_mode":
             setattr(product, k, normalize_permissible_use_mode(v))

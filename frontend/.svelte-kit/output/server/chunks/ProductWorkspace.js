@@ -12,9 +12,9 @@ import { g as getChartTheme, b as buildFullChartOption, E as ECharts, R as RPM_B
 import { J as JobProgressPanel, r as runMaintenanceJob } from "./JobProgressPanel.js";
 import { A as AssociatedDocumentsPanel } from "./AssociatedDocumentsPanel.js";
 import { R as RichTextEditor } from "./RichTextEditor.js";
-import { S as SeriesNamesBadgeList, F as FAN_ACOUSTIC_VARIANT_MODES, f as fanAcousticVariant } from "./fanAcoustic.js";
+import { f as fanAcousticVariant, S as SeriesNamesBadgeList, F as FAN_ACOUSTIC_VARIANT_MODES } from "./fanAcoustic.js";
 import { F as FAN_ACOUSTIC_DEFAULT_SOUND_POWER_COLUMNS, t as theme, e as emptyProductForm, P as PERMISSIBLE_USE_MODE_OPTIONS, G as GLOBAL_UNIT_OPTIONS } from "./config.js";
-import { c as createDescriptionSectionDrafts, g as getDescriptionFieldCount } from "./descriptionSections.js";
+import { c as createDescriptionSectionDrafts, g as getDescriptionFieldCount, M as MAX_DESCRIPTION_SECTIONS } from "./descriptionSections.js";
 function AccordionCard($$renderer, $$props) {
   let title = fallback($$props["title"], "");
   let description = fallback($$props["description"], "");
@@ -131,7 +131,7 @@ function ProductMediaPanel($$renderer, $$props) {
 function ProductWorkspace($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
     var $$store_subs;
-    let productTemplateOptions, currentProductTypeForForm;
+    let productTemplateOptions, editorFanAcousticVariant, editorFanAcousticRunningColumnLabel, currentProductTypeForForm;
     let initialMode = fallback($$props["initialMode"], "select");
     let initialProductId = fallback($$props["initialProductId"], "");
     let initialSeriesId = fallback($$props["initialSeriesId"], "");
@@ -473,9 +473,6 @@ function ProductWorkspace($$renderer, $$props) {
     }
     function isFanAcousticTableVisible() {
       return productForm.product_type_key === "fan";
-    }
-    function currentFanAcousticVariant() {
-      return fanAcousticVariant(fanAcousticTable, parameterGroups);
     }
     function clonePresetGroups(productTypeKey) {
       const productType = productTypes.find((item) => item.key === productTypeKey);
@@ -1606,6 +1603,8 @@ function ProductWorkspace($$renderer, $$props) {
       applyCreateTypePresets(productForm.product_type_key);
       applyCreateTemplateDefault(productForm.product_type_key);
     }
+    editorFanAcousticVariant = fanAcousticVariant(fanAcousticTable, parameterGroups);
+    editorFanAcousticRunningColumnLabel = editorFanAcousticVariant === "1ph" ? "Running Voltage (V)" : "Running Frequency (Hz)";
     currentProductTypeForForm = getCurrentProductType();
     allAccordionsOpen = mode === "create" ? createCoreDetailsOpen && createProductAttributesOpen && createGroupedSpecificationsOpen && (!isFanAcousticTableVisible() || createFanAcousticTableOpen) && allSpecificationGroupsOpen() : mode === "editExisting" && editingProductId !== null ? editProductDetailsOpen && editGroupedSpecificationsOpen && (!isFanAcousticTableVisible() || editFanAcousticTableOpen) && editMediaAssetsOpen && editLineManagementOpen && (!productSupportsGraph() || editGraphDataOpen) && allSpecificationGroupsOpen() : false;
     {
@@ -1832,7 +1831,7 @@ function ProductWorkspace($$renderer, $$props) {
             } else {
               $$renderer4.push("<!--[-1-->");
             }
-            $$renderer4.push(`<!--]--> <div class="col-12"><div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2"><div><div class="form-label mb-0">Description sections</div> <div class="form-text">Add or remove as many HTML blocks as this product needs.</div></div> <button class="btn btn-outline-primary btn-sm" type="button">Add section</button></div> <div class="vstack gap-3"><!--[-->`);
+            $$renderer4.push(`<!--]--> <div class="col-12"><div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2"><div><div class="form-label mb-0">Description sections</div> <div class="form-text">Add or remove HTML blocks as this product needs. Maximum 10 description sections.</div></div> <button class="btn btn-outline-primary btn-sm" type="button"${attr("disabled", productDescriptionSections.length >= MAX_DESCRIPTION_SECTIONS, true)}>Add section</button></div> <div class="vstack gap-3"><!--[-->`);
             const each_array_5 = ensure_array_like(productDescriptionSections);
             for (let sectionIndex = 0, $$length = each_array_5.length; sectionIndex < $$length; sectionIndex++) {
               let section = each_array_5[sectionIndex];
@@ -2065,7 +2064,7 @@ function ProductWorkspace($$renderer, $$props) {
                 } else {
                   $$renderer4.push("<!--[-1-->");
                 }
-                $$renderer4.push(`<!--]--> <div class="table-responsive fan-acoustic-table-wrap"><table class="table table-sm align-middle editable-table fan-acoustic-table mb-0"><thead><tr><th>Speed (rpm)</th><th>Peak Pressure (Pa)</th><th>Peak Power (kW)</th><th>${escape_html(currentFanAcousticVariant() === "1ph" ? "Running Voltage" : "Running Frequency")}</th><th>Sound Pressure Level dB @ 3 meters</th><!--[-->`);
+                $$renderer4.push(`<!--]--> <div class="table-responsive fan-acoustic-table-wrap"><table class="table table-sm align-middle editable-table fan-acoustic-table mb-0"><thead><tr><th>Speed (rpm)</th><th>Peak Pressure (Pa)</th><th>Peak Power (kW)</th><th>${escape_html(editorFanAcousticRunningColumnLabel)}</th><th>Sound Pressure Level dB @ 3 meters</th><!--[-->`);
                 const each_array_12 = ensure_array_like(fanAcousticTable.sound_power_columns);
                 for (let columnIndex = 0, $$length = each_array_12.length; columnIndex < $$length; columnIndex++) {
                   each_array_12[columnIndex];
@@ -2076,7 +2075,7 @@ function ProductWorkspace($$renderer, $$props) {
                 for (let rowIndex = 0, $$length = each_array_13.length; rowIndex < $$length; rowIndex++) {
                   let row = each_array_13[rowIndex];
                   $$renderer4.push(`<tr><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(row.speed_rpm)}`, "svelte-py4xdp")} type="number" step="any"${attr("value", row.speed_rpm)} disabled=""/></td><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(row.peak_pressure_pa)}`, "svelte-py4xdp")} type="number" step="any"${attr("value", row.peak_pressure_pa)}/></td><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(row.peak_power_kw)}`, "svelte-py4xdp")} type="number" step="any"${attr("value", row.peak_power_kw)}/></td><td>`);
-                  if (currentFanAcousticVariant() === "1ph") {
+                  if (editorFanAcousticVariant === "1ph") {
                     $$renderer4.push("<!--[0-->");
                     $$renderer4.push(`<input${attr_class(`form-control form-control-sm ${editorNumericInputClass(row.running_voltage_v)}`, "svelte-py4xdp")} type="number" step="any"${attr("value", row.running_voltage_v)}/>`);
                   } else {
@@ -2355,7 +2354,7 @@ function ProductWorkspace($$renderer, $$props) {
                 $$renderer5.push(`<!--]-->`);
               }
             );
-            $$renderer4.push(`</div> <div class="col-12"><div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2"><div><div class="form-label mb-0">Description sections</div> <div class="form-text">Add or remove as many HTML blocks as this product needs.</div></div> <button class="btn btn-outline-primary btn-sm" type="button">Add section</button></div> <div class="vstack gap-3"><!--[-->`);
+            $$renderer4.push(`</div> <div class="col-12"><div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2"><div><div class="form-label mb-0">Description sections</div> <div class="form-text">Add or remove HTML blocks as this product needs. Maximum 10 description sections.</div></div> <button class="btn btn-outline-primary btn-sm" type="button"${attr("disabled", productDescriptionSections.length >= MAX_DESCRIPTION_SECTIONS, true)}>Add section</button></div> <div class="vstack gap-3"><!--[-->`);
             const each_array_24 = ensure_array_like(productDescriptionSections);
             for (let sectionIndex = 0, $$length = each_array_24.length; sectionIndex < $$length; sectionIndex++) {
               let section = each_array_24[sectionIndex];
@@ -2898,7 +2897,7 @@ function ProductWorkspace($$renderer, $$props) {
                 } else {
                   $$renderer4.push("<!--[-1-->");
                 }
-                $$renderer4.push(`<!--]--> <div class="table-responsive fan-acoustic-table-wrap"><table class="table table-sm align-middle editable-table fan-acoustic-table mb-0"><thead><tr><th>Speed (rpm)</th><th>Peak Pressure (Pa)</th><th>Peak Power (kW)</th><th>${escape_html(currentFanAcousticVariant() === "1ph" ? "Running Voltage" : "Running Frequency")}</th><th>Sound Pressure Level dB @ 3 meters</th><!--[-->`);
+                $$renderer4.push(`<!--]--> <div class="table-responsive fan-acoustic-table-wrap"><table class="table table-sm align-middle editable-table fan-acoustic-table mb-0"><thead><tr><th>Speed (rpm)</th><th>Peak Pressure (Pa)</th><th>Peak Power (kW)</th><th>${escape_html(editorFanAcousticRunningColumnLabel)}</th><th>Sound Pressure Level dB @ 3 meters</th><!--[-->`);
                 const each_array_38 = ensure_array_like(fanAcousticTable.sound_power_columns);
                 for (let columnIndex = 0, $$length = each_array_38.length; columnIndex < $$length; columnIndex++) {
                   each_array_38[columnIndex];
@@ -2909,7 +2908,7 @@ function ProductWorkspace($$renderer, $$props) {
                 for (let rowIndex = 0, $$length = each_array_39.length; rowIndex < $$length; rowIndex++) {
                   let row = each_array_39[rowIndex];
                   $$renderer4.push(`<tr><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(row.speed_rpm)}`, "svelte-py4xdp")} type="number" step="any"${attr("value", row.speed_rpm)} disabled=""/></td><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(row.peak_pressure_pa)}`, "svelte-py4xdp")} type="number" step="any"${attr("value", row.peak_pressure_pa)}/></td><td><input${attr_class(`form-control form-control-sm ${editorNumericInputClass(row.peak_power_kw)}`, "svelte-py4xdp")} type="number" step="any"${attr("value", row.peak_power_kw)}/></td><td>`);
-                  if (currentFanAcousticVariant() === "1ph") {
+                  if (editorFanAcousticVariant === "1ph") {
                     $$renderer4.push("<!--[0-->");
                     $$renderer4.push(`<input${attr_class(`form-control form-control-sm ${editorNumericInputClass(row.running_voltage_v)}`, "svelte-py4xdp")} type="number" step="any"${attr("value", row.running_voltage_v)}/>`);
                   } else {

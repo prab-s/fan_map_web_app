@@ -53,6 +53,7 @@
     createDescriptionSectionDrafts,
     getDescriptionFieldCount,
     renumberDescriptionSections,
+    MAX_DESCRIPTION_SECTIONS,
   } from "$lib/descriptionSections.js";
   import {
     buildFullChartOption,
@@ -1012,8 +1013,35 @@
     return productForm.product_type_key === "fan";
   }
 
-  function currentFanAcousticVariant() {
-    return fanAcousticVariant(fanAcousticTable, parameterGroups);
+  $: editorFanAcousticVariant = fanAcousticVariant(
+    fanAcousticTable,
+    parameterGroups,
+  );
+  $: editorFanAcousticRunningColumnLabel =
+    editorFanAcousticVariant === "1ph"
+      ? "Running Voltage (V)"
+      : "Running Frequency (Hz)";
+
+  function handleFanAcousticVariantChange(event) {
+    fanAcousticTable = {
+      ...fanAcousticTable,
+      variant_mode: event.currentTarget.value,
+    };
+  }
+
+  function handleParameterStringInput(groupIndex, parameterIndex, event) {
+    const value = event.currentTarget.value;
+    parameterGroups = parameterGroups.map((group, index) => {
+      if (index !== groupIndex) return group;
+      return {
+        ...group,
+        parameters: group.parameters.map((parameter, innerIndex) =>
+          innerIndex === parameterIndex
+            ? { ...parameter, value_string: value }
+            : parameter,
+        ),
+      };
+    });
   }
 
   function addFanAcousticColumn() {
@@ -1221,6 +1249,7 @@
   }
 
   function addProductDescriptionSection() {
+    if (productDescriptionSections.length >= MAX_DESCRIPTION_SECTIONS) return;
     productDescriptionSections = renumberDescriptionSections([
       ...productDescriptionSections,
       {
@@ -3885,12 +3914,21 @@
   }
 
   onMount(async () => {
-    await Promise.all([
+    // Establish the route selection immediately so the editor shell can render
+    // while metadata and the heavier graph requests load in the background.
+    if (selectedProductId && !initialSelectionOnly) {
+      editingProductId = selectedProductId;
+      mode = "editExisting";
+      void openSelectedExistingProduct(selectedProductId);
+    }
+
+    void Promise.all([
       loadProducts(),
       loadProductTypes(),
       loadSeries(),
       loadTemplates(),
     ]);
+
     if (selectedProductId && initialSelectionOnly) {
       const selectedProduct = products.find(
         (product) => Number(product.id) === Number(selectedProductId),
@@ -3908,8 +3946,6 @@
       if (initialSeriesId) {
         editExistingSeriesId = Number(initialSeriesId);
       }
-    } else if (selectedProductId) {
-      await openSelectedExistingProduct(selectedProductId);
     }
   });
 
@@ -3936,6 +3972,7 @@
         title: section.title,
         html: section.html,
       })),
+      description_field_count: productDescriptionSections.length,
       ...createDescriptionFieldPayload(
         productDescriptionSections,
         productDescriptionFieldCount,
@@ -5118,9 +5155,9 @@
                 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
                   <div>
                     <div class="form-label mb-0">Description sections</div>
-                    <div class="form-text">Add or remove as many HTML blocks as this product needs.</div>
+                    <div class="form-text">Add or remove HTML blocks as this product needs. Maximum 10 description sections.</div>
                   </div>
-                  <button class="btn btn-outline-primary btn-sm" type="button" on:click={addProductDescriptionSection}>
+                  <button class="btn btn-outline-primary btn-sm" type="button" on:click={addProductDescriptionSection} disabled={productDescriptionSections.length >= MAX_DESCRIPTION_SECTIONS}>
                     Add section
                   </button>
                 </div>
@@ -5299,8 +5336,12 @@
                                   id={`create-group-${groupIndex}-parameter-${parameterIndex}-text`}
                                   type="text"
                                   bind:value={parameter.value_string}
-                                  on:input={() =>
-                                    (parameterGroups = [...parameterGroups])}
+                                  on:input={(event) =>
+                                    handleParameterStringInput(
+                                      groupIndex,
+                                      parameterIndex,
+                                      event,
+                                    )}
                                 />
                                 {#if parameterValueHistory(group.group_name, parameter.parameter_name, "string").length > 0}
                                   <label
@@ -5507,7 +5548,7 @@
               >
                 <div class="mb-3">
                   <label class="form-label mb-1" for="create-fan-acoustic-variant">Acoustic table variant</label>
-                  <select id="create-fan-acoustic-variant" class="form-select form-select-sm" bind:value={fanAcousticTable.variant_mode}>
+                  <select id="create-fan-acoustic-variant" class="form-select form-select-sm" value={fanAcousticTable.variant_mode} on:change={handleFanAcousticVariantChange}>
                     {#each FAN_ACOUSTIC_VARIANT_MODES as option}
                       <option value={option.value}>{option.label}</option>
                     {/each}
@@ -5562,7 +5603,7 @@
                       <th>Speed (rpm)</th>
                       <th>Peak Pressure (Pa)</th>
                       <th>Peak Power (kW)</th>
-                      <th>{currentFanAcousticVariant() === "1ph" ? "Running Voltage" : "Running Frequency"}</th>
+                      <th>{editorFanAcousticRunningColumnLabel}</th>
                       <th>Sound Pressure Level dB @ 3 meters</th>
                       {#each fanAcousticTable.sound_power_columns as column, columnIndex}
                         <th>
@@ -5631,7 +5672,7 @@
                           /></td
                         >
                         <td>
-                          {#if currentFanAcousticVariant() === "1ph"}
+                          {#if editorFanAcousticVariant === "1ph"}
                             <input class={`form-control form-control-sm ${editorNumericInputClass(row.running_voltage_v)}`} type="number" step="any" bind:value={row.running_voltage_v} on:input={() => (fanAcousticTable = { ...fanAcousticTable })} />
                           {:else}
                             <input class={`form-control form-control-sm ${editorNumericInputClass(row.running_frequency_hz)}`} type="number" step="any" bind:value={row.running_frequency_hz} on:input={() => (fanAcousticTable = { ...fanAcousticTable })} />
@@ -5976,9 +6017,9 @@
                   <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
                     <div>
                       <div class="form-label mb-0">Description sections</div>
-                      <div class="form-text">Add or remove as many HTML blocks as this product needs.</div>
+                        <div class="form-text">Add or remove HTML blocks as this product needs. Maximum 10 description sections.</div>
                     </div>
-                    <button class="btn btn-outline-primary btn-sm" type="button" on:click={addProductDescriptionSection}>
+                    <button class="btn btn-outline-primary btn-sm" type="button" on:click={addProductDescriptionSection} disabled={productDescriptionSections.length >= MAX_DESCRIPTION_SECTIONS}>
                       Add section
                     </button>
                   </div>
@@ -6181,10 +6222,12 @@
                                       id={`edit-group-${groupIndex}-parameter-${parameterIndex}-text`}
                                       type="text"
                                       bind:value={parameter.value_string}
-                                      on:input={() =>
-                                        (parameterGroups = [
-                                          ...parameterGroups,
-                                        ])}
+                                      on:input={(event) =>
+                                        handleParameterStringInput(
+                                          groupIndex,
+                                          parameterIndex,
+                                          event,
+                                        )}
                                     />
                                     {#if parameterValueHistory(group.group_name, parameter.parameter_name, "string").length > 0}
                                       <label
@@ -7242,7 +7285,7 @@
               >
                 <div class="mb-3">
                   <label class="form-label mb-1" for="edit-fan-acoustic-variant">Acoustic table variant</label>
-                  <select id="edit-fan-acoustic-variant" class="form-select form-select-sm" bind:value={fanAcousticTable.variant_mode}>
+                  <select id="edit-fan-acoustic-variant" class="form-select form-select-sm" value={fanAcousticTable.variant_mode} on:change={handleFanAcousticVariantChange}>
                     {#each FAN_ACOUSTIC_VARIANT_MODES as option}
                       <option value={option.value}>{option.label}</option>
                     {/each}
@@ -7297,7 +7340,7 @@
                         <th>Speed (rpm)</th>
                         <th>Peak Pressure (Pa)</th>
                         <th>Peak Power (kW)</th>
-                        <th>{currentFanAcousticVariant() === "1ph" ? "Running Voltage" : "Running Frequency"}</th>
+                        <th>{editorFanAcousticRunningColumnLabel}</th>
                         <th>Sound Pressure Level dB @ 3 meters</th>
                         {#each fanAcousticTable.sound_power_columns as column, columnIndex}
                           <th>
@@ -7366,7 +7409,7 @@
                             /></td
                           >
                         <td>
-                          {#if currentFanAcousticVariant() === "1ph"}
+                          {#if editorFanAcousticVariant === "1ph"}
                             <input class={`form-control form-control-sm ${editorNumericInputClass(row.running_voltage_v)}`} type="number" step="any" bind:value={row.running_voltage_v} on:input={() => (fanAcousticTable = { ...fanAcousticTable })} />
                           {:else}
                             <input class={`form-control form-control-sm ${editorNumericInputClass(row.running_frequency_hz)}`} type="number" step="any" bind:value={row.running_frequency_hz} on:input={() => (fanAcousticTable = { ...fanAcousticTable })} />

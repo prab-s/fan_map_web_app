@@ -1,5 +1,5 @@
 <script>
-  import { goto } from '$app/navigation';
+  import { beforeNavigate, goto } from '$app/navigation';
   import { onDestroy, onMount } from 'svelte';
   import { browser } from '$app/environment';
   import {
@@ -102,6 +102,7 @@
   let refreshingSeriesGraphId = null;
   let refreshingSeriesPdfJob = null;
   let destroyed = false;
+  let leavingViewer = false;
 
   $: productDescriptionSections = getDescriptionSections(selectedProduct || {});
   $: seriesDescriptionSections = getDescriptionSections(selectedSeriesRecord || {});
@@ -136,43 +137,35 @@
   }
 
   function syncViewerUrl() {
-    if (!browser || !viewerUrlStateReady) return;
+    if (!browser || !viewerUrlStateReady || destroyed || leavingViewer) return;
+    if (!window.location.pathname.startsWith('/viewer')) return;
 
     const nextPath = viewerPath();
     const nextUrl = `${nextPath}${window.location.hash}`;
     if (`${window.location.pathname}${window.location.hash}` === nextUrl) return;
-    goto(nextUrl, {
+    void goto(nextUrl, {
       replaceState: true,
       keepFocus: true,
       noScroll: true
-    });
+    }).catch(() => {});
   }
 
   function productEditorUrl(productId) {
-    const params = new URLSearchParams();
-    if (productId != null && productId !== '') {
-      params.set('product', String(productId));
-    }
-    const search = params.toString();
-    return `/editor/edit${search ? `?${search}` : ''}`;
+    return productId != null && productId !== ''
+      ? `/editor/edit/${encodeURIComponent(String(productId))}`
+      : '/editor/edit';
   }
 
   function seriesEditorUrl(seriesId) {
-    const params = new URLSearchParams();
-    if (seriesId != null && seriesId !== '') {
-      params.set('series', String(seriesId));
-    }
-    const search = params.toString();
-    return `/editor/series/edit${search ? `?${search}` : ''}`;
+    return seriesId != null && seriesId !== ''
+      ? `/editor/series/edit/${encodeURIComponent(String(seriesId))}`
+      : '/editor/series/edit';
   }
 
   function productTypeEditorUrl(productTypeId) {
-    const params = new URLSearchParams();
-    if (productTypeId != null && productTypeId !== '') {
-      params.set('product_type', String(productTypeId));
-    }
-    const search = params.toString();
-    return `/editor/product-types/edit${search ? `?${search}` : ''}`;
+    return productTypeId != null && productTypeId !== ''
+      ? `/editor/product-types/edit/${encodeURIComponent(String(productTypeId))}`
+      : '/editor/product-types/edit';
   }
 
   function getCurrentProductType() {
@@ -404,30 +397,31 @@
   async function loadEverything() {
     loadingList = true;
     error = '';
+    const [productsResult, templatesResult, productTypesResult, seriesResult] = await Promise.allSettled([
+      getProducts(),
+      getTemplates(),
+      getProductTypes(),
+      getSeries()
+    ]);
+
+    if (destroyed || leavingViewer) return;
     try {
-      products = await getProducts();
-      try {
-        templateRegistry = await getTemplates();
-      } catch {
-        templateRegistry = { product_templates: [], series_templates: [], product_type_templates: [] };
-      }
-      try {
-        productTypes = await getProductTypes();
-      } catch {
-        productTypes = [];
-      }
+      if (productsResult.status === 'fulfilled') products = productsResult.value;
+      else throw productsResult.reason;
+      templateRegistry = templatesResult.status === 'fulfilled'
+        ? templatesResult.value
+        : { product_templates: [], series_templates: [], product_type_templates: [] };
+      productTypes = productTypesResult.status === 'fulfilled' ? productTypesResult.value : [];
+      seriesRecords = seriesResult.status === 'fulfilled' ? seriesResult.value : [];
       if (selectedProductTypeId && productTypes.length > 0) {
         const resolvedProductType = productTypes.find(
           (item) => String(item.id) === String(selectedProductTypeId) || String(item.key) === String(selectedProductTypeId)
         );
-        if (resolvedProductType && String(selectedProductTypeId) !== String(resolvedProductType.id)) {
+        if (!resolvedProductType && activeViewerTab === 'product-type') {
+          error = 'Product type not found.';
+        } else if (resolvedProductType && String(selectedProductTypeId) !== String(resolvedProductType.id)) {
           selectedProductTypeId = String(resolvedProductType.id);
         }
-      }
-      try {
-        seriesRecords = await getSeries();
-      } catch {
-        seriesRecords = [];
       }
       if (seriesTabSeriesId) {
         const selectedSeries = seriesRecords.find((series) => Number(series.id) === Number(seriesTabSeriesId));
@@ -663,6 +657,7 @@
       seriesTabSeriesId &&
       !seriesTabOptions.some((series) => Number(series.id) === Number(seriesTabSeriesId))
     ) {
+      error = 'Series not found.';
       seriesTabSeriesId = '';
     }
 
@@ -936,20 +931,27 @@
   }
 
   onMount(async () => {
-    await loadEverything();
-    await loadSeriesOptions();
-    await loadSeriesTabOptions();
-    await loadFilteredProducts();
+    void loadEverything();
+    void loadSeriesOptions();
+    void loadSeriesTabOptions();
+    void loadFilteredProducts();
     if (activeViewerTab === 'product-type' && selectedProductTypeId && !selectedProductTypeContext) {
-      await loadProductTypeContext(selectedProductTypeId);
+      void loadProductTypeContext(selectedProductTypeId);
     }
     viewerUrlStateReady = true;
     viewerStateHydrating = false;
     syncViewerUrl();
   });
 
+  beforeNavigate((navigation) => {
+    if (navigation.to?.url && !navigation.to.url.pathname.startsWith('/viewer')) {
+      leavingViewer = true;
+    }
+  });
+
   onDestroy(() => {
     destroyed = true;
+    leavingViewer = true;
   });
 </script>
 

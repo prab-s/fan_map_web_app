@@ -142,8 +142,8 @@ def sanitize_stored_rich_text(models, sanitizer, *, dry_run: bool = False) -> di
     reversible if a legacy field contains formatting outside the allowlist.
     """
     rich_text_models = (
-        (models.Product, ("description1_html", "description2_html", "description3_html", "comments_html")),
-        (models.Series, ("description1_html", "description2_html", "description3_html", "description4_html", "contents_description")),
+        (models.Product, (*tuple(f"description{index}_html" for index in range(1, 11)), "comments_html")),
+        (models.Series, (*tuple(f"description{index}_html" for index in range(1, 11)), "contents_description")),
     )
     changed_values = []
     with SessionLocal() as db:
@@ -240,6 +240,8 @@ def _ensure_product_platform_columns(target_engine):
         "description1_html": "TEXT",
         "description2_html": "TEXT",
         "description3_html": "TEXT",
+        **{f"description{index}_html": "TEXT" for index in range(4, 11)},
+        "description_field_count": "INTEGER",
         "comments_html": "TEXT",
     }
 
@@ -258,6 +260,18 @@ def _ensure_product_platform_columns(target_engine):
                 """
             )
         )
+        connection.execute(
+            text(f"UPDATE {product_table_name} SET description_field_count = 0 WHERE description_field_count IS NULL")
+        )
+        connection.execute(
+            text(
+                f"""
+                UPDATE {product_table_name}
+                SET description4_html = comments_html, comments_html = NULL
+                WHERE description4_html IS NULL AND comments_html IS NOT NULL
+                """
+            )
+        )
 
 
 def _ensure_series_template_columns(target_engine):
@@ -269,6 +283,8 @@ def _ensure_series_template_columns(target_engine):
     missing_columns = {
         "printed_template_id": "VARCHAR(128)",
         "online_template_id": "VARCHAR(128)",
+        **{f"description{index}_html": "TEXT" for index in range(5, 11)},
+        "description_field_count": "INTEGER",
     }
 
     with target_engine.begin() as connection:
@@ -285,6 +301,9 @@ def _ensure_series_template_columns(target_engine):
                 WHERE template_id IS NOT NULL
                 """
             )
+        )
+        connection.execute(
+            text("UPDATE series SET description_field_count = 0 WHERE description_field_count IS NULL")
         )
 def _rename_series_comments_column(target_engine):
     inspector = inspect(target_engine)
