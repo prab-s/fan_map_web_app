@@ -707,6 +707,19 @@ class ProductResponse(ProductBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+class ProductSelectorResponse(BaseModel):
+    """Small payload used by selectors that do not need full product data."""
+
+    id: int
+    model: str
+    product_type_key: Optional[str] = None
+    product_type_label: Optional[str] = None
+    series_id: Optional[int] = None
+    series_name: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class ProductRpmPointInput(BaseModel):
     airflow: float
     pressure: float

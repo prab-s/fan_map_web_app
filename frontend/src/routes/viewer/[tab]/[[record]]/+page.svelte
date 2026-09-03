@@ -5,7 +5,7 @@
   import {
     getProductChartData,
     getProduct,
-    getProducts,
+    getProductSelectorOptions,
     getTemplates,
     getSeriesById,
     getProductTypePdfContext,
@@ -88,6 +88,7 @@
   let productRequestToken = 0;
   let chartRequestToken = 0;
   let productListRequestToken = 0;
+  let initialProductListLoaded = false;
   let seriesOptionsRequestToken = 0;
   let seriesTabOptionsRequestToken = 0;
   let appliedRouteStateKey = '';
@@ -398,7 +399,7 @@
     loadingList = true;
     error = '';
     const [productsResult, templatesResult, productTypesResult, seriesResult] = await Promise.allSettled([
-      getProducts(),
+      getProductSelectorOptions(),
       getTemplates(),
       getProductTypes(),
       getSeries()
@@ -408,6 +409,13 @@
     try {
       if (productsResult.status === 'fulfilled') products = productsResult.value;
       else throw productsResult.reason;
+      filteredProducts = [...products].sort((a, b) => {
+        const typeCompare = String(a.product_type_label || '').localeCompare(String(b.product_type_label || ''));
+        if (typeCompare !== 0) return typeCompare;
+        const seriesCompare = String(a.series_name || '').localeCompare(String(b.series_name || ''));
+        if (seriesCompare !== 0) return seriesCompare;
+        return String(a.model || '').localeCompare(String(b.model || ''));
+      });
       templateRegistry = templatesResult.status === 'fulfilled'
         ? templatesResult.value
         : { product_templates: [], series_templates: [], product_type_templates: [] };
@@ -720,7 +728,7 @@
       if (seriesFilter && !Number.isNaN(Number(seriesFilter))) {
         params.series_id = String(seriesFilter);
       }
-      products = await getProducts(params);
+      products = await getProductSelectorOptions(params);
       if (requestToken !== productListRequestToken) return;
       filteredProducts = [...products].sort((a, b) => {
         const typeCompare = String(a.product_type_label || '').localeCompare(String(b.product_type_label || ''));
@@ -816,7 +824,7 @@
         selectedProductId = null;
         selectedProduct = null;
       }
-      loadFilteredProducts();
+      if (initialProductListLoaded) loadFilteredProducts();
     }
   }
 
@@ -931,10 +939,10 @@
   }
 
   onMount(async () => {
-    void loadEverything();
+    await loadEverything();
+    initialProductListLoaded = true;
     void loadSeriesOptions();
     void loadSeriesTabOptions();
-    void loadFilteredProducts();
     if (activeViewerTab === 'product-type' && selectedProductTypeId && !selectedProductTypeContext) {
       void loadProductTypeContext(selectedProductTypeId);
     }
@@ -978,7 +986,7 @@
     <div class="alert alert-success mb-0">{success}</div>
   {/if}
 
-  <ul class="nav nav-tabs">
+  <ul class="nav nav-tabs viewer-tabs">
     <li class="nav-item">
       <button
         class:active={activeViewerTab === 'product'}
@@ -1629,6 +1637,47 @@
   .page-stack {
     display: grid;
     gap: 1rem;
+    min-width: 0;
+  }
+
+  .page-stack :global(.row),
+  .page-stack :global(.row > [class*="col-"]) {
+    min-width: 0;
+  }
+
+  .page-stack :global(.card),
+  .page-stack :global(.card-body),
+  .page-stack :global(.vstack) {
+    min-width: 0;
+  }
+
+  .viewer-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+  }
+
+  .viewer-tabs .nav-link {
+    white-space: nowrap;
+  }
+
+  .viewer-html {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  :global(.echart-host) {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  iframe {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    border: 0;
   }
 
   .viewer-metric {
@@ -1776,6 +1825,12 @@
     table-layout: fixed;
   }
 
+  .fan-acoustic-viewer-table-wrap,
+  .page-stack :global(.table-responsive) {
+    max-width: 100%;
+    -webkit-overflow-scrolling: touch;
+  }
+
   .fan-acoustic-viewer-table th,
   .fan-acoustic-viewer-table td {
     white-space: normal;
@@ -1806,6 +1861,29 @@
   .spec-group-table tbody th:first-child,
   .spec-group-table tbody td:first-child {
     padding-left: 1.15rem;
+  }
+
+  @media (max-width: 575.98px) {
+    .page-stack {
+      gap: 0.75rem;
+    }
+
+    .page-stack :global(.card-body) {
+      padding: 0.85rem;
+    }
+
+    .viewer-list-table {
+      font-size: 0.85rem;
+    }
+
+    .viewer-list-table th,
+    .viewer-list-table td {
+      padding-inline: 0.35rem;
+    }
+
+    .viewer-metric {
+      padding: 0.75rem;
+    }
   }
 
 </style>

@@ -7,7 +7,7 @@ import { f as fallback } from "../../../../../chunks/equality.js";
 import "@sveltejs/kit/internal/server";
 import "../../../../../chunks/root.js";
 import "../../../../../chunks/state.svelte.js";
-import { D as getProductChartData, A as getSeries, n as getSeriesById, E as getProductTypePdfContext, g as getProducts, c as getProduct } from "../../../../../chunks/api.js";
+import { D as getProductChartData, A as getSeries, n as getSeriesById, E as getProductTypePdfContext, c as getProduct } from "../../../../../chunks/api.js";
 import { E as ECharts, g as getChartTheme, b as buildFullChartOption } from "../../../../../chunks/fullChart.js";
 import { t as theme } from "../../../../../chunks/config.js";
 import { a as getDescriptionSections } from "../../../../../chunks/descriptionSections.js";
@@ -20,7 +20,6 @@ function _page($$renderer, $$props) {
     var $$store_subs;
     let selectedSeriesPerformanceTableHtml, selectedProductTypeRecord, selectedProductTypeContextMissingSeries, selectedProductTypeContextWarning;
     let data = fallback($$props["data"], () => ({}), true);
-    let products = [];
     let productTypes = [];
     let templateRegistry = {
       product_templates: [],
@@ -32,7 +31,6 @@ function _page($$renderer, $$props) {
     let rpmPoints = [];
     let efficiencyPoints = [];
     let chartOption = {};
-    let loadingList = true;
     let loadingChart = false;
     let error = "";
     let search = "";
@@ -73,7 +71,6 @@ function _page($$renderer, $$props) {
     let seriesGraphRequestToken = 0;
     let productRequestToken = 0;
     let chartRequestToken = 0;
-    let productListRequestToken = 0;
     let seriesTabOptionsRequestToken = 0;
     let previousSelectedSeriesId = null;
     let previousSelectedProductTypeId = "";
@@ -338,39 +335,6 @@ function _page($$renderer, $$props) {
         }
       }
     }
-    async function loadFilteredProducts() {
-      const requestToken = ++productListRequestToken;
-      loadingList = true;
-      error = "";
-      try {
-        const params = {};
-        if (search) ;
-        if (productTypeFilter) ;
-        if (seriesFilter && !Number.isNaN(Number(seriesFilter))) ;
-        products = await getProducts(params);
-        if (requestToken !== productListRequestToken) return;
-        filteredProducts = [...products].sort((a, b) => {
-          const typeCompare = String(a.product_type_label || "").localeCompare(String(b.product_type_label || ""));
-          if (typeCompare !== 0) return typeCompare;
-          const seriesCompare = String(a.series_name || "").localeCompare(String(b.series_name || ""));
-          if (seriesCompare !== 0) return seriesCompare;
-          return String(a.model || "").localeCompare(String(b.model || ""));
-        });
-        if (selectedProductId && !filteredProducts.some((product) => Number(product.id) === Number(selectedProductId))) {
-          selectedProductId = filteredProducts[0]?.id != null ? Number(filteredProducts[0].id) : null;
-        }
-        if (!selectedProductId && filteredProducts.length && activeViewerTab === "product") {
-          selectedProductId = Number(filteredProducts[0].id);
-        }
-      } catch (e) {
-        if (requestToken !== productListRequestToken) return;
-        error = e.message;
-        products = [];
-        filteredProducts = [];
-      } finally {
-        loadingList = false;
-      }
-    }
     async function loadSelectedProduct() {
       const requestToken = ++productRequestToken;
       if (!selectedProductId) {
@@ -397,17 +361,12 @@ function _page($$renderer, $$props) {
         selectedProduct = null;
       }
     }
-    let previousFilterKey = "";
     let previousSelectedProductId = null;
     let previousSeriesTabProductTypeFilter = "";
     onDestroy(() => {
     });
     {
-      const filterKey = JSON.stringify({ search, productTypeFilter, seriesFilter });
-      if (filterKey !== previousFilterKey) {
-        previousFilterKey = filterKey;
-        loadFilteredProducts();
-      }
+      JSON.stringify({ search, productTypeFilter, seriesFilter });
     }
     productDescriptionSections = getDescriptionSections(selectedProduct || {});
     if (seriesTabProductTypeFilter !== previousSeriesTabProductTypeFilter) {
@@ -479,7 +438,7 @@ function _page($$renderer, $$props) {
     {
       $$renderer2.push("<!--[-1-->");
     }
-    $$renderer2.push(`<!--]--> <ul class="nav nav-tabs"><li class="nav-item"><button${attr_class("nav-link", void 0, { "active": activeViewerTab === "product" })} type="button">Product</button></li> <li class="nav-item"><button${attr_class("nav-link", void 0, { "active": activeViewerTab === "series" })} type="button">Series</button></li> <li class="nav-item"><button${attr_class("nav-link", void 0, { "active": activeViewerTab === "product-type" })} type="button">Product Types</button></li></ul> `);
+    $$renderer2.push(`<!--]--> <ul class="nav nav-tabs viewer-tabs svelte-36khdd"><li class="nav-item"><button${attr_class("nav-link svelte-36khdd", void 0, { "active": activeViewerTab === "product" })} type="button">Product</button></li> <li class="nav-item"><button${attr_class("nav-link svelte-36khdd", void 0, { "active": activeViewerTab === "series" })} type="button">Series</button></li> <li class="nav-item"><button${attr_class("nav-link svelte-36khdd", void 0, { "active": activeViewerTab === "product-type" })} type="button">Product Types</button></li></ul> `);
     if (activeViewerTab === "product") {
       $$renderer2.push("<!--[0-->");
       $$renderer2.push(`<div class="row g-3 align-items-start"><div class="col-12 col-xxl-4"><div class="vstack gap-3 viewer-sidebar"><div class="card shadow-sm"><div class="card-body"><div class="row g-3 align-items-end"><div class="col-12"><label class="form-label" for="viewer-search">Search</label> <input class="form-control" id="viewer-search"${attr("value", search)} placeholder="Model, series, mounting, discharge"/></div> <div class="col-12"><label class="form-label" for="viewer-product-type">Product type</label> `);
@@ -527,19 +486,14 @@ function _page($$renderer, $$props) {
         }
       );
       $$renderer2.push(`</div> <div class="col-12 d-grid"><button class="btn btn-outline-secondary">Clear</button></div></div></div></div> <div class="card shadow-sm"><div class="card-body"><div class="d-flex justify-content-between align-items-center mb-3 gap-2 flex-wrap"><div><h2 class="h5 mb-1">Products</h2> <p class="text-body-secondary mb-0">Choose a product to load its information.</p></div> `);
-      if (loadingList) {
+      {
         $$renderer2.push("<!--[0-->");
         $$renderer2.push(`<span class="small text-body-secondary">Loading…</span>`);
-      } else {
-        $$renderer2.push("<!--[-1-->");
       }
       $$renderer2.push(`<!--]--></div> `);
-      if (!loadingList && filteredProducts.length === 0) {
-        $$renderer2.push("<!--[0-->");
-        $$renderer2.push(`<p class="text-body-secondary mb-0">No products match the current filters.</p>`);
-      } else {
+      {
         $$renderer2.push("<!--[-1-->");
-        $$renderer2.push(`<div class="table-responsive"><table class="table table-sm align-middle viewer-list-table mb-0 svelte-36khdd"><thead><tr><th>Model</th><th>Type</th><th>Series</th></tr></thead><tbody class="svelte-36khdd"><!--[-->`);
+        $$renderer2.push(`<div class="table-responsive"><table class="table table-sm align-middle viewer-list-table mb-0 svelte-36khdd"><thead><tr><th class="svelte-36khdd">Model</th><th class="svelte-36khdd">Type</th><th class="svelte-36khdd">Series</th></tr></thead><tbody class="svelte-36khdd"><!--[-->`);
         const each_array_2 = ensure_array_like(filteredProducts);
         for (let $$index_2 = 0, $$length = each_array_2.length; $$index_2 < $$length; $$index_2++) {
           let product = each_array_2[$$index_2];
@@ -608,7 +562,7 @@ function _page($$renderer, $$props) {
         $$renderer2.push(`<!--]--></div></div> `);
         if (productHasFanAcousticTable(currentProduct)) {
           $$renderer2.push("<!--[0-->");
-          $$renderer2.push(`<div class="card shadow-sm"><div class="card-body"><h3 class="h5">Fan Acoustic Table</h3> <p class="text-body-secondary mb-3">Rows track the current RPM graph rows. Octave-band columns appear in the configured order.</p> <div class="table-responsive fan-acoustic-viewer-table-wrap"><table class="table table-sm align-middle fan-acoustic-viewer-table mb-0 svelte-36khdd"><colgroup><col style="width: 7.5rem"/><col style="width: 8.5rem"/><col style="width: 7.5rem"/><col style="width: 7.5rem"/><col style="width: 10.5rem"/><!--[-->`);
+          $$renderer2.push(`<div class="card shadow-sm"><div class="card-body"><h3 class="h5">Fan Acoustic Table</h3> <p class="text-body-secondary mb-3">Rows track the current RPM graph rows. Octave-band columns appear in the configured order.</p> <div class="table-responsive fan-acoustic-viewer-table-wrap svelte-36khdd"><table class="table table-sm align-middle fan-acoustic-viewer-table mb-0 svelte-36khdd"><colgroup><col style="width: 7.5rem"/><col style="width: 8.5rem"/><col style="width: 7.5rem"/><col style="width: 7.5rem"/><col style="width: 10.5rem"/><!--[-->`);
           const each_array_6 = ensure_array_like(currentProduct.fan_acoustic_table.sound_power_columns);
           for (let $$index_6 = 0, $$length = each_array_6.length; $$index_6 < $$length; $$index_6++) {
             each_array_6[$$index_6];
@@ -674,7 +628,7 @@ function _page($$renderer, $$props) {
         $$renderer2.push(`<!--]--></div></div> <div class="card shadow-sm"><div class="card-body"><h3 class="h5">Product PDF</h3> `);
         if (currentProduct.product_printed_pdf_url || currentProduct.product_pdf_url) {
           $$renderer2.push("<!--[0-->");
-          $$renderer2.push(`<div class="vstack gap-3 mt-3"><div class="ratio ratio-16x9"><iframe${attr("src", productPdfPreviewUrl(currentProduct))}${attr("title", `${currentProduct.model} PDF preview`)}></iframe></div></div>`);
+          $$renderer2.push(`<div class="vstack gap-3 mt-3"><div class="ratio ratio-16x9"><iframe${attr("src", productPdfPreviewUrl(currentProduct))}${attr("title", `${currentProduct.model} PDF preview`)} class="svelte-36khdd"></iframe></div></div>`);
         } else {
           $$renderer2.push("<!--[-1-->");
           $$renderer2.push(`<p class="text-body-secondary mb-0">No product PDF generated yet.</p>`);
@@ -776,7 +730,7 @@ function _page($$renderer, $$props) {
         $$renderer2.push(`<!--]--></div> `);
         if (selectedProductTypeRecord?.product_type_pdf_url) {
           $$renderer2.push("<!--[0-->");
-          $$renderer2.push(`<div class="ratio ratio-16x9 mt-3"><iframe${attr("src", productTypePdfPreviewUrl(selectedProductTypeRecord))}${attr("title", `${selectedProductTypeRecord.label} PDF preview`)}></iframe></div>`);
+          $$renderer2.push(`<div class="ratio ratio-16x9 mt-3"><iframe${attr("src", productTypePdfPreviewUrl(selectedProductTypeRecord))}${attr("title", `${selectedProductTypeRecord.label} PDF preview`)} class="svelte-36khdd"></iframe></div>`);
         } else {
           $$renderer2.push("<!--[-1-->");
           $$renderer2.push(`<p class="text-body-secondary mb-0 mt-3">No generated PDF available yet.</p>`);
@@ -935,7 +889,7 @@ function _page($$renderer, $$props) {
         $$renderer2.push(`<!--]--></div></div> <div class="card shadow-sm"><div class="card-body"><h3 class="h5">Series PDF</h3> `);
         if (selectedSeriesRecord.series_printed_pdf_url || selectedSeriesRecord.series_pdf_url) {
           $$renderer2.push("<!--[0-->");
-          $$renderer2.push(`<div class="vstack gap-3 mt-3"><div class="ratio ratio-16x9"><iframe${attr("src", seriesPdfPreviewUrl(selectedSeriesRecord))}${attr("title", `${selectedSeriesRecord.name} PDF preview`)}></iframe></div></div>`);
+          $$renderer2.push(`<div class="vstack gap-3 mt-3"><div class="ratio ratio-16x9"><iframe${attr("src", seriesPdfPreviewUrl(selectedSeriesRecord))}${attr("title", `${selectedSeriesRecord.name} PDF preview`)} class="svelte-36khdd"></iframe></div></div>`);
         } else {
           $$renderer2.push("<!--[-1-->");
           $$renderer2.push(`<p class="text-body-secondary mb-0">No series PDF generated yet.</p>`);

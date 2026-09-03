@@ -3922,7 +3922,7 @@
       void openSelectedExistingProduct(selectedProductId);
     }
 
-    void Promise.all([
+    const metadataPromise = Promise.all([
       loadProducts(),
       loadProductTypes(),
       loadSeries(),
@@ -3930,6 +3930,9 @@
     ]);
 
     if (selectedProductId && initialSelectionOnly) {
+      // This return-to-selection flow waits for metadata so both dropdowns
+      // can be restored from the product that was just edited.
+      await metadataPromise;
       const selectedProduct = products.find(
         (product) => Number(product.id) === Number(selectedProductId),
       );

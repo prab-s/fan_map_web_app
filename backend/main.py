@@ -96,6 +96,7 @@ from backend.schemas import (
     ProductUpdate,
     ProductGraphDataReplace,
     ProductResponse,
+    ProductSelectorResponse,
     GraphImageMaintenanceResponse,
     MaintenanceJobResponse,
     PdfMaintenanceResponse,
@@ -10361,6 +10362,33 @@ def list_products(
         q = q.filter(Product.series_name.ilike(f"%{series_name}%"))
     results = q.order_by(Product.model).all()
     return [product for product in results if product_matches_parameter_filters(product, parsed_parameter_filters)]
+
+
+@app.get("/api/products/selector", response_model=list[ProductSelectorResponse], dependencies=[Depends(get_current_user)], tags=["Products"], summary="List lightweight product selector options")
+def list_product_selector_options(
+    db: Session = Depends(get_db),
+    search: Optional[str] = Query(None),
+    product_type_key: Optional[str] = Query(None),
+    series_id: Optional[int] = Query(None),
+):
+    q = (
+        db.query(
+            Product.id,
+            Product.model,
+            ProductType.key.label("product_type_key"),
+            Product.series_id,
+            Product.series_name,
+            ProductType.label.label("product_type_label"),
+        )
+        .outerjoin(ProductType, Product.product_type_id == ProductType.id)
+    )
+    if search:
+        q = q.filter(Product.model.ilike(f"%{search}%"))
+    if product_type_key:
+        q = q.filter(ProductType.key == product_type_key)
+    if series_id is not None:
+        q = q.filter(Product.series_id == series_id)
+    return q.order_by(Product.model).all()
 
 
 @app.post(

@@ -137,6 +137,12 @@ export async function getProducts(params = {}) {
   return r.json();
 }
 
+export async function getProductSelectorOptions(params = {}) {
+  const sp = new URLSearchParams(params).toString();
+  const r = await apiFetch('/products/selector' + (sp ? '?' + sp : ''));
+  return r.json();
+}
+
 export async function applyBulkAction(body) {
   const r = await apiFetch('/bulk-actions', {
     method: 'POST',
